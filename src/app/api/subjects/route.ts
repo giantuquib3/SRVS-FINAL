@@ -11,15 +11,20 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim();
     const departmentId = searchParams.get('departmentId');
+    const yearLevel = searchParams.get('yearLevel');
+    const semester = searchParams.get('semester');
 
     const where: any = {};
 
-    // Department Head can strictly only view courses within their assigned department
+    // Department Head can only view subjects in their department
     if (user?.role === 'DepartmentHead') {
       where.departmentId = user.departmentId || '__NO_DEPT__';
     } else if (departmentId) {
       where.departmentId = departmentId;
     }
+
+    if (yearLevel) where.yearLevel = yearLevel;
+    if (semester) where.semester = semester;
 
     if (search) {
       where.OR = [
@@ -28,7 +33,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const courses = await prisma.course.findMany({
+    const subjects = await prisma.subject.findMany({
       where,
       orderBy: { code: 'asc' },
       include: {
@@ -40,12 +45,16 @@ export async function GET(req: NextRequest) {
           },
         },
         syllabi: {
+          where: {
+            status: { in: ['Approved', 'ACTIVE'] },
+          },
           select: {
             id: true,
             status: true,
             academicYear: true,
             semester: true,
             currentVersionNumber: true,
+            uploadedByUserId: true,
           },
         },
         _count: {
@@ -57,10 +66,10 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ courses });
+    return NextResponse.json({ subjects });
   } catch (error: any) {
-    console.error('Error fetching courses:', error);
-    return NextResponse.json({ error: 'Failed to fetch courses.' }, { status: 500 });
+    console.error('Error fetching subjects:', error);
+    return NextResponse.json({ error: 'Failed to fetch subjects.' }, { status: 500 });
   }
 }
 
@@ -85,38 +94,37 @@ export async function POST(req: NextRequest) {
       semester = '1st Semester',
     } = body;
 
-    // 3. Validate input
+    // Validate required fields
     if (!code || !title || !departmentId) {
-      return NextResponse.json({ error: 'Course code, title, and department are required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Subject code, title, and department are required.' }, { status: 400 });
     }
 
     const upperCode = code.trim().toUpperCase();
 
-    // If DepartmentHead, can only create for their own department unless Admin
+    // Dept head scoping
     if (user.role === 'DepartmentHead' && user.departmentId && user.departmentId !== departmentId) {
-      return NextResponse.json({ error: 'Department Heads may only manage courses within their assigned department.' }, { status: 403 });
+      return NextResponse.json({ error: 'Department Heads may only manage subjects within their assigned department.' }, { status: 403 });
     }
 
-    // 4. Verify that the course code does not already exist
-    const existing = await prisma.course.findUnique({
+    // Check duplicate
+    const existing = await prisma.subject.findUnique({
       where: { code: upperCode },
     });
 
     if (existing) {
-      return NextResponse.json({ error: `A course with code "${upperCode}" already exists.` }, { status: 409 });
+      return NextResponse.json({ error: `A subject with code "${upperCode}" already exists.` }, { status: 409 });
     }
 
     const parsedUnits = Number(units) || 3;
     const parsedLecHours = Number(lecHours) || 3;
     const parsedLabHours = Number(labHours) || 0;
 
-    // 5. Save the course in PostgreSQL
-    const course = await prisma.course.create({
+    // Create subject record in srvs_subjects
+    const subject = await prisma.subject.create({
       data: {
-        id: upperCode, // Primary key is Course Code (CPE101, CE101, etc.)
+        id: upperCode,
         code: upperCode,
         title: title.trim(),
-        departmentId,
         description: description?.trim() || null,
         units: parsedUnits,
         lecHours: parsedLecHours,
@@ -124,14 +132,15 @@ export async function POST(req: NextRequest) {
         prerequisite: prerequisite?.trim() || 'None',
         yearLevel: yearLevel || '1st Year',
         semester: semester || '1st Semester',
+        departmentId,
       },
       include: {
         department: true,
       },
     });
 
-    // Also mirror to Subject table
-    await prisma.subject.upsert({
+    // Mirror in Course table for seamless cross-compatibility
+    await prisma.course.upsert({
       where: { code: upperCode },
       update: {
         title: title.trim(),
@@ -159,22 +168,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 6. Create an audit log
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
-      actionType: 'CreateCourse',
+      actionType: 'CreateSubject',
       resultStatus: 'Success',
-      description: `Created course [${course.code}] ${course.title} under department ${course.department.name}`,
-      entityType: 'Course',
-      entityId: course.id,
-      ipAddress: req.ip || '127.0.0.1',
+      description: `Created academic subject ${upperCode} - ${title.trim()} (${parsedUnits} Units, Lec: ${parsedLecHours}h, Lab: ${parsedLabHours}h)`,
+      entityType: 'Subject',
+      entityId: subject.id,
     });
 
-    // 7. Return the created course
-    return NextResponse.json({ success: true, course }, { status: 201 });
+    return NextResponse.json({ success: true, subject }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating course:', error);
-    return NextResponse.json({ error: 'Failed to create course.' }, { status: 500 });
+    console.error('Error creating subject:', error);
+    return NextResponse.json({ error: 'Failed to create subject: ' + error.message }, { status: 500 });
   }
 }

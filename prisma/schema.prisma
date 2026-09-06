@@ -16,17 +16,24 @@ model Department {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   courses     Course[]
+  subjects    Subject[]
   users       User[]
   syllabi     Syllabus[]
 
   @@map("srvs_departments")
 }
 
-model Course {
+model Subject {
   id           String       @id // e.g. CPE101, CE101
   code         String       @unique // e.g. CPE101
-  title        String
+  title        String       // Descriptive Title
   description  String?
+  units        Int          @default(3) // Academic Credit Units (e.g. 3)
+  lecHours     Int          @default(3) // Lecture Hours per week
+  labHours     Int          @default(0) // Laboratory Hours per week
+  prerequisite String?      @default("None") // Prerequisite subject(s)
+  yearLevel    String?      @default("1st Year") // 1st Year, 2nd Year, 3rd Year, 4th Year
+  semester     String?      @default("1st Semester") // 1st Semester, 2nd Semester, Summer
   departmentId String
   department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
@@ -34,32 +41,57 @@ model Course {
   syllabi      Syllabus[]
   enrollments  Enrollment[]
 
+  @@index([departmentId])
+  @@map("srvs_subjects")
+}
+
+model Course {
+  id           String       @id // e.g. CPE101, CE101
+  code         String       @unique // e.g. CPE101
+  title        String
+  description  String?
+  units        Int          @default(3) // Academic Credit Units
+  lecHours     Int          @default(3) // Lecture Hours
+  labHours     Int          @default(0) // Lab Hours
+  prerequisite String?      @default("None") // Prerequisites
+  yearLevel    String?      @default("1st Year")
+  semester     String?      @default("1st Semester")
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  syllabi      Syllabus[]
+  enrollments  Enrollment[]
+
+  @@index([departmentId])
   @@map("srvs_courses")
 }
 
 model User {
-  id               String                @id // University ID Number: 00000 (Admin), 5 digits (Faculty/Staff), 10 digits (Student)
-  email            String                @unique
-  passwordHash     String
-  firstName        String                @default("")
-  lastName         String                @default("")
-  fullName         String
-  role             String                @default("Student") // Admin, DepartmentHead, Educator, Student
-  departmentId     String?
-  department       Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  accountStatus    String                @default("Active") // Active, PendingApproval, Rejected, Deactivated
-  createdAt        DateTime              @default(now())
-  lastLoginAt      DateTime?
-  enrollments      Enrollment[]
-  syllabi          Syllabus[]            @relation("InstructorSyllabi")
-  createdSyllabi   Syllabus[]            @relation("CreatedSyllabi")
-  reviewedSyllabi  Syllabus[]            @relation("ReviewedSyllabi")
-  editedVersions   SyllabusVersion[]     @relation("EditorVersions")
-  submittedVersions SyllabusVersion[]    @relation("SubmittedVersions")
-  reviewedVersions SyllabusVersion[]     @relation("ReviewedVersions")
-  approvalLogs     SyllabusApprovalLog[]
-  auditLogs        AuditLog[]
-  notifications    Notification[]
+  id                String                @id // University ID Number: 00000 (Admin), 5 digits (Faculty/Staff), 10 digits (Student)
+  email             String                @unique
+  passwordHash      String
+  firstName         String                @default("")
+  lastName          String                @default("")
+  fullName          String
+  role              String                @default("Student") // Admin, DepartmentHead, Educator, Student
+  departmentId      String?
+  department        Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  accountStatus     String                @default("Active") // Active, PendingApproval, Rejected, Deactivated
+  createdAt         DateTime              @default(now())
+  lastLoginAt       DateTime?
+  enrollments       Enrollment[]
+  syllabi           Syllabus[]            @relation("InstructorSyllabi")
+  createdSyllabi    Syllabus[]            @relation("CreatedSyllabi")
+  uploadedSyllabi   Syllabus[]            @relation("UploadedSyllabi")
+  reviewedSyllabi   Syllabus[]            @relation("ReviewedSyllabi")
+  editedVersions    SyllabusVersion[]     @relation("EditorVersions")
+  submittedVersions SyllabusVersion[]     @relation("SubmittedVersions")
+  reviewedVersions  SyllabusVersion[]     @relation("ReviewedVersions")
+  uploadedVersions  SyllabusVersion[]     @relation("UploadedVersions")
+  approvalLogs      SyllabusApprovalLog[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
 
   @@map("srvs_users")
 }
@@ -68,8 +100,10 @@ model Enrollment {
   id           String   @id @default(cuid())
   studentId    String
   student      User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  courseId     String
-  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId     String?
+  course       Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId    String?
+  subject      Subject? @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   semester     String // 1st Semester, 2nd Semester, Summer Term
   academicYear String // e.g. 2026-2027
   section      String   @default("A")
@@ -77,20 +111,24 @@ model Enrollment {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@unique([studentId, courseId, semester, academicYear])
   @@index([studentId])
   @@index([courseId])
+  @@index([subjectId])
   @@map("srvs_enrollments")
 }
 
 model Syllabus {
   id                   String            @id @default(uuid())
-  courseId             String
-  course               Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId             String?
+  course               Course?           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subjectId            String?
+  subject              Subject?          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   instructorId         String
   instructor           User              @relation("InstructorSyllabi", fields: [instructorId], references: [id], onDelete: Cascade)
   createdById          String?
   createdBy            User?             @relation("CreatedSyllabi", fields: [createdById], references: [id], onDelete: SetNull)
+  uploadedByUserId     String?
+  uploadedBy           User?             @relation("UploadedSyllabi", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
   departmentId         String
   department           Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   academicYear         String
@@ -108,48 +146,53 @@ model Syllabus {
   versions             SyllabusVersion[]
 
   @@index([courseId])
+  @@index([subjectId])
   @@index([departmentId])
   @@index([instructorId])
+  @@index([uploadedByUserId])
   @@index([status])
   @@map("srvs_syllabi")
 }
 
 model SyllabusVersion {
-  id              String                @id @default(uuid())
-  syllabusId      String
-  syllabus        Syllabus              @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
-  versionNumber   Int
-  editorId        String
-  editor          User                  @relation("EditorVersions", fields: [editorId], references: [id])
-  changeSummary   String // User-supplied change summary on revisions
-  changeType      String                @default("Create") // Create, Edit, Submit, Approve, Reject, Restore
-  statusAtSave    String                @default("DRAFT")
-  approvalStatus  String                @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED
-  content         Json // Complete immutable content snapshot
+  id               String                @id @default(uuid())
+  syllabusId       String
+  syllabus         Syllabus              @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  versionNumber    Int
+  editorId         String
+  editor           User                  @relation("EditorVersions", fields: [editorId], references: [id])
+  changeSummary    String // User-supplied change summary on revisions
+  changeType       String                @default("Create") // Create, Edit, Submit, Approve, Reject, Restore
+  statusAtSave     String                @default("DRAFT")
+  approvalStatus   String                @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED
+  content          Json // Complete immutable content snapshot
 
   // Document upload fields (PDF, DOC, DOCX)
-  fileName        String?
-  fileUrl         String?
-  fileType        String?
-  fileSize        Int?
+  fileName         String?
+  fileUrl          String?
+  fileType         String?
+  fileSize         Int?
+  uploadedByUserId String?
+  uploadedBy       User?                 @relation("UploadedVersions", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
 
   // Submission & Review tracking
-  submittedById   String?
-  submittedBy     User?                 @relation("SubmittedVersions", fields: [submittedById], references: [id], onDelete: SetNull)
-  submittedAt     DateTime?
-  reviewedById    String?
-  reviewedBy      User?                 @relation("ReviewedVersions", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt      DateTime?
-  rejectionReason String?
+  submittedById    String?
+  submittedBy      User?                 @relation("SubmittedVersions", fields: [submittedById], references: [id], onDelete: SetNull)
+  submittedAt      DateTime?
+  reviewedById     String?
+  reviewedBy       User?                 @relation("ReviewedVersions", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt       DateTime?
+  rejectionReason  String?
 
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt @default(now())
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt @default(now())
 
-  approvalLogs    SyllabusApprovalLog[]
+  approvalLogs     SyllabusApprovalLog[]
 
   @@unique([syllabusId, versionNumber])
   @@index([syllabusId])
   @@index([approvalStatus])
+  @@index([uploadedByUserId])
   @@map("srvs_syllabus_versions")
 }
 

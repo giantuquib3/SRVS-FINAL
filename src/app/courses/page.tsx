@@ -185,18 +185,28 @@ export default function CoursesPage() {
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] font-extrabold text-sm">
-                    {course.code}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] font-extrabold text-sm">
+                      {course.code}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
+                      {course.units ?? 3} Units
+                    </span>
+                  </div>
                   <span className="text-xs text-slate-600 font-bold">
                     [{course.department?.code}] {course.department?.name}
                   </span>
                 </div>
 
                 <h3 className="text-base font-bold text-slate-900">{course.title}</h3>
-                <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
                   {course.description || 'No description provided.'}
                 </p>
+
+                <div className="flex items-center justify-between text-[11px] bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-slate-600">
+                  <span className="font-semibold">Lec: {course.lecHours ?? 3}h • Lab: {course.labHours ?? 0}h</span>
+                  <span className="text-slate-500">Prereq: <strong className="text-slate-700">{course.prerequisite || 'None'}</strong></span>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">

@@ -25,6 +25,13 @@ export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [counts, setCounts] = useState<{
+    total: number;
+    deptHeads: number;
+    educators: number;
+    students: number;
+    admins: number;
+  }>({ total: 0, deptHeads: 0, educators: 0, students: 0, admins: 0 });
 
   // Create User Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -57,6 +64,7 @@ export default function UsersManagementPage() {
       ]);
 
       setUsers(uListRes.users || []);
+      if (uListRes.counts) setCounts(uListRes.counts);
       setDepartments(dRes.departments || []);
       if (meRes?.user) setCurrentUser(meRes.user);
     } catch (err) {
@@ -230,6 +238,39 @@ export default function UsersManagementPage() {
           <span>{actionMessage}</span>
         </div>
       )}
+
+      {/* Role Segregation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        {[
+          { id: '', label: 'All Users', count: counts.total },
+          { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
+          { id: 'Educator', label: 'Faculty / Educators', count: counts.educators },
+          { id: 'Student', label: 'Students', count: counts.students },
+          { id: 'Admin', label: 'Administrators', count: counts.admins },
+        ].map((tab) => {
+          const active = roleFilter === tab.id;
+          return (
+            <button
+              key={tab.id || 'all'}
+              onClick={() => setRoleFilter(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                active
+                  ? 'bg-[#005A36] text-white shadow-md'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">

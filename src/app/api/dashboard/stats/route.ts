@@ -158,7 +158,17 @@ export async function GET(req: NextRequest) {
             include: {
               department: true,
               syllabi: {
-                where: { status: 'Approved' },
+                where: { status: { in: ['Approved', 'ACTIVE'] } },
+                orderBy: { currentVersionNumber: 'desc' },
+                take: 1,
+              },
+            },
+          },
+          subject: {
+            include: {
+              department: true,
+              syllabi: {
+                where: { status: { in: ['Approved', 'ACTIVE'] } },
                 orderBy: { currentVersionNumber: 'desc' },
                 take: 1,
               },
@@ -168,9 +178,11 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    const availableSyllabiCount = activeEnrollments.filter(
-      (e) => e.course.syllabi && e.course.syllabi.length > 0
-    ).length;
+    const availableSyllabiCount = activeEnrollments.filter((e) => {
+      const courseSyllabi = e.course?.syllabi && e.course.syllabi.length > 0;
+      const subjectSyllabi = e.subject?.syllabi && e.subject.syllabi.length > 0;
+      return courseSyllabi || subjectSyllabi;
+    }).length;
 
     return NextResponse.json({
       role: 'Student',

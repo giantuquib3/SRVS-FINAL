@@ -26,6 +26,14 @@ export async function GET(
             email: true,
           },
         },
+        uploadedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            role: true,
+          },
+        },
+        subject: true,
         department: true,
         versions: {
           orderBy: { versionNumber: 'desc' },
@@ -34,6 +42,13 @@ export async function GET(
               select: {
                 id: true,
                 fullName: true,
+              },
+            },
+            uploadedBy: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
               },
             },
           },
@@ -57,7 +72,7 @@ export async function GET(
       }, { status: 403 });
     }
 
-    // 2. Student: Must be Approved/Active AND must be actively enrolled in this course
+    // 2. Student: Must be Approved/Active AND must be actively enrolled in this course/subject
     if (user.role === 'Student') {
       if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Students can only view approved syllabi.' }, { status: 403 });
@@ -66,8 +81,11 @@ export async function GET(
       const activeEnrollment = await prisma.enrollment.findFirst({
         where: {
           studentId: user.id,
-          courseId: syllabus.courseId,
           status: 'ENROLLED',
+          OR: [
+            { courseId: syllabus.courseId || '' },
+            { subjectId: syllabus.subjectId || syllabus.courseId || '' },
+          ],
         },
       });
 
@@ -180,12 +198,13 @@ export async function PATCH(
 
     // Atomic transaction: Create new version
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Create new immutable version record
+      // 1. Create new immutable version record (storing uploadedByUserId as user.id, NOT name)
       const newVersion = await tx.syllabusVersion.create({
         data: {
           syllabusId: syllabus.id,
           versionNumber: newVersionNumber,
           editorId: user.id,
+          uploadedByUserId: user.id,
           changeSummary: changeSummary.trim(),
           changeType: 'Edit',
           statusAtSave: versionApprovalStatus,

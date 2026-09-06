@@ -44,7 +44,30 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ users });
+    const baseWhere: any = {};
+    if (user.role === 'DepartmentHead' && user.departmentId) {
+      baseWhere.departmentId = user.departmentId;
+    }
+    if (status) baseWhere.accountStatus = status;
+
+    const [total, deptHeads, educators, students, admins] = await Promise.all([
+      prisma.user.count({ where: baseWhere }),
+      prisma.user.count({ where: { ...baseWhere, role: 'DepartmentHead' } }),
+      prisma.user.count({ where: { ...baseWhere, role: 'Educator' } }),
+      prisma.user.count({ where: { ...baseWhere, role: 'Student' } }),
+      prisma.user.count({ where: { ...baseWhere, role: 'Admin' } }),
+    ]);
+
+    return NextResponse.json({
+      users,
+      counts: {
+        total,
+        deptHeads,
+        educators,
+        students,
+        admins,
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching users:', error);
     return NextResponse.json({ error: 'Failed to fetch users.' }, { status: 500 });

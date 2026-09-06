@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
             department: true,
             syllabi: {
               where: {
-                status: 'Approved',
+                status: { in: ['Approved', 'ACTIVE'] },
               },
               select: {
                 id: true,
@@ -60,9 +60,15 @@ export async function GET(req: NextRequest) {
                 status: true,
                 academicYear: true,
                 semester: true,
+                uploadedByUserId: true,
               },
               take: 1,
             },
+          },
+        },
+        subject: {
+          include: {
+            department: true,
           },
         },
       },
@@ -82,10 +88,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
     }
 
-    const { studentId, courseId, semester, academicYear, section, status } = await req.json();
+    const body = await req.json();
+    const { studentId, courseId, subjectId, semester, academicYear, section = 'A', status = 'ENROLLED' } = body;
+    const targetId = (subjectId || courseId || '').trim();
 
-    if (!studentId || !courseId || !semester || !academicYear) {
-      return NextResponse.json({ error: 'Student, Course, Semester, and Academic Year are required.' }, { status: 400 });
+    if (!studentId || !targetId || !semester || !academicYear) {
+      return NextResponse.json({ error: 'Student, Subject/Course, Semester, and Academic Year are required.' }, { status: 400 });
     }
 
     // Verify student exists and is Active
@@ -97,14 +105,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
     }
 
-    // Verify course exists
+    // Verify course/subject exists
     const course = await prisma.course.findUnique({
-      where: { id: courseId },
+      where: { id: targetId },
       include: { department: true },
     });
 
     if (!course) {
-      return NextResponse.json({ error: 'Invalid course selected.' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid course/subject selected.' }, { status: 400 });
     }
 
     // Department Head can only enroll students in courses within their assigned department
@@ -115,14 +123,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Check duplicate enrollment
-    const existing = await prisma.enrollment.findUnique({
+    const existing = await prisma.enrollment.findFirst({
       where: {
-        studentId_courseId_semester_academicYear: {
-          studentId,
-          courseId,
-          semester,
-          academicYear,
-        },
+        studentId,
+        semester,
+        academicYear,
+        OR: [
+          { courseId: targetId },
+          { subjectId: targetId },
+        ],
       },
     });
 
@@ -135,10 +144,11 @@ export async function POST(req: NextRequest) {
     const enrollment = await prisma.enrollment.create({
       data: {
         studentId,
-        courseId,
+        courseId: targetId,
+        subjectId: targetId,
         semester,
         academicYear,
-        section: section?.trim() || 'A',
+        section: section || 'A',
         status: status || 'ENROLLED',
       },
       include: {

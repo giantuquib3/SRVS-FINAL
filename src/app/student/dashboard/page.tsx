@@ -132,31 +132,53 @@ export default function StudentDashboard() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {enrolledSubjects.map((item: any) => {
-              const activeSyllabus = item.course.syllabi?.[0];
+              const subject = item.subject || item.course || {};
+              const activeSyllabus = item.subject?.syllabi?.[0] || item.course?.syllabi?.[0];
               return (
                 <div
                   key={item.id}
                   className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 hover:border-[#005A36] transition-all flex flex-col justify-between"
                 >
-                  <div className="space-y-2.5">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] text-sm font-extrabold tracking-wide">
-                        {item.course.code}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] text-sm font-extrabold tracking-wide">
+                          {subject.code}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
+                          {subject.units || 3} Units
+                        </span>
+                      </div>
                       <span className="text-xs px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
                         Section {item.section}
                       </span>
                     </div>
 
-                    <h3 className="text-lg font-bold text-slate-900">{item.course.title}</h3>
+                    <h3 className="text-lg font-bold text-slate-900">{subject.title}</h3>
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
-                      {item.course.description || 'No course description available.'}
+                      {subject.description || 'No course description available.'}
                     </p>
+
+                    {/* Academic Subject Details: Units, Lec, Lab, Prerequisite */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <div>
+                        <span className="text-slate-400 font-semibold block uppercase tracking-wider text-[9px]">Contact Hours</span>
+                        <span className="font-bold text-slate-700">Lec: {subject.lecHours ?? 3}h • Lab: {subject.labHours ?? 0}h</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-semibold block uppercase tracking-wider text-[9px]">Prerequisite</span>
+                        <span className="font-bold text-slate-700">{subject.prerequisite || 'None'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-semibold block uppercase tracking-wider text-[9px]">Year & Term</span>
+                        <span className="font-bold text-slate-700">{subject.yearLevel || '1st Year'}</span>
+                      </div>
+                    </div>
 
                     <div className="flex items-center space-x-3 text-xs text-slate-500 pt-1">
                       <span className="flex items-center space-x-1">
                         <Layers className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="font-medium">{item.course.department?.name}</span>
+                        <span className="font-medium">{subject.department?.name || item.course?.department?.name}</span>
                       </span>
                       <span>•</span>
                       <span className="flex items-center space-x-1">
