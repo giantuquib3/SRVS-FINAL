@@ -28,6 +28,7 @@ export default function EditSyllabusPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [syllabus, setSyllabus] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Document upload state
   const [uploadedFile, setUploadedFile] = useState<{
@@ -50,9 +51,12 @@ export default function EditSyllabusPage() {
   useEffect(() => {
     if (!id) return;
 
-    fetch(`/api/syllabi/${id}`)
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([
+      fetch(`/api/syllabi/${id}`).then((r) => r.json()),
+      fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([data, uData]) => {
+        if (uData?.user) setCurrentUser(uData.user);
         if (data.error) {
           setError(data.error);
         } else if (data.syllabus && data.currentVersion) {
@@ -151,7 +155,7 @@ export default function EditSyllabusPage() {
     setGradingSystem(gradingSystem.filter((_, i) => i !== idx));
   };
 
-  const handleSaveRevision = async (submitForApproval: boolean) => {
+  const handleSaveRevision = async (submitForApproval: boolean, directApprove: boolean = false) => {
     setError('');
 
     if (!changeSummary.trim()) {
@@ -164,14 +168,15 @@ export default function EditSyllabusPage() {
     const payload = {
       changeSummary: changeSummary.trim(),
       changeType: 'Edit',
+      directApprove,
       schedule,
       courseDescription,
       learningOutcomes: learningOutcomes.filter((o) => o.trim().length > 0),
       topics: topics.filter((t) => t.topic.trim().length > 0),
       references: references.filter((r) => r.trim().length > 0),
       gradingSystem: gradingSystem.filter((g) => g.component.trim().length > 0),
-      saveAsDraft: !submitForApproval,
-      submitForApproval,
+      saveAsDraft: !submitForApproval && !directApprove,
+      submitForApproval: submitForApproval && !directApprove,
       fileName: uploadedFile?.fileName,
       fileUrl: uploadedFile?.fileUrl,
       fileType: uploadedFile?.fileType,
@@ -212,6 +217,7 @@ export default function EditSyllabusPage() {
   }
 
   const nextVersionNumber = (syllabus?.currentVersionNumber || 1) + 1;
+  const isDeptHeadOrAdmin = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4">
@@ -233,11 +239,11 @@ export default function EditSyllabusPage() {
             <h1 className="text-2xl font-extrabold text-slate-900">Revise Course Syllabus</h1>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           <button
             type="button"
             disabled={submitting}
-            onClick={() => handleSaveRevision(false)}
+            onClick={() => handleSaveRevision(false, false)}
             className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
           >
             <Save className="w-3.5 h-3.5 text-[#005A36]" />
@@ -246,12 +252,24 @@ export default function EditSyllabusPage() {
           <button
             type="button"
             disabled={submitting}
-            onClick={() => handleSaveRevision(true)}
+            onClick={() => handleSaveRevision(true, false)}
             className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
           >
             <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
             <span>Submit Revision for Approval</span>
           </button>
+          {isDeptHeadOrAdmin && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleSaveRevision(true, true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+              title="Publish immediately as new active official version"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Approve & Publish Revision</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -572,11 +590,11 @@ export default function EditSyllabusPage() {
             <div className="text-xs text-slate-500">
               Drafts remain private. Submitting a revision routes Version {nextVersionNumber} to your Department Head.
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2.5">
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => handleSaveRevision(false)}
+                onClick={() => handleSaveRevision(false, false)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
               >
                 <Save className="w-4 h-4 text-[#005A36]" />
@@ -585,12 +603,24 @@ export default function EditSyllabusPage() {
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => handleSaveRevision(true)}
+                onClick={() => handleSaveRevision(true, false)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4 text-[#FEF08A]" />
                 <span>Submit Revision for Approval</span>
               </button>
+              {isDeptHeadOrAdmin && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleSaveRevision(true, true)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                  title="Publish immediately as new active official version"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Approve & Publish Revision</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -140,6 +140,8 @@ export async function POST(req: NextRequest) {
       references,
       gradingSystem,
       schedule,
+      section = 'A',
+      directApprove = false,
       saveAsDraft = true,
       fileName,
       fileUrl,
@@ -175,7 +177,9 @@ export async function POST(req: NextRequest) {
       schedule: schedule?.trim() || '',
     };
 
-    const initialStatus = saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL';
+    const canDirectApprove = (user.role === 'DepartmentHead' || user.role === 'Admin') && directApprove === true;
+    const initialStatus = canDirectApprove ? 'ACTIVE' : (saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL');
+    const versionApprovalStatus = canDirectApprove ? 'APPROVED' : initialStatus;
     const now = new Date();
 
     // Start database transaction
@@ -185,12 +189,17 @@ export async function POST(req: NextRequest) {
         data: {
           courseId: course.id,
           instructorId: user.id,
+          createdById: user.id,
           departmentId: course.departmentId,
           academicYear,
           semester,
+          section: section || 'A',
           status: initialStatus,
           currentVersionNumber: 1,
           submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
+          reviewedAt: canDirectApprove ? now : null,
+          reviewedByUserId: canDirectApprove ? user.id : null,
+          reviewerRemarks: canDirectApprove ? 'Approved on initial creation by Department Head' : null,
         },
       });
 
@@ -204,26 +213,45 @@ export async function POST(req: NextRequest) {
             ? `Initial syllabus creation with uploaded document (${fileName})`
             : 'Initial syllabus creation (Version 1)',
           changeType: 'Create',
-          statusAtSave: initialStatus,
-          approvalStatus: initialStatus,
+          statusAtSave: versionApprovalStatus,
+          approvalStatus: versionApprovalStatus,
           content: contentSnapshot,
           fileName: fileName || null,
           fileUrl: fileUrl || null,
           fileType: fileType || null,
           fileSize: fileSize || null,
-          submittedById: initialStatus === 'PENDING_APPROVAL' ? user.id : null,
-          submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
+          submittedById: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? user.id : null,
+          submittedAt: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? now : null,
+          reviewedById: canDirectApprove ? user.id : null,
+          reviewedAt: canDirectApprove ? now : null,
         },
       });
 
-      // 3. Create audit logs
+      // 3. If direct approved, log in SyllabusApprovalLog
+      if (canDirectApprove) {
+        await tx.syllabusApprovalLog.create({
+          data: {
+            syllabusVersionId: version.id,
+            reviewerId: user.id,
+            decision: 'APPROVED',
+            comments: 'Approved on initial upload/creation by Department Head',
+            createdAt: now,
+          },
+        });
+      }
+
+      // 4. Create audit logs
       await tx.auditLog.create({
         data: {
           userId: user.id,
           userDisplayName: user.fullName,
-          actionType: initialStatus === 'PENDING_APPROVAL' ? 'SubmitSyllabus' : 'CreateSyllabusDraft',
+          actionType: canDirectApprove
+            ? 'ApproveSyllabusVersion'
+            : (initialStatus === 'PENDING_APPROVAL' ? 'SubmitSyllabus' : 'CreateSyllabusDraft'),
           resultStatus: 'Success',
-          description: `Created syllabus for [${course.code}] ${course.title} (${semester}, AY ${academicYear}) as Version 1 [${initialStatus}]`,
+          description: canDirectApprove
+            ? `Created and approved syllabus for [${course.code}] ${course.title} (${semester}, AY ${academicYear}) as official active Version 1`
+            : `Created syllabus for [${course.code}] ${course.title} (${semester}, AY ${academicYear}) as Version 1 [${initialStatus}]`,
           entityType: 'Syllabus',
           entityId: syllabus.id,
           ipAddress: req.ip || '127.0.0.1',
@@ -233,8 +261,8 @@ export async function POST(req: NextRequest) {
       return { syllabus, version };
     });
 
-    // 4. If submitted for approval, notify Department Head and Administrators
-    if (initialStatus === 'PENDING_APPROVAL') {
+    // 5. If submitted for approval, notify Department Head and Administrators
+    if (initialStatus === 'PENDING_APPROVAL' && !canDirectApprove) {
       const reviewers = await prisma.user.findMany({
         where: {
           OR: [

@@ -52,6 +52,7 @@ model User {
   lastLoginAt      DateTime?
   enrollments      Enrollment[]
   syllabi          Syllabus[]            @relation("InstructorSyllabi")
+  createdSyllabi   Syllabus[]            @relation("CreatedSyllabi")
   reviewedSyllabi  Syllabus[]            @relation("ReviewedSyllabi")
   editedVersions   SyllabusVersion[]     @relation("EditorVersions")
   submittedVersions SyllabusVersion[]    @relation("SubmittedVersions")
@@ -77,6 +78,8 @@ model Enrollment {
   updatedAt    DateTime @updatedAt
 
   @@unique([studentId, courseId, semester, academicYear])
+  @@index([studentId])
+  @@index([courseId])
   @@map("srvs_enrollments")
 }
 
@@ -86,10 +89,13 @@ model Syllabus {
   course               Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
   instructorId         String
   instructor           User              @relation("InstructorSyllabi", fields: [instructorId], references: [id], onDelete: Cascade)
+  createdById          String?
+  createdBy            User?             @relation("CreatedSyllabi", fields: [createdById], references: [id], onDelete: SetNull)
   departmentId         String
   department           Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   academicYear         String
   semester             String
+  section              String            @default("A")
   status               String            @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, ACTIVE, ARCHIVED
   currentVersionNumber Int               @default(1) // Represents the officially approved current version
   reviewerRemarks      String?
@@ -101,6 +107,10 @@ model Syllabus {
   updatedAt            DateTime          @updatedAt
   versions             SyllabusVersion[]
 
+  @@index([courseId])
+  @@index([departmentId])
+  @@index([instructorId])
+  @@index([status])
   @@map("srvs_syllabi")
 }
 
@@ -138,6 +148,8 @@ model SyllabusVersion {
   approvalLogs    SyllabusApprovalLog[]
 
   @@unique([syllabusId, versionNumber])
+  @@index([syllabusId])
+  @@index([approvalStatus])
   @@map("srvs_syllabus_versions")
 }
 
@@ -148,9 +160,11 @@ model SyllabusApprovalLog {
   reviewerId        String
   reviewer          User            @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
   decision          String // APPROVED, REJECTED
-  comments          String? // Mandatory for rejection
+  comments          String? // Feedback comments
   createdAt         DateTime        @default(now())
 
+  @@index([syllabusVersionId])
+  @@index([reviewerId])
   @@map("srvs_syllabus_approval_logs")
 }
 

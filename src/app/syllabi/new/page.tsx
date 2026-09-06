@@ -31,8 +31,10 @@ export default function NewSyllabusPage() {
   const [courseId, setCourseId] = useState('');
   const [semester, setSemester] = useState('1st Semester');
   const [academicYear, setAcademicYear] = useState('2026-2027');
+  const [section, setSection] = useState('A');
   const [courseDescription, setCourseDescription] = useState('');
   const [schedule, setSchedule] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Dynamic arrays (start empty, user inputs all items dynamically)
   const [learningOutcomes, setLearningOutcomes] = useState<string[]>(['']);
@@ -53,14 +55,15 @@ export default function NewSyllabusPage() {
   } | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // Load courses dynamically from PostgreSQL
+  // Load courses and current user dynamically
   useEffect(() => {
-    fetch('/api/courses')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.courses) {
-          setCourses(data.courses);
-        }
+    Promise.all([
+      fetch('/api/courses').then((r) => r.json()),
+      fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([cData, uData]) => {
+        if (cData?.courses) setCourses(cData.courses);
+        if (uData?.user) setCurrentUser(uData.user);
       })
       .catch(() => setError('Failed to load courses from database.'))
       .finally(() => setLoadingCourses(false));
@@ -146,7 +149,7 @@ export default function NewSyllabusPage() {
     setGradingSystem(gradingSystem.filter((_, i) => i !== idx));
   };
 
-  const handleSave = async (submitForApproval: boolean) => {
+  const handleSave = async (submitForApproval: boolean, directApprove: boolean = false) => {
     setError('');
 
     if (!courseId) {
@@ -165,13 +168,15 @@ export default function NewSyllabusPage() {
       courseId,
       academicYear,
       semester,
+      section: section || 'A',
+      directApprove,
       schedule,
       courseDescription,
       learningOutcomes: learningOutcomes.filter((o) => o.trim().length > 0),
       topics: topics.filter((t) => t.topic.trim().length > 0),
       references: references.filter((r) => r.trim().length > 0),
       gradingSystem: gradingSystem.filter((g) => g.component.trim().length > 0),
-      saveAsDraft: !submitForApproval,
+      saveAsDraft: !submitForApproval && !directApprove,
       fileName: uploadedFile?.fileName,
       fileUrl: uploadedFile?.fileUrl,
       fileType: uploadedFile?.fileType,
@@ -200,13 +205,15 @@ export default function NewSyllabusPage() {
     }
   };
 
+  const isDeptHeadOrAdmin = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       {/* Header with Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div className="flex items-center space-x-3">
           <Link
-            href="/educator/dashboard"
+            href={currentUser?.role === 'DepartmentHead' ? '/dept/dashboard' : '/educator/dashboard'}
             className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -224,11 +231,11 @@ export default function NewSyllabusPage() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
           <button
             type="button"
             disabled={submitting}
-            onClick={() => handleSave(false)}
+            onClick={() => handleSave(false, false)}
             className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
           >
             <Save className="w-3.5 h-3.5 text-[#005A36]" />
@@ -237,12 +244,24 @@ export default function NewSyllabusPage() {
           <button
             type="button"
             disabled={submitting}
-            onClick={() => handleSave(true)}
+            onClick={() => handleSave(true, false)}
             className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
           >
             <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
             <span>Submit for Approval</span>
           </button>
+          {isDeptHeadOrAdmin && (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleSave(true, true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+              title="Publish immediately as active official syllabus"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Approve & Publish</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -262,7 +281,7 @@ export default function NewSyllabusPage() {
             <span>1. Course & Academic Period</span>
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="sm:col-span-1">
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 Course / Subject *
@@ -305,6 +324,17 @@ export default function NewSyllabusPage() {
                 value={academicYear}
                 onChange={(e) => setAcademicYear(e.target.value)}
                 placeholder="2026-2027"
+                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">Section</label>
+              <input
+                type="text"
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+                placeholder="e.g. A, B, 1"
                 className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
               />
             </div>
@@ -590,11 +620,11 @@ export default function NewSyllabusPage() {
             <div className="text-xs text-slate-500">
               Drafts are strictly private to you. Submitting for approval routes this syllabus to your Department Head.
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2.5">
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => handleSave(false)}
+                onClick={() => handleSave(false, false)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
               >
                 <Save className="w-4 h-4 text-[#005A36]" />
@@ -603,12 +633,24 @@ export default function NewSyllabusPage() {
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() => handleSave(true)}
+                onClick={() => handleSave(true, false)}
                 className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4 text-[#FEF08A]" />
                 <span>Submit for Approval</span>
               </button>
+              {isDeptHeadOrAdmin && (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleSave(true, true)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                  title="Publish immediately as active official syllabus"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Approve & Publish</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

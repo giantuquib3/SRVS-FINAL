@@ -159,8 +159,9 @@ export async function PATCH(
     });
     const newVersionNumber = (maxVersionRecord?.versionNumber || syllabus.currentVersionNumber) + 1;
 
-    const isDraft = saveAsDraft === true && submitForApproval === false;
-    const versionApprovalStatus = isDraft ? 'DRAFT' : 'PENDING_APPROVAL';
+    const canDirectApprove = (user.role === 'DepartmentHead' || user.role === 'Admin') && body.directApprove === true;
+    const isDraft = !canDirectApprove && saveAsDraft === true && submitForApproval === false;
+    const versionApprovalStatus = canDirectApprove ? 'APPROVED' : (isDraft ? 'DRAFT' : 'PENDING_APPROVAL');
     const now = new Date();
 
     const contentSnapshot = {
@@ -172,7 +173,12 @@ export async function PATCH(
       schedule: schedule?.trim() || '',
     };
 
-    // Atomic transaction: Create new version WITHOUT overwriting currentVersionNumber!
+    // Check if there is already an officially approved version
+    const priorApprovedVersion = await prisma.syllabusVersion.findFirst({
+      where: { syllabusId: syllabus.id, approvalStatus: 'APPROVED' },
+    });
+
+    // Atomic transaction: Create new version
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create new immutable version record
       const newVersion = await tx.syllabusVersion.create({
@@ -191,28 +197,63 @@ export async function PATCH(
           fileSize: fileSize || null,
           submittedById: isDraft ? null : user.id,
           submittedAt: isDraft ? null : now,
+          reviewedById: canDirectApprove ? user.id : null,
+          reviewedAt: canDirectApprove ? now : null,
         },
       });
 
       // 2. Update syllabus metadata
-      // CRITICAL RULE: A pending or rejected revision must NOT replace the previously approved current version.
-      // currentVersionNumber remains the previously approved version.
+      // REVISION ISOLATION:
+      // If directApprove: update currentVersionNumber to newVersionNumber and status to ACTIVE.
+      // If pending approval: keep currentVersionNumber pointing to prior approved version.
+      // If prior approved version exists, syllabus status stays 'ACTIVE' for enrolled students.
+      let newSyllabusStatus = syllabus.status;
+      let newCurrentVersion = syllabus.currentVersionNumber;
+
+      if (canDirectApprove) {
+        newSyllabusStatus = 'ACTIVE';
+        newCurrentVersion = newVersionNumber;
+      } else if (priorApprovedVersion) {
+        newSyllabusStatus = 'ACTIVE'; // Keep active for students
+      } else {
+        newSyllabusStatus = isDraft ? 'DRAFT' : 'PENDING_APPROVAL';
+      }
+
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabus.id },
         data: {
-          status: isDraft ? 'DRAFT' : 'PENDING_APPROVAL',
+          currentVersionNumber: newCurrentVersion,
+          status: newSyllabusStatus,
           submittedAt: isDraft ? syllabus.submittedAt : now,
+          reviewedAt: canDirectApprove ? now : syllabus.reviewedAt,
+          reviewedByUserId: canDirectApprove ? user.id : syllabus.reviewedByUserId,
+          reviewerRemarks: canDirectApprove ? 'Directly approved by Department Head' : syllabus.reviewerRemarks,
         },
       });
 
-      // 3. Audit log
+      // 3. If direct approved, log in SyllabusApprovalLog
+      if (canDirectApprove) {
+        await tx.syllabusApprovalLog.create({
+          data: {
+            syllabusVersionId: newVersion.id,
+            reviewerId: user.id,
+            decision: 'APPROVED',
+            comments: 'Approved revision upon authoring by Department Head',
+            createdAt: now,
+          },
+        });
+      }
+
+      // 4. Audit log
       await tx.auditLog.create({
         data: {
           userId: user.id,
           userDisplayName: user.fullName,
-          actionType: isDraft ? 'CreateRevisionDraft' : 'SubmitSyllabusRevision',
+          actionType: canDirectApprove ? 'ApproveSyllabusVersion' : (isDraft ? 'CreateRevisionDraft' : 'SubmitSyllabusRevision'),
           resultStatus: 'Success',
-          description: `Created Version ${newVersionNumber} for [${syllabus.course.code}] (${versionApprovalStatus}) with summary: "${changeSummary.trim()}"`,
+          description: canDirectApprove
+            ? `Directly approved Version ${newVersionNumber} for [${syllabus.course.code}] as official current version`
+            : `Created Version ${newVersionNumber} for [${syllabus.course.code}] (${versionApprovalStatus}) with summary: "${changeSummary.trim()}"`,
           entityType: 'SyllabusVersion',
           entityId: newVersion.id,
           ipAddress: req.ip || '127.0.0.1',
@@ -222,8 +263,8 @@ export async function PATCH(
       return { syllabus: updatedSyllabus, version: newVersion };
     });
 
-    // 4. Notify Department Head & Admins if submitted for approval
-    if (!isDraft) {
+    // 5. Notify Department Head & Admins if submitted for approval (and not direct approved)
+    if (!isDraft && !canDirectApprove) {
       const reviewers = await prisma.user.findMany({
         where: {
           OR: [
@@ -249,9 +290,11 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message: isDraft
-        ? `Revision draft Version ${newVersionNumber} saved.`
-        : `Revision Version ${newVersionNumber} submitted for Department Head review. Previous approved version remains active for students until approved.`,
+      message: canDirectApprove
+        ? `Revision Version ${newVersionNumber} approved and activated as official syllabus.`
+        : (isDraft
+            ? `Revision draft Version ${newVersionNumber} saved.`
+            : `Revision Version ${newVersionNumber} submitted for Department Head review. Previous approved version remains active for students until approved.`),
       syllabus: result.syllabus,
       version: result.version,
     });
