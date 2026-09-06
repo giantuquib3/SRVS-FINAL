@@ -45,16 +45,36 @@ export async function GET(
       return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
     }
 
-    // Role-based access check
-    if (syllabus.status !== 'Approved') {
-      if (!user) {
-        return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-      }
-      if (user.role === 'Student') {
+    // Role-based access checks
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    }
+
+    // 1. Department Head: Strictly scoped to own department
+    if (user.role === 'DepartmentHead' && user.departmentId !== syllabus.departmentId) {
+      return NextResponse.json({
+        error: 'Access denied: Department Heads may only view syllabi within their assigned department.',
+      }, { status: 403 });
+    }
+
+    // 2. Student: Must be Approved AND must be actively enrolled in this course
+    if (user.role === 'Student') {
+      if (syllabus.status !== 'Approved') {
         return NextResponse.json({ error: 'Students can only view approved syllabi.' }, { status: 403 });
       }
-      if (user.role === 'DepartmentHead' && user.departmentId !== syllabus.departmentId) {
-        return NextResponse.json({ error: 'Cannot view syllabi from another department.' }, { status: 403 });
+
+      const activeEnrollment = await prisma.enrollment.findFirst({
+        where: {
+          studentId: user.id,
+          courseId: syllabus.courseId,
+          status: 'ENROLLED',
+        },
+      });
+
+      if (!activeEnrollment) {
+        return NextResponse.json({
+          error: 'Access restricted: You can only view syllabi for subjects you are actively enrolled in.',
+        }, { status: 403 });
       }
     }
 
@@ -63,7 +83,12 @@ export async function GET(
       syllabus.versions.find((v) => v.versionNumber === syllabus.currentVersionNumber) ||
       syllabus.versions[0];
 
-    return NextResponse.json({ syllabus, currentVersion });
+    // Students only view current approved version (no internal version history)
+    const sanitizedSyllabus = user.role === 'Student'
+      ? { ...syllabus, versions: currentVersion ? [currentVersion] : [] }
+      : syllabus;
+
+    return NextResponse.json({ syllabus: sanitizedSyllabus, currentVersion });
   } catch (error: any) {
     console.error('Error fetching syllabus:', error);
     return NextResponse.json({ error: 'Failed to fetch syllabus details.' }, { status: 500 });

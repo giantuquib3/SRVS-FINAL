@@ -18,28 +18,41 @@ export async function GET(req: NextRequest) {
     const where: any = {};
 
     // Role-based visibility rules:
-    // - Students only see Approved syllabi
-    // - Dept Heads see syllabi in their department
-    // - Educators see own syllabi or all approved
+    // - Students only see Approved syllabi for their actively enrolled subjects
+    // - Dept Heads strictly see syllabi in their own department
+    // - Educators see own syllabi or approved syllabi
     // - Admin sees everything
-    if (!user || user.role === 'Student') {
+    if (user?.role === 'Student') {
       where.status = 'Approved';
-    } else if (user.role === 'DepartmentHead' && user.departmentId) {
-      where.departmentId = user.departmentId;
+      // Find all courses the student is actively enrolled in
+      const studentEnrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId: user.id,
+          status: 'ENROLLED',
+        },
+        select: { courseId: true },
+      });
+      const enrolledCourseIds = studentEnrollments.map((e) => e.courseId);
+      where.courseId = { in: enrolledCourseIds };
+    } else if (user?.role === 'DepartmentHead') {
+      // Strictly scoped to own department - Department Head cannot see other departments
+      where.departmentId = user.departmentId || '__NO_DEPT__';
       if (status) where.status = status;
-    } else if (user.role === 'Educator') {
-      if (status) {
-        where.status = status;
-      }
-      // If filtering own syllabi
+    } else if (user?.role === 'Educator') {
+      if (status) where.status = status;
       if (searchParams.get('mySyllabi') === 'true') {
         where.instructorId = user.id;
       }
-    } else if (user.role === 'Admin') {
+    } else if (user?.role === 'Admin') {
       if (status) where.status = status;
+      if (departmentId) where.departmentId = departmentId;
+    } else {
+      where.status = 'Approved';
     }
 
-    if (departmentId) where.departmentId = departmentId;
+    if (user?.role !== 'DepartmentHead' && departmentId) {
+      where.departmentId = departmentId;
+    }
     if (semester) where.semester = semester;
     if (academicYear) where.academicYear = academicYear;
 

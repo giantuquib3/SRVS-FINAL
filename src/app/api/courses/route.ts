@@ -7,21 +7,25 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
+    const user = await getSessionFromRequest(req);
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim();
     const departmentId = searchParams.get('departmentId');
 
     const where: any = {};
 
+    // Department Head can strictly only view courses within their assigned department
+    if (user?.role === 'DepartmentHead') {
+      where.departmentId = user.departmentId || '__NO_DEPT__';
+    } else if (departmentId) {
+      where.departmentId = departmentId;
+    }
+
     if (search) {
       where.OR = [
         { code: { contains: search, mode: 'insensitive' } },
         { title: { contains: search, mode: 'insensitive' } },
       ];
-    }
-
-    if (departmentId) {
-      where.departmentId = departmentId;
     }
 
     const courses = await prisma.course.findMany({

@@ -48,7 +48,13 @@ export default function CoursesPage() {
 
       setCourses(cRes.courses || []);
       setDepartments(dRes.departments || []);
-      if (uRes?.user) setCurrentUser(uRes.user);
+      if (uRes?.user) {
+        setCurrentUser(uRes.user);
+        if (uRes.user.role === 'DepartmentHead' && uRes.user.departmentId) {
+          setDepartmentId(uRes.user.departmentId);
+          setNewDeptId(uRes.user.departmentId);
+        }
+      }
     } catch (err) {
       console.error('Error loading courses:', err);
     } finally {
@@ -148,9 +154,10 @@ export default function CoursesPage() {
           <select
             value={departmentId}
             onChange={(e) => setDepartmentId(e.target.value)}
-            className="w-full sm:w-56 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
+            disabled={currentUser?.role === 'DepartmentHead'}
+            className="w-full sm:w-56 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#005A36] disabled:bg-slate-100 disabled:cursor-not-allowed"
           >
-            <option value="">All Departments</option>
+            {currentUser?.role !== 'DepartmentHead' && <option value="">All Departments</option>}
             {departments.map((d) => (
               <option key={d.id} value={d.id}>
                 [{d.code}] {d.name}

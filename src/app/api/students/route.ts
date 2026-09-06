@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       where: {
         role: 'Student',
         accountStatus: 'Active',
+        ...(user.role === 'DepartmentHead' && user.departmentId ? { departmentId: user.departmentId } : {}),
       },
       select: {
         id: true,

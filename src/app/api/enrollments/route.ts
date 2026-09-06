@@ -20,9 +20,14 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    // If student, can only query own enrollments
+    // Role scoping:
+    // - Student can only query own enrollments
+    // - Department Head can only query enrollments for courses within their own department
     if (user.role === 'Student') {
       where.studentId = user.id;
+    } else if (user.role === 'DepartmentHead') {
+      where.course = { departmentId: user.departmentId || '__NO_DEPT__' };
+      if (studentId) where.studentId = studentId;
     } else if (studentId) {
       where.studentId = studentId;
     }
@@ -100,6 +105,13 @@ export async function POST(req: NextRequest) {
 
     if (!course) {
       return NextResponse.json({ error: 'Invalid course selected.' }, { status: 400 });
+    }
+
+    // Department Head can only enroll students in courses within their assigned department
+    if (user.role === 'DepartmentHead' && user.departmentId && course.departmentId !== user.departmentId) {
+      return NextResponse.json({
+        error: 'Department Heads may only manage student enrollments in courses within their assigned department.',
+      }, { status: 403 });
     }
 
     // Check duplicate enrollment

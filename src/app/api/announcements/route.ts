@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Announcement title and message are required.' }, { status: 400 });
     }
 
-    const targetDeptId = departmentId || user.departmentId;
+    const targetDeptId = user.role === 'DepartmentHead' ? user.departmentId : (departmentId || user.departmentId);
     if (!targetDeptId) {
       return NextResponse.json({ error: 'Target department ID is required.' }, { status: 400 });
     }
