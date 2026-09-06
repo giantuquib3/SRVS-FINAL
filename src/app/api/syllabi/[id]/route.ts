@@ -57,9 +57,9 @@ export async function GET(
       }, { status: 403 });
     }
 
-    // 2. Student: Must be Approved AND must be actively enrolled in this course
+    // 2. Student: Must be Approved/Active AND must be actively enrolled in this course
     if (user.role === 'Student') {
-      if (syllabus.status !== 'Approved') {
+      if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Students can only view approved syllabi.' }, { status: 403 });
       }
 
@@ -78,12 +78,13 @@ export async function GET(
       }
     }
 
-    // Identify current version
+    // Identify official approved current version
     const currentVersion =
+      syllabus.versions.find((v) => v.versionNumber === syllabus.currentVersionNumber && (v.approvalStatus === 'APPROVED' || syllabus.status === 'Approved')) ||
       syllabus.versions.find((v) => v.versionNumber === syllabus.currentVersionNumber) ||
       syllabus.versions[0];
 
-    // Students only view current approved version (no internal version history)
+    // Students only view current approved version (no internal revision drafts or pending revisions)
     const sanitizedSyllabus = user.role === 'Student'
       ? { ...syllabus, versions: currentVersion ? [currentVersion] : [] }
       : syllabus;
@@ -101,7 +102,7 @@ export async function PATCH(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Admin')) {
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
@@ -115,7 +116,12 @@ export async function PATCH(
       references,
       gradingSystem,
       schedule,
-      status, // Optional status change e.g. "Submitted"
+      saveAsDraft = false,
+      submitForApproval = true,
+      fileName,
+      fileUrl,
+      fileType,
+      fileSize,
     } = body;
 
     // Change summary is strictly mandatory when editing
@@ -128,7 +134,7 @@ export async function PATCH(
     const syllabus = await prisma.syllabus.findUnique({
       where: { id },
       include: {
-        course: true,
+        course: { include: { department: true } },
       },
     });
 
@@ -141,9 +147,21 @@ export async function PATCH(
       return NextResponse.json({ error: 'You may only edit syllabi you have created.' }, { status: 403 });
     }
 
-    // Calculate new sequential version number
-    const newVersionNumber = syllabus.currentVersionNumber + 1;
-    const targetStatus = status || syllabus.status;
+    if (user.role === 'DepartmentHead' && syllabus.instructorId !== user.id && syllabus.departmentId !== user.departmentId) {
+      return NextResponse.json({ error: 'You may only edit syllabi within your department.' }, { status: 403 });
+    }
+
+    // Calculate new sequential version number based on highest existing version
+    const maxVersionRecord = await prisma.syllabusVersion.findFirst({
+      where: { syllabusId: syllabus.id },
+      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true },
+    });
+    const newVersionNumber = (maxVersionRecord?.versionNumber || syllabus.currentVersionNumber) + 1;
+
+    const isDraft = saveAsDraft === true && submitForApproval === false;
+    const versionApprovalStatus = isDraft ? 'DRAFT' : 'PENDING_APPROVAL';
+    const now = new Date();
 
     const contentSnapshot = {
       courseDescription: courseDescription?.trim() || '',
@@ -154,9 +172,9 @@ export async function PATCH(
       schedule: schedule?.trim() || '',
     };
 
-    // Atomic transaction creating new version and updating syllabus current_version_number
+    // Atomic transaction: Create new version WITHOUT overwriting currentVersionNumber!
     const result = await prisma.$transaction(async (tx) => {
-      // Create new immutable version record
+      // 1. Create new immutable version record
       const newVersion = await tx.syllabusVersion.create({
         data: {
           syllabusId: syllabus.id,
@@ -164,31 +182,39 @@ export async function PATCH(
           editorId: user.id,
           changeSummary: changeSummary.trim(),
           changeType: 'Edit',
-          statusAtSave: targetStatus,
+          statusAtSave: versionApprovalStatus,
+          approvalStatus: versionApprovalStatus,
           content: contentSnapshot,
+          fileName: fileName || null,
+          fileUrl: fileUrl || null,
+          fileType: fileType || null,
+          fileSize: fileSize || null,
+          submittedById: isDraft ? null : user.id,
+          submittedAt: isDraft ? null : now,
         },
       });
 
-      // Update syllabus metadata
+      // 2. Update syllabus metadata
+      // CRITICAL RULE: A pending or rejected revision must NOT replace the previously approved current version.
+      // currentVersionNumber remains the previously approved version.
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabus.id },
         data: {
-          currentVersionNumber: newVersionNumber,
-          status: targetStatus,
-          submittedAt: targetStatus === 'Submitted' ? new Date() : syllabus.submittedAt,
+          status: isDraft ? 'DRAFT' : 'PENDING_APPROVAL',
+          submittedAt: isDraft ? syllabus.submittedAt : now,
         },
       });
 
-      // Audit log
+      // 3. Audit log
       await tx.auditLog.create({
         data: {
           userId: user.id,
           userDisplayName: user.fullName,
-          actionType: 'EditSyllabus',
+          actionType: isDraft ? 'CreateRevisionDraft' : 'SubmitSyllabusRevision',
           resultStatus: 'Success',
-          description: `Created Version ${newVersionNumber} for [${syllabus.course.code}] with summary: "${changeSummary.trim()}"`,
-          entityType: 'Syllabus',
-          entityId: syllabus.id,
+          description: `Created Version ${newVersionNumber} for [${syllabus.course.code}] (${versionApprovalStatus}) with summary: "${changeSummary.trim()}"`,
+          entityType: 'SyllabusVersion',
+          entityId: newVersion.id,
           ipAddress: req.ip || '127.0.0.1',
         },
       });
@@ -196,14 +222,42 @@ export async function PATCH(
       return { syllabus: updatedSyllabus, version: newVersion };
     });
 
+    // 4. Notify Department Head & Admins if submitted for approval
+    if (!isDraft) {
+      const reviewers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { role: 'Admin', accountStatus: 'Active' },
+            { role: 'DepartmentHead', departmentId: syllabus.departmentId, accountStatus: 'Active' },
+          ],
+        },
+        select: { id: true },
+      });
+
+      for (const reviewer of reviewers) {
+        if (reviewer.id !== user.id) {
+          const { createNotification } = await import('@/lib/notifications');
+          await createNotification(
+            reviewer.id,
+            `Pending Revision Review: ${syllabus.course.code}`,
+            `A new revision for ${syllabus.course.code} (Version ${newVersionNumber}) was submitted by ${user.fullName} for Department Head review.`,
+            `/department/syllabus-approvals/${result.version.id}`
+          );
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: `Version ${newVersionNumber} saved successfully.`,
+      message: isDraft
+        ? `Revision draft Version ${newVersionNumber} saved.`
+        : `Revision Version ${newVersionNumber} submitted for Department Head review. Previous approved version remains active for students until approved.`,
       syllabus: result.syllabus,
       version: result.version,
     });
   } catch (error: any) {
     console.error('Error updating syllabus version:', error);
-    return NextResponse.json({ error: 'Failed to save new syllabus revision.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save new syllabus revision: ' + error.message }, { status: 500 });
   }
 }
+

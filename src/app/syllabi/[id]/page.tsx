@@ -17,7 +17,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   User,
-  GitBranch
+  GitBranch,
+  Download,
+  FileText,
+  XCircle
 } from 'lucide-react';
 
 export default function SyllabusViewerPage() {
@@ -28,7 +31,9 @@ export default function SyllabusViewerPage() {
   const [data, setData] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [submittingVersion, setSubmittingVersion] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -89,8 +94,39 @@ export default function SyllabusViewerPage() {
   const isOwner = currentUser?.id === syllabus.instructorId;
   const isAdmin = currentUser?.role === 'Admin';
   const isDeptHead = currentUser?.role === 'DepartmentHead';
-  const canEdit = (isOwner || isAdmin) && syllabus.status !== 'Submitted';
+  const canEdit = isOwner || isAdmin || (isDeptHead && syllabus.departmentId === currentUser?.departmentId);
   const canViewHistory = currentUser && currentUser.role !== 'Student';
+
+  const isDraftOrRejected =
+    currentVersion?.approvalStatus === 'DRAFT' ||
+    currentVersion?.approvalStatus === 'REJECTED' ||
+    syllabus.status === 'DRAFT' ||
+    syllabus.status === 'Draft' ||
+    syllabus.status === 'Rejected';
+
+  const handleSubmitForApproval = async () => {
+    if (!currentVersion) return;
+    setSubmittingVersion(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const res = await fetch(`/api/syllabi/${syllabus.id}/versions/${currentVersion.versionNumber}/submit`, {
+        method: 'POST',
+      });
+      const resJson = await res.json();
+      if (!res.ok) {
+        setError(resJson.error || 'Failed to submit version.');
+        return;
+      }
+      setSuccessMessage(resJson.message || 'Syllabus version submitted for Department Head approval.');
+      const updatedData = await fetch(`/api/syllabi/${id}`).then((r) => r.json());
+      setData(updatedData);
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setSubmittingVersion(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4">
@@ -132,26 +168,62 @@ export default function SyllabusViewerPage() {
             </Link>
           )}
 
+          {isDraftOrRejected && canEdit && (
+            <button
+              onClick={handleSubmitForApproval}
+              disabled={submittingVersion}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              {submittingVersion ? (
+                <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
+                  <span>Submit for Approval</span>
+                </>
+              )}
+            </button>
+          )}
+
           {canEdit && (
             <Link
               href={`/syllabi/${syllabus.id}/edit`}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-all"
             >
-              <FileEdit className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <FileEdit className="w-3.5 h-3.5 text-[#005A36]" />
               <span>Revise Syllabus</span>
             </Link>
           )}
         </div>
       </div>
 
+      {successMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start space-x-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#005A36]" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
       {/* Reviewer Feedback Notice if Rejected */}
-      {syllabus.status === 'Rejected' && syllabus.reviewerRemarks && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
-          <div className="font-bold flex items-center space-x-1.5 text-rose-700">
-            <AlertTriangle className="w-4 h-4 text-rose-600" />
-            <span>Reviewer Feedback (Revision Required):</span>
+      {(syllabus.status === 'Rejected' || currentVersion?.approvalStatus === 'REJECTED') && (currentVersion?.rejectionReason || syllabus.reviewerRemarks) && (
+        <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
+          <div className="font-bold flex items-center justify-between text-rose-700">
+            <div className="flex items-center space-x-1.5">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              <span>Department Head Reviewer Feedback (Revision Required):</span>
+            </div>
+            {canEdit && (
+              <Link
+                href={`/syllabi/${syllabus.id}/edit`}
+                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors shadow-sm"
+              >
+                Revise and Resubmit Now
+              </Link>
+            )}
           </div>
-          <p className="text-slate-700 pl-5 leading-relaxed">&ldquo;{syllabus.reviewerRemarks}&rdquo;</p>
+          <p className="text-slate-800 pl-5 leading-relaxed bg-white/70 p-3 rounded-xl border border-rose-100 font-medium">
+            &ldquo;{currentVersion?.rejectionReason || syllabus.reviewerRemarks}&rdquo;
+          </p>
         </div>
       )}
 
@@ -173,26 +245,56 @@ export default function SyllabusViewerPage() {
             <span>Instructor: {syllabus.instructor.fullName}</span>
           </div>
 
-          <div className="pt-3 flex items-center justify-center space-x-3">
+          <div className="pt-3 flex flex-wrap items-center justify-center gap-2.5">
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#FEF9C3] border border-[#CA8A04]/30 text-[#854D0E] flex items-center space-x-1">
               <History className="w-3.5 h-3.5 text-[#CA8A04]" />
-              <span>Current Snapshot: Version {syllabus.currentVersionNumber}</span>
+              <span>Snapshot: Version {currentVersion?.versionNumber || syllabus.currentVersionNumber}</span>
             </span>
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                syllabus.status === 'Approved'
+                (currentVersion?.approvalStatus === 'APPROVED' || syllabus.status === 'ACTIVE' || syllabus.status === 'Approved')
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : syllabus.status === 'Submitted'
-                  ? 'bg-sky-50 text-sky-800 border-sky-200'
-                  : syllabus.status === 'Rejected'
+                  : currentVersion?.approvalStatus === 'PENDING_APPROVAL'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : currentVersion?.approvalStatus === 'REJECTED' || syllabus.status === 'Rejected'
                   ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}
             >
-              Status: {syllabus.status}
+              Approval Status: {(currentVersion?.approvalStatus || syllabus.status).replace('_', ' ')}
             </span>
           </div>
         </div>
+
+        {/* Uploaded File Download Card */}
+        {currentVersion?.fileUrl && (
+          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-xl bg-white border border-sky-200 text-sky-700 shadow-sm">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="font-bold text-sky-950 flex items-center space-x-2">
+                  <span>Attached Syllabus File ({currentVersion.fileType || 'PDF'})</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-mono">
+                    {currentVersion.fileName}
+                  </span>
+                </div>
+                <div className="text-[11px] text-sky-700">
+                  Official syllabus document uploaded for this version
+                </div>
+              </div>
+            </div>
+            <a
+              href={currentVersion.fileUrl}
+              download={currentVersion.fileName || 'syllabus.pdf'}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-sm flex items-center space-x-1.5 transition-colors self-start sm:self-auto"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Syllabus File</span>
+            </a>
+          </div>
+        )}
 
         {/* Schedule & Metadata */}
         {content.schedule && (

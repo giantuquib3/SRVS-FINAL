@@ -122,6 +122,16 @@ export default function Navbar() {
                     Dashboard
                   </Link>
                   <Link
+                    href="/department/syllabus-approvals"
+                    className={`px-3 py-1.5 rounded-lg transition-colors ${
+                      pathname?.startsWith('/department/syllabus-approvals')
+                        ? 'bg-white/20 text-[#FEF08A] font-bold'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Approvals
+                  </Link>
+                  <Link
                     href="/courses"
                     className={`px-3 py-1.5 rounded-lg transition-colors ${
                       pathname === '/courses'
@@ -175,6 +185,16 @@ export default function Navbar() {
                     }`}
                   >
                     Dept Dashboard
+                  </Link>
+                  <Link
+                    href="/department/syllabus-approvals"
+                    className={`px-3 py-1.5 rounded-lg transition-colors ${
+                      pathname?.startsWith('/department/syllabus-approvals')
+                        ? 'bg-white/20 text-[#FEF08A] font-bold'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    Syllabus Approvals
                   </Link>
                   <Link
                     href="/courses"

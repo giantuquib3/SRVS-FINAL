@@ -46,6 +46,31 @@ export async function GET(
             role: true,
           },
         },
+        submittedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        reviewedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        approvalLogs: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            reviewer: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
+        },
       },
     });
 

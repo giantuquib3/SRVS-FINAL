@@ -18,12 +18,12 @@ export async function GET(req: NextRequest) {
     const where: any = {};
 
     // Role-based visibility rules:
-    // - Students only see Approved syllabi for their actively enrolled subjects
+    // - Students only see Approved & Active syllabi for their actively enrolled subjects
     // - Dept Heads strictly see syllabi in their own department
     // - Educators see own syllabi or approved syllabi
     // - Admin sees everything
     if (user?.role === 'Student') {
-      where.status = 'Approved';
+      where.status = { in: ['Approved', 'ACTIVE'] };
       // Find all courses the student is actively enrolled in
       const studentEnrollments = await prisma.enrollment.findMany({
         where: {
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       if (status) where.status = status;
       if (departmentId) where.departmentId = departmentId;
     } else {
-      where.status = 'Approved';
+      where.status = { in: ['Approved', 'ACTIVE'] };
     }
 
     if (user?.role !== 'DepartmentHead' && departmentId) {
@@ -91,8 +91,21 @@ export async function GET(req: NextRequest) {
             changeSummary: true,
             changeType: true,
             statusAtSave: true,
+            approvalStatus: true,
+            fileName: true,
+            fileUrl: true,
+            fileType: true,
+            fileSize: true,
             createdAt: true,
+            submittedAt: true,
+            reviewedAt: true,
             editor: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+            submittedBy: {
               select: {
                 id: true,
                 fullName: true,
@@ -113,8 +126,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Educator or Admin access required to create a syllabus.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Educator, Department Head, or Admin access required to create a syllabus.' }, { status: 403 });
     }
 
     const {
@@ -128,9 +141,13 @@ export async function POST(req: NextRequest) {
       gradingSystem,
       schedule,
       saveAsDraft = true,
+      fileName,
+      fileUrl,
+      fileType,
+      fileSize,
     } = await req.json();
 
-    // 3. Validate required data
+    // Validate required data
     if (!courseId || !semester || !academicYear) {
       return NextResponse.json({ error: 'Course, Semester, and Academic Year are required.' }, { status: 400 });
     }
@@ -144,6 +161,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Selected course was not found.' }, { status: 404 });
     }
 
+    // Must have either structured description or an uploaded document
+    if (!fileUrl && (!courseDescription || !courseDescription.trim())) {
+      return NextResponse.json({ error: 'Please provide either a course description or an uploaded syllabus document (PDF/DOCX).' }, { status: 400 });
+    }
+
     const contentSnapshot = {
       courseDescription: courseDescription?.trim() || '',
       learningOutcomes: Array.isArray(learningOutcomes) ? learningOutcomes : [],
@@ -153,11 +175,12 @@ export async function POST(req: NextRequest) {
       schedule: schedule?.trim() || '',
     };
 
-    const initialStatus = saveAsDraft ? 'Draft' : 'Submitted';
+    const initialStatus = saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL';
+    const now = new Date();
 
-    // 4. Start database transaction
+    // Start database transaction
     const result = await prisma.$transaction(async (tx) => {
-      // 5. Create the syllabus record
+      // 1. Create the syllabus record
       const syllabus = await tx.syllabus.create({
         data: {
           courseId: course.id,
@@ -167,29 +190,38 @@ export async function POST(req: NextRequest) {
           semester,
           status: initialStatus,
           currentVersionNumber: 1,
-          submittedAt: initialStatus === 'Submitted' ? new Date() : null,
+          submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
         },
       });
 
-      // 6. Create Syllabus Version 1 using submitted content
+      // 2. Create Syllabus Version 1
       const version = await tx.syllabusVersion.create({
         data: {
           syllabusId: syllabus.id,
           versionNumber: 1,
           editorId: user.id,
-          changeSummary: 'Initial syllabus creation (Version 1)',
+          changeSummary: fileUrl
+            ? `Initial syllabus creation with uploaded document (${fileName})`
+            : 'Initial syllabus creation (Version 1)',
           changeType: 'Create',
           statusAtSave: initialStatus,
+          approvalStatus: initialStatus,
           content: contentSnapshot,
+          fileName: fileName || null,
+          fileUrl: fileUrl || null,
+          fileType: fileType || null,
+          fileSize: fileSize || null,
+          submittedById: initialStatus === 'PENDING_APPROVAL' ? user.id : null,
+          submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
         },
       });
 
-      // 8. Create audit logs
+      // 3. Create audit logs
       await tx.auditLog.create({
         data: {
           userId: user.id,
           userDisplayName: user.fullName,
-          actionType: 'CreateSyllabus',
+          actionType: initialStatus === 'PENDING_APPROVAL' ? 'SubmitSyllabus' : 'CreateSyllabusDraft',
           resultStatus: 'Success',
           description: `Created syllabus for [${course.code}] ${course.title} (${semester}, AY ${academicYear}) as Version 1 [${initialStatus}]`,
           entityType: 'Syllabus',
@@ -201,8 +233,39 @@ export async function POST(req: NextRequest) {
       return { syllabus, version };
     });
 
-    // 10. Return the created syllabus
-    return NextResponse.json({ success: true, syllabus: result.syllabus, version: result.version }, { status: 201 });
+    // 4. If submitted for approval, notify Department Head and Administrators
+    if (initialStatus === 'PENDING_APPROVAL') {
+      const reviewers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { role: 'Admin', accountStatus: 'Active' },
+            { role: 'DepartmentHead', departmentId: course.departmentId, accountStatus: 'Active' },
+          ],
+        },
+        select: { id: true },
+      });
+
+      for (const reviewer of reviewers) {
+        if (reviewer.id !== user.id) {
+          const { createNotification } = await import('@/lib/notifications');
+          await createNotification(
+            reviewer.id,
+            `Pending Syllabus Review: ${course.code}`,
+            `A new syllabus for ${course.code} (${course.title}) Version 1 has been submitted by ${user.fullName} for Department Head review.`,
+            `/department/syllabus-approvals/${result.version.id}`
+          );
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: initialStatus === 'PENDING_APPROVAL'
+        ? 'Your syllabus has been submitted for Department Head approval.'
+        : 'Syllabus draft saved successfully.',
+      syllabus: result.syllabus,
+      version: result.version,
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating syllabus:', error);
     return NextResponse.json({ error: 'Failed to create syllabus.' }, { status: 500 });

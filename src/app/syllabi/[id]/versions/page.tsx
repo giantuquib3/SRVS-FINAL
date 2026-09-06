@@ -15,7 +15,12 @@ import {
   AlertTriangle,
   Layers,
   Sparkles,
-  GitBranch
+  GitBranch,
+  FileText,
+  Send,
+  Clock,
+  XCircle,
+  FileUp
 } from 'lucide-react';
 import * as Diff from 'diff';
 
@@ -38,6 +43,28 @@ export default function VersionHistoryPage() {
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [targetRestoreVersion, setTargetRestoreVersion] = useState<any>(null);
   const [restoring, setRestoring] = useState(false);
+
+  // Version submit state
+  const [submittingVersion, setSubmittingVersion] = useState<number | null>(null);
+
+  const handleSubmitVersion = async (versionNum: number) => {
+    if (!confirm(`Submit Version ${versionNum} for Department Head approval?`)) return;
+    setSubmittingVersion(versionNum);
+    try {
+      const res = await fetch(`/api/syllabi/${id}/versions/${versionNum}/submit`, { method: 'POST' });
+      const resData = await res.json();
+      if (res.ok) {
+        alert('Version submitted for Department Head approval.');
+        await fetchVersions();
+      } else {
+        alert(resData.error || 'Failed to submit version for approval.');
+      }
+    } catch (err) {
+      alert('Connection error submitting version.');
+    } finally {
+      setSubmittingVersion(null);
+    }
+  };
 
   const fetchVersions = async () => {
     setLoading(true);
@@ -281,42 +308,110 @@ export default function VersionHistoryPage() {
               <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
                 <th className="py-2.5 px-3">Version</th>
                 <th className="py-2.5 px-3">Change Summary</th>
-                <th className="py-2.5 px-3">Editor / Author</th>
+                <th className="py-2.5 px-3">Author</th>
+                <th className="py-2.5 px-3">Approval Status</th>
                 <th className="py-2.5 px-3">Timestamp</th>
-                <th className="py-2.5 px-3">Status</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {versions.map((v: any) => {
                 const isCurrent = v.versionNumber === syllabus.currentVersionNumber;
+                const isPending = v.approvalStatus === 'PENDING_APPROVAL';
+                const isApproved = v.approvalStatus === 'APPROVED';
+                const isDraft = v.approvalStatus === 'DRAFT';
+                const isRejected = v.approvalStatus === 'REJECTED';
+                const isOwner = currentUser?.id === syllabus.instructorId || currentUser?.role === 'Admin';
+                const canSubmit = (isDraft || isRejected) && isOwner;
+
                 return (
                   <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-3 font-bold">
+                    <td className="py-3.5 px-3 font-bold align-top">
                       <div className="flex items-center space-x-2">
-                        <span className="text-[#005A36]">v{v.versionNumber}</span>
-                        {isCurrent && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                            Current
+                        <span className="text-[#005A36] text-sm">v{v.versionNumber}</span>
+                        {isCurrent && isApproved && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+                            Official Active
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-3.5 px-3 text-slate-900 font-medium max-w-sm">
-                      {v.changeSummary}
+                    <td className="py-3.5 px-3 text-slate-900 font-medium max-w-sm align-top space-y-1.5">
+                      <div>{v.changeSummary || 'No change summary provided.'}</div>
+                      {v.fileName && (
+                        <div className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200">
+                          <FileText className="w-3 h-3 text-[#005A36]" />
+                          <a
+                            href={v.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline font-semibold text-slate-800 truncate max-w-[200px]"
+                            title={v.fileName}
+                          >
+                            {v.fileName}
+                          </a>
+                        </div>
+                      )}
+                      {isRejected && v.rejectionReason && (
+                        <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] space-y-0.5">
+                          <span className="font-bold flex items-center space-x-1">
+                            <XCircle className="w-3 h-3 text-rose-600" />
+                            <span>Returned by Reviewer:</span>
+                          </span>
+                          <p className="italic">"{v.rejectionReason}"</p>
+                        </div>
+                      )}
                     </td>
-                    <td className="py-3.5 px-3 text-slate-700">
-                      {v.editor?.fullName || 'System'}
+                    <td className="py-3.5 px-3 text-slate-700 align-top">
+                      <div className="font-semibold text-slate-800">{v.editor?.fullName || 'System'}</div>
+                      {v.submittedBy && (
+                        <div className="text-[10px] text-slate-500">Submitted by {v.submittedBy.fullName}</div>
+                      )}
+                      {v.reviewedBy && (
+                        <div className="text-[10px] text-slate-500">Reviewed by {v.reviewedBy.fullName}</div>
+                      )}
                     </td>
-                    <td className="py-3.5 px-3 text-slate-500">
-                      {new Date(v.createdAt).toLocaleDateString()} {new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <td className="py-3.5 px-3 align-top">
+                      {isApproved && (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>APPROVED</span>
+                        </span>
+                      )}
+                      {isPending && (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 animate-pulse">
+                          <Clock className="w-3.5 h-3.5 text-[#CA8A04]" />
+                          <span>PENDING APPROVAL</span>
+                        </span>
+                      )}
+                      {isDraft && (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                          <span>DRAFT</span>
+                        </span>
+                      )}
+                      {isRejected && (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span>REJECTED</span>
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3.5 px-3">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
-                        {v.statusAtSave}
-                      </span>
+                    <td className="py-3.5 px-3 text-slate-500 align-top">
+                      <div>{new Date(v.createdAt).toLocaleDateString()}</div>
+                      <div className="text-[10px]">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
-                    <td className="py-3.5 px-3 text-right space-x-2">
+                    <td className="py-3.5 px-3 text-right space-x-2 align-top">
+                      {canSubmit && (
+                        <button
+                          onClick={() => handleSubmitVersion(v.versionNumber)}
+                          disabled={submittingVersion === v.versionNumber}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all cursor-pointer inline-flex items-center space-x-1"
+                        >
+                          <Send className="w-3 h-3 text-[#FEF08A]" />
+                          <span>{submittingVersion === v.versionNumber ? 'Submitting...' : 'Submit'}</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           setVersionA(v.versionNumber);
@@ -362,8 +457,8 @@ export default function VersionHistoryPage() {
             </p>
 
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 space-y-1">
-              <p className="font-bold">USJ-R Versioning Policy:</p>
-              <p>Restoration NEVER deletes prior versions. It will create a new sequential Version {syllabus.currentVersionNumber + 1} containing this historical snapshot.</p>
+              <p className="font-bold">USJ-R Approval & Versioning Policy:</p>
+              <p>Restoration creates a new Draft revision without replacing the current active version. The restored version will require Department Head approval before becoming the official version visible to students.</p>
             </div>
 
             <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-100">

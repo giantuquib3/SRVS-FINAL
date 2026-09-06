@@ -77,6 +77,13 @@ export default function DeptHeadDashboard() {
             <span>Refresh</span>
           </button>
           <Link
+            href="/department/syllabus-approvals"
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-1.5"
+          >
+            <Clock className="w-4 h-4" />
+            <span>Review Approvals {stats.pendingApprovals ? `(${stats.pendingApprovals})` : ''}</span>
+          </Link>
+          <Link
             href="/courses"
             className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-1.5"
           >
@@ -93,14 +100,20 @@ export default function DeptHeadDashboard() {
           <p className="text-2xl font-black text-[#005A36]">{stats.totalCourses ?? 0}</p>
         </div>
 
+        <Link
+          href="/department/syllabus-approvals"
+          className="bg-white hover:bg-amber-50/50 p-4 rounded-2xl border border-amber-200 shadow-sm space-y-1 transition-all group block"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pending Approvals</span>
+            <ArrowRight className="w-3.5 h-3.5 text-amber-600 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+          <p className="text-2xl font-black text-[#854D0E]">{stats.pendingApprovals ?? 0}</p>
+        </Link>
+
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Approved</span>
           <p className="text-2xl font-black text-emerald-700">{stats.approvedSyllabi ?? 0}</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Submitted</span>
-          <p className="text-2xl font-black text-sky-700">{stats.submittedSyllabi ?? 0}</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1">

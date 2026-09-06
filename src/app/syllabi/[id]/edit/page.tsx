@@ -8,11 +8,15 @@ import {
   Plus,
   Trash2,
   Save,
+  Send,
   ArrowLeft,
   AlertCircle,
   GitBranch,
   History,
-  CheckCircle2
+  CheckCircle2,
+  Upload,
+  FileText,
+  X
 } from 'lucide-react';
 
 export default function EditSyllabusPage() {
@@ -24,6 +28,15 @@ export default function EditSyllabusPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [syllabus, setSyllabus] = useState<any>(null);
+
+  // Document upload state
+  const [uploadedFile, setUploadedFile] = useState<{
+    fileName: string;
+    fileUrl: string;
+    fileType: string;
+    fileSize: number;
+  } | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // Editable fields
   const [changeSummary, setChangeSummary] = useState('');
@@ -51,11 +64,48 @@ export default function EditSyllabusPage() {
           setTopics(c.topics || [{ week: 1, topic: '' }]);
           setReferences(c.references || ['']);
           setGradingSystem(c.gradingSystem || [{ component: 'Exams', weight: 40 }]);
+
+          if (data.currentVersion.fileUrl) {
+            setUploadedFile({
+              fileName: data.currentVersion.fileName || 'syllabus_document.pdf',
+              fileUrl: data.currentVersion.fileUrl,
+              fileType: data.currentVersion.fileType || 'PDF',
+              fileSize: data.currentVersion.fileSize || 0,
+            });
+          }
         }
       })
       .catch(() => setError('Failed to retrieve syllabus for revision.'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingFile(true);
+    setError('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/syllabi/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to upload document.');
+        return;
+      }
+      setUploadedFile(data);
+    } catch (err: any) {
+      setError('Connection error while uploading document.');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   // Dynamic list handlers
   const addOutcome = () => setLearningOutcomes([...learningOutcomes, '']);
@@ -101,11 +151,11 @@ export default function EditSyllabusPage() {
     setGradingSystem(gradingSystem.filter((_, i) => i !== idx));
   };
 
-  const handleSaveRevision = async () => {
+  const handleSaveRevision = async (submitForApproval: boolean) => {
     setError('');
 
     if (!changeSummary.trim()) {
-      setError('A Change Summary is mandatory to record what was modified in this version.');
+      setError('A Change Summary is mandatory to record what was modified in this revision.');
       return;
     }
 
@@ -120,6 +170,12 @@ export default function EditSyllabusPage() {
       topics: topics.filter((t) => t.topic.trim().length > 0),
       references: references.filter((r) => r.trim().length > 0),
       gradingSystem: gradingSystem.filter((g) => g.component.trim().length > 0),
+      saveAsDraft: !submitForApproval,
+      submitForApproval,
+      fileName: uploadedFile?.fileName,
+      fileUrl: uploadedFile?.fileUrl,
+      fileType: uploadedFile?.fileType,
+      fileSize: uploadedFile?.fileSize,
     };
 
     try {
@@ -177,21 +233,37 @@ export default function EditSyllabusPage() {
             <h1 className="text-2xl font-extrabold text-slate-900">Revise Course Syllabus</h1>
           </div>
         </div>
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleSaveRevision(false)}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+          >
+            <Save className="w-3.5 h-3.5 text-[#005A36]" />
+            <span>Save as Draft</span>
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleSaveRevision(true)}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+          >
+            <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
+            <span>Submit Revision for Approval</span>
+          </button>
+        </div>
+      </div>
 
-        <button
-          onClick={handleSaveRevision}
-          disabled={submitting}
-          className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-        >
-          {submitting ? (
-            <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-          ) : (
-            <>
-              <Save className="w-4 h-4 text-[#FEF08A]" />
-              <span>Save Version {nextVersionNumber}</span>
-            </>
-          )}
-        </button>
+      {/* Revision Policy Alert */}
+      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+        <h4 className="font-bold flex items-center space-x-1.5 text-amber-800">
+          <GitBranch className="w-4 h-4 text-amber-700" />
+          <span>Department Approval Policy for Revisions</span>
+        </h4>
+        <p className="text-amber-800 leading-relaxed">
+          Students will continue seeing the currently approved official <strong>Version {syllabus?.currentVersionNumber}</strong> until this new revision is formally reviewed and approved by your Department Head.
+        </p>
       </div>
 
       {error && (
@@ -201,23 +273,90 @@ export default function EditSyllabusPage() {
         </div>
       )}
 
-      {/* Mandatory Change Summary Banner */}
-      <div className="bg-[#FEF9C3] p-6 rounded-2xl border border-[#CA8A04]/40 space-y-3 shadow-sm">
-        <div className="flex items-center space-x-2 text-[#854D0E] font-bold text-sm">
-          <GitBranch className="w-4 h-4 text-[#CA8A04]" />
-          <span>Mandatory Change Summary for Version {nextVersionNumber}</span>
+      {/* Mandatory Change Summary */}
+      <div className="bg-[#FEF9C3]/50 p-6 rounded-2xl border border-[#CA8A04]/30 shadow-sm space-y-2">
+        <div className="flex items-center space-x-2">
+          <GitBranch className="w-4 h-4 text-[#854D0E]" />
+          <h2 className="text-sm font-bold text-[#854D0E]">
+            Mandatory Change Summary (Version {nextVersionNumber}) *
+          </h2>
         </div>
-        <p className="text-xs text-[#713F12]">
-          Describe the modifications made in this revision. All prior versions remain historically preserved and immutable in the database.
+        <p className="text-xs text-slate-600">
+          Explain what was updated in this revision. This change summary will be reviewed by your Department Head during approval.
         </p>
         <input
           type="text"
           required
           value={changeSummary}
           onChange={(e) => setChangeSummary(e.target.value)}
-          placeholder="Describe specific changes made in this version..."
+          placeholder="e.g. Updated grading system percentages and revised weekly topics for CHED alignment"
           className="w-full bg-white border border-[#CA8A04]/50 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
         />
+      </div>
+
+      {/* Upload/Replace Document */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <h2 className="text-sm font-bold text-[#005A36] uppercase tracking-wider flex items-center space-x-2">
+          <Upload className="w-4 h-4 text-[#005A36]" />
+          <span>Attached Syllabus Document (PDF, DOC, DOCX)</span>
+        </h2>
+        <p className="text-xs text-slate-500">
+          Upload a revised syllabus document if this revision replaces the previous file attachment.
+        </p>
+
+        {uploadedFile ? (
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-lg bg-white border border-emerald-200 text-[#005A36]">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-emerald-950 flex items-center space-x-1.5">
+                  <span>{uploadedFile.fileName}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-100 text-emerald-800">
+                    {uploadedFile.fileType}
+                  </span>
+                </div>
+                <div className="text-[10px] text-emerald-700">
+                  Ready for revision • Size: {(uploadedFile.fileSize / 1024 / 1024).toFixed(2)} MB
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUploadedFile(null)}
+              className="p-1.5 text-emerald-700 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+              title="Remove attached file"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="relative border-2 border-dashed border-slate-300 hover:border-[#005A36] rounded-2xl p-6 text-center transition-colors bg-slate-50/50">
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={handleFileUpload}
+              disabled={uploadingFile}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            <div className="flex flex-col items-center space-y-2 pointer-events-none">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[#005A36]">
+                {uploadingFile ? (
+                  <span className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                ) : (
+                  <Upload className="w-5 h-5" />
+                )}
+              </div>
+              <div className="text-xs font-bold text-slate-700">
+                {uploadingFile ? 'Uploading file to SRVS...' : 'Click to select or drag & drop revised syllabus file'}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Supports PDF (.pdf), Microsoft Word (.doc, .docx) • Max 15MB
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Structured Editable Fields */}
@@ -425,6 +564,33 @@ export default function EditSyllabusPage() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Bottom Action Footer */}
+          <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">
+              Drafts remain private. Submitting a revision routes Version {nextVersionNumber} to your Department Head.
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => handleSaveRevision(false)}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <Save className="w-4 h-4 text-[#005A36]" />
+                <span>Save as Draft</span>
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => handleSaveRevision(true)}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <Send className="w-4 h-4 text-[#FEF08A]" />
+                <span>Submit Revision for Approval</span>
+              </button>
             </div>
           </div>
         </div>

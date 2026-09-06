@@ -52,8 +52,12 @@ export async function POST(
       return NextResponse.json({ error: `Historical Version ${versionNumber} does not exist.` }, { status: 404 });
     }
 
-    // Next sequential version number
-    const newVersionNumber = syllabus.currentVersionNumber + 1;
+    // Find latest version number to determine next version
+    const latestVersion = await prisma.syllabusVersion.findFirst({
+      where: { syllabusId: id },
+      orderBy: { versionNumber: 'desc' },
+    });
+    const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
     const changeSummary = `Restored from Version ${historicalVersion.versionNumber} (originally created by ${historicalVersion.editor.fullName} on ${new Date(historicalVersion.createdAt).toLocaleDateString()})`;
 
     // Transaction to insert new version without overwriting prior history
@@ -66,16 +70,19 @@ export async function POST(
           changeSummary,
           changeType: 'Restore',
           statusAtSave: 'Draft',
+          approvalStatus: 'DRAFT',
           content: historicalVersion.content as any,
+          fileName: historicalVersion.fileName,
+          fileUrl: historicalVersion.fileUrl,
+          fileType: historicalVersion.fileType,
+          fileSize: historicalVersion.fileSize,
         },
       });
 
-      const updatedSyllabus = await tx.syllabus.update({
+      // Syllabus currentVersionNumber stays pointing to the official approved version!
+      // Status can stay or remain draft if not active
+      const updatedSyllabus = await tx.syllabus.findUnique({
         where: { id },
-        data: {
-          currentVersionNumber: newVersionNumber,
-          status: 'Draft',
-        },
       });
 
       await tx.auditLog.create({

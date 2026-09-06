@@ -55,6 +55,18 @@ This API documentation is organized by **User Roles and Permissions** matching i
         name: '6. System & PostgreSQL Database',
         description: 'PostgreSQL database connectivity, schema table counts, and real-time latency monitoring.',
       },
+      {
+        name: 'Syllabus Submission',
+        description: 'Endpoints for Faculty / Educators to upload documents (PDF, DOC, DOCX) and submit syllabi and revisions for Department Head approval.',
+      },
+      {
+        name: 'Syllabus Approval',
+        description: 'Endpoints for Department Heads to query department-scoped pending approval requests, review approval details, approve syllabus versions, and reject syllabus versions with mandatory reasons.',
+      },
+      {
+        name: 'Syllabus Review',
+        description: 'Inspection of submitted syllabus versions, side-by-side comparison with previous approved versions, document attachments, and self-approval prevention enforcement.',
+      },
     ],
     paths: {
       // =========================================================================
@@ -645,6 +657,283 @@ Authenticates a user via their **University ID Number** (username) and password:
                 },
               },
             },
+          },
+        },
+      },
+      // =========================================================================
+      // 7. SYLLABUS SUBMISSION & APPROVAL WORKFLOW
+      // =========================================================================
+      '/api/syllabi/upload': {
+        post: {
+          tags: ['Syllabus Submission'],
+          summary: 'Upload Syllabus Document (PDF, DOC, DOCX)',
+          description: `
+Uploads an attached syllabus file (PDF, DOC, DOCX up to 15MB) to server storage.
+- **Allowed Roles**: \`Educator\`, \`DepartmentHead\`, \`Admin\`
+- **Authentication**: Required (JWT cookie)
+- Returns unique URL and metadata for inclusion in syllabus version creation.
+          `.trim(),
+          requestBody: {
+            required: true,
+            content: {
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['file'],
+                  properties: {
+                    file: {
+                      type: 'string',
+                      format: 'binary',
+                      description: 'Supported file formats: .pdf, .doc, .docx (Max 15MB)',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Document successfully uploaded and saved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      fileUrl: { type: 'string', example: '/uploads/syllabi/1788539000-cpe101.pdf' },
+                      fileName: { type: 'string', example: 'CPE101_Syllabus.pdf' },
+                      fileType: { type: 'string', example: 'application/pdf' },
+                      fileSize: { type: 'number', example: 204850 },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'No file provided or unsupported file format / size exceeded' },
+            401: { description: 'Unauthorized — missing or invalid session token' },
+            403: { description: 'Forbidden — students cannot upload syllabi' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/versions/{version}/submit': {
+        post: {
+          tags: ['Syllabus Submission'],
+          summary: 'Submit Syllabus Version for Department Head Approval',
+          description: `
+Submits a draft or rejected syllabus version for Department Head review.
+- **Allowed Roles**: \`Educator\`, \`DepartmentHead\` (teaching faculty), \`Admin\`
+- **Status Transition**: Version \`approvalStatus\` transitions to \`PENDING_APPROVAL\`. Syllabus \`status\` updates to \`Submitted\`.
+- **Department Notification**: Automatically notifies the Department Head.
+- **Revision Rule**: For revisions, the previous approved version remains active and student-visible.
+          `.trim(),
+          parameters: [
+            { name: 'id', in: 'path', required: true, description: 'Syllabus UUID', schema: { type: 'string' } },
+            { name: 'version', in: 'path', required: true, description: 'Version number (e.g., 1, 2)', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: {
+              description: 'Version submitted successfully for Department Head approval',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Your syllabus has been submitted for Department Head approval.' },
+                      version: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Version is already pending review or already approved' },
+            401: { description: 'Unauthorized — user must be authenticated' },
+            403: { description: 'Forbidden — you can only submit your own syllabus' },
+            404: { description: 'Syllabus or specified version number not found' },
+          },
+        },
+      },
+      '/api/syllabus-approvals': {
+        get: {
+          tags: ['Syllabus Approval'],
+          summary: 'Get Pending Approvals Queue (Department Scoped)',
+          description: `
+Retrieves all syllabus versions awaiting Department Head review and approval.
+- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
+- **Department Scoping**: Strictly scoped by the Department Head's authorized department ID. Clients cannot bypass department filtering.
+- **Metrics**: Computes real-time counts for \`pending\`, \`approved\`, \`rejected\`, and \`total\`.
+          `.trim(),
+          parameters: [
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'ALL'], default: 'PENDING_APPROVAL' } },
+            { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by course code, title, or instructor name' },
+          ],
+          responses: {
+            200: {
+              description: 'List of syllabus approval requests within authorized department',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      approvals: { type: 'array', items: { type: 'object' } },
+                      metrics: {
+                        type: 'object',
+                        properties: {
+                          pending: { type: 'number', example: 3 },
+                          approved: { type: 'number', example: 12 },
+                          rejected: { type: 'number', example: 1 },
+                          total: { type: 'number', example: 16 },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized — missing authentication' },
+            403: { description: 'Forbidden — only Department Heads and Administrators can access approval queues' },
+          },
+        },
+      },
+      '/api/syllabus-approvals/{id}': {
+        get: {
+          tags: ['Syllabus Review'],
+          summary: 'View Approval Request & Side-by-Side Revision Diff',
+          description: `
+Deep inspection of a submitted syllabus version.
+- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
+- **Self-Approval Check**: Returns \`isSelfSubmission: true\` if the Department Head is the author/submitter.
+- **Revision Diff**: Locates the previous approved version to render side-by-side comparisons and change summaries.
+- **Attachment Viewer**: Supplies file URL for PDF/DOC/DOCX documents.
+          `.trim(),
+          parameters: [
+            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: {
+              description: 'Detailed approval request with course info, version content, document, and previous approved comparison',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      approval: { type: 'object' },
+                      previousApprovedVersion: { type: 'object', nullable: true },
+                      isSelfSubmission: { type: 'boolean', example: false },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
+            403: { description: 'Forbidden — syllabus does not belong to authorized department' },
+            404: { description: 'Approval request version not found' },
+          },
+        },
+      },
+      '/api/syllabus-approvals/{id}/approve': {
+        post: {
+          tags: ['Syllabus Approval'],
+          summary: 'Approve Syllabus Version (Publish Official Active Version)',
+          description: `
+Department Head approves a pending syllabus version.
+- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
+- **Department Authorization**: Verifies syllabus belongs to reviewer's authorized department.
+- **Self-Approval Prevention**: Enforces institutional policy — Department Heads CANNOT approve their own syllabus submissions.
+- **Atomic Transaction**:
+  1. Sets version \`approvalStatus\` to \`APPROVED\`.
+  2. Updates syllabus \`currentVersionNumber\` to this version number.
+  3. Sets syllabus \`status\` to \`ACTIVE\` (now visible to enrolled students).
+  4. Records entry in \`syllabus_approval_logs\`.
+  5. Dispatches notification to faculty member.
+  6. Creates audit log entry.
+          `.trim(),
+          parameters: [
+            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: {
+              description: 'Syllabus version approved; now official active version for enrolled students',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'CPE101 Version 2 has been approved and activated as the official syllabus.' },
+                      version: { type: 'object' },
+                      syllabus: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Version is not pending approval' },
+            401: { description: 'Unauthorized' },
+            403: { description: 'Forbidden: Self-approval prohibited OR department unauthorized' },
+            404: { description: 'Approval request version not found' },
+          },
+        },
+      },
+      '/api/syllabus-approvals/{id}/reject': {
+        post: {
+          tags: ['Syllabus Approval'],
+          summary: 'Reject Syllabus Version (With Mandatory Feedback Reason)',
+          description: `
+Department Head rejects a pending syllabus version with required feedback remarks.
+- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
+- **Mandatory Reason**: Requires \`rejectionReason\` (minimum 5 characters).
+- **Self-Review Prevention**: Enforces policy against self-reviewing.
+- **Revision Rule**: Does NOT modify syllabus \`currentVersionNumber\`. Previously approved version remains visible to students.
+- **Atomic Transaction**:
+  1. Sets version \`approvalStatus\` to \`REJECTED\`.
+  2. Stores \`rejectionReason\`.
+  3. Records entry in \`syllabus_approval_logs\`.
+  4. Dispatches notification to faculty member with feedback.
+  5. Creates audit log entry.
+          `.trim(),
+          parameters: [
+            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['rejectionReason'],
+                  properties: {
+                    rejectionReason: {
+                      type: 'string',
+                      minLength: 5,
+                      example: 'Please review the grading system percentages. The total must equal 100%.',
+                      description: 'Mandatory explanation for syllabus rejection',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Syllabus version rejected; comments returned to instructor for revision',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'CPE101 Version 2 has been rejected and returned to faculty.' },
+                      version: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing rejection reason or version is not pending approval' },
+            401: { description: 'Unauthorized' },
+            403: { description: 'Forbidden: Self-review prohibited OR department unauthorized' },
+            404: { description: 'Approval request version not found' },
           },
         },
       },

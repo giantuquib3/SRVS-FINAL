@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         totalSyllabi,
         totalVersions,
         recentActivities,
-        pendingSyllabi,
+        pendingApprovals,
       ] = await Promise.all([
         prisma.user.count(),
         prisma.user.count({ where: { accountStatus: 'PendingApproval' } }),
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
             },
           },
         }),
-        prisma.syllabus.count({ where: { status: 'Submitted' } }),
+        prisma.syllabusVersion.count({ where: { approvalStatus: 'PENDING_APPROVAL' } }),
       ]);
 
       return NextResponse.json({
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
           pendingRegistrations,
           totalSyllabi,
           totalVersions,
-          pendingSyllabi,
+          pendingApprovals,
         },
         recentActivities,
       });
@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
         educatorsCount,
         studentsCount,
         pendingRegistrations,
+        pendingApprovals,
       ] = await Promise.all([
         prisma.course.count({ where: deptId ? { departmentId: deptId } : {} }),
         prisma.syllabus.count({ where: deptId ? { departmentId: deptId } : {} }),
@@ -74,6 +75,12 @@ export async function GET(req: NextRequest) {
         prisma.user.count({ where: { role: 'Educator', ...(deptId ? { departmentId: deptId } : {}) } }),
         prisma.user.count({ where: { role: 'Student', ...(deptId ? { departmentId: deptId } : {}) } }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval', ...(deptId ? { departmentId: deptId } : {}) } }),
+        prisma.syllabusVersion.count({
+          where: {
+            approvalStatus: 'PENDING_APPROVAL',
+            ...(deptId ? { syllabus: { departmentId: deptId } } : {}),
+          },
+        }),
       ]);
 
       const missingSyllabi = Math.max(0, totalCourses - approvedSyllabi);
@@ -90,6 +97,7 @@ export async function GET(req: NextRequest) {
           educatorsCount,
           studentsCount,
           pendingRegistrations,
+          pendingApprovals,
           missingSyllabi,
         },
       });
