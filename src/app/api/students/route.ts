@@ -11,12 +11,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const deptId = user.role === 'DepartmentHead' && user.departmentId ? Number(user.departmentId) : undefined;
+    let deptCode: string | undefined = undefined;
+    if (user.role === 'DepartmentHead' && user.departmentId) {
+      const d = await prisma.department.findUnique({ where: { id: Number(user.departmentId) } });
+      if (d) deptCode = d.code;
+    }
 
     const rawStudents = await prisma.student.findMany({
-      where: deptId ? { departmentId: deptId } : {},
+      where: deptCode ? { department: deptCode } : {},
       include: {
-        department: {
+        departmentRel: {
           select: {
             id: true,
             code: true,
@@ -29,10 +33,13 @@ export async function GET(req: NextRequest) {
 
     const students = rawStudents.map((s) => ({
       id: s.userId,
+      studentTableId: s.id,
       idNumber: s.studentIdNumber,
       fullName: s.fullName,
       email: s.email,
-      department: s.department,
+      department: s.department, // "CPE", "CE", etc. (Not an ID or number)
+      departmentDetails: s.departmentRel,
+      enrolledSubjects: s.enrolledSubjects || 'None', // Codes only (e.g. "CPE101, CPE201")
       yearLevel: s.yearLevel,
     }));
 

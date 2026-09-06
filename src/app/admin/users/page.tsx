@@ -339,6 +339,9 @@ export default function UsersManagementPage() {
                 <th className="py-2.5 px-3">Full Name & Email</th>
                 <th className="py-2.5 px-3">Role</th>
                 <th className="py-2.5 px-3">Department</th>
+                {roleFilter === 'Student' && (
+                  <th className="py-2.5 px-3">Enrolled Subjects (Codes)</th>
+                )}
                 <th className="py-2.5 px-3">Account Status</th>
                 <th className="py-2.5 px-3">Registered Date</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
@@ -354,6 +357,14 @@ export default function UsersManagementPage() {
                       <span>•</span>
                       <span>{u.email}</span>
                     </div>
+                    {roleFilter !== 'Student' && u.role === 'Student' && u.enrolledSubjects && (
+                      <div className="mt-1 flex items-center space-x-1 text-[10px]">
+                        <span className="text-slate-500 font-semibold">Enrolled:</span>
+                        <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {u.enrolledSubjects}
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-3">
                     <button
@@ -369,8 +380,33 @@ export default function UsersManagementPage() {
                     </button>
                   </td>
                   <td className="py-3 px-3 text-slate-700 font-medium">
-                    {u.department ? `[${u.department.code}] ${u.department.name}` : 'Unassigned'}
+                    <span className="font-bold text-slate-900">
+                      {u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department || u.department?.code || 'Unassigned'}
+                    </span>
+                    {u.department && (
+                      <span className="text-slate-500 text-[11px] block">
+                        {u.department.name}
+                      </span>
+                    )}
                   </td>
+                  {roleFilter === 'Student' && (
+                    <td className="py-3 px-3">
+                      {u.enrolledSubjects ? (
+                        <div className="flex flex-wrap gap-1">
+                          {u.enrolledSubjects.split(',').map((code: string) => (
+                            <span
+                              key={code.trim()}
+                              className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs"
+                            >
+                              {code.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">No enrolled subjects</span>
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 px-3">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${

@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
     const users = rawUsers.map((u) => ({
       ...u,
       username: u.idNumber,
+      enrolledSubjects: u.studentProfile?.enrolledSubjects || '',
     }));
 
     const baseWhere: any = {};
@@ -135,15 +136,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A user with this email address already exists.' }, { status: 400 });
     }
 
-    // Resolve Department ID if specified
+    // Resolve Department ID and Code if specified
     let targetDeptId: number | null = null;
+    let targetDeptCode: string = 'CPE';
     if (departmentId) {
       const parsed = Number(departmentId);
       if (!isNaN(parsed)) {
         targetDeptId = parsed;
+        const d = await prisma.department.findUnique({ where: { id: parsed } });
+        if (d) targetDeptCode = d.code;
       } else {
         const d = await prisma.department.findUnique({ where: { code: String(departmentId).toUpperCase() } });
-        if (d) targetDeptId = d.id;
+        if (d) {
+          targetDeptId = d.id;
+          targetDeptCode = d.code;
+        }
       }
     }
 
@@ -183,29 +190,25 @@ export async function POST(req: NextRequest) {
           },
         });
       } else if (role === 'DepartmentHead') {
-        if (targetDeptId) {
-          await tx.departmentHead.create({
-            data: {
-              userId: createdUser.id,
-              employeeId: trimmedId,
-              fullName: createdUser.fullName,
-              email: createdUser.email,
-              departmentId: targetDeptId,
-            },
-          });
-        }
+        await tx.departmentHead.create({
+          data: {
+            userId: createdUser.id,
+            employeeId: trimmedId,
+            fullName: createdUser.fullName,
+            email: createdUser.email,
+            department: targetDeptCode,
+          },
+        });
       } else if (role === 'Educator') {
-        if (targetDeptId) {
-          await tx.faculty.create({
-            data: {
-              userId: createdUser.id,
-              employeeId: trimmedId,
-              fullName: createdUser.fullName,
-              email: createdUser.email,
-              departmentId: targetDeptId,
-            },
-          });
-        }
+        await tx.faculty.create({
+          data: {
+            userId: createdUser.id,
+            employeeId: trimmedId,
+            fullName: createdUser.fullName,
+            email: createdUser.email,
+            department: targetDeptCode,
+          },
+        });
       } else if (role === 'Student') {
         await tx.student.create({
           data: {
@@ -213,7 +216,8 @@ export async function POST(req: NextRequest) {
             studentIdNumber: trimmedId,
             fullName: createdUser.fullName,
             email: createdUser.email,
-            departmentId: targetDeptId,
+            department: targetDeptCode,
+            enrolledSubjects: '',
           },
         });
       }

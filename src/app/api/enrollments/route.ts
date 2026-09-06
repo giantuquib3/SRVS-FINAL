@@ -195,6 +195,17 @@ export async function POST(req: NextRequest) {
       entityId: enrollment.id,
     });
 
+    // Synchronize Student enrolledSubjects with subject codes only
+    const allStudentEnrollments = await prisma.enrollment.findMany({
+      where: { studentId: student.id, status: 'ENROLLED' },
+      include: { subject: true },
+    });
+    const subjectCodes = Array.from(new Set(allStudentEnrollments.map((e) => e.subject.code))).join(', ');
+    await prisma.student.updateMany({
+      where: { userId: student.id },
+      data: { enrolledSubjects: subjectCodes },
+    });
+
     return NextResponse.json({
       success: true,
       enrollment: {

@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
             employeeId: cleanId,
             fullName,
             email: cleanEmail,
-            departmentId: dept.id,
+            department: dept.code,
           },
         });
       } else {
@@ -104,7 +104,8 @@ export async function POST(req: NextRequest) {
             studentIdNumber: cleanId,
             fullName,
             email: cleanEmail,
-            departmentId: dept.id,
+            department: dept.code,
+            enrolledSubjects: '',
           },
         });
       }

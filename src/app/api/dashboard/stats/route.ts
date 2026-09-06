@@ -72,6 +72,12 @@ export async function GET(req: NextRequest) {
 
     if (user.role === 'DepartmentHead') {
       const deptId = user.departmentId ? Number(user.departmentId) : undefined;
+      let deptCode: string | undefined = undefined;
+      if (deptId) {
+        const d = await prisma.department.findUnique({ where: { id: deptId } });
+        if (d) deptCode = d.code;
+      }
+
       const [
         totalSubjects,
         totalSyllabi,
@@ -90,8 +96,8 @@ export async function GET(req: NextRequest) {
         prisma.syllabus.count({ where: { status: 'Submitted', ...(deptId ? { departmentId: deptId } : {}) } }),
         prisma.syllabus.count({ where: { status: 'Approved', ...(deptId ? { departmentId: deptId } : {}) } }),
         prisma.syllabus.count({ where: { status: 'Rejected', ...(deptId ? { departmentId: deptId } : {}) } }),
-        prisma.faculty.count({ where: deptId ? { departmentId: deptId } : {} }),
-        prisma.student.count({ where: deptId ? { departmentId: deptId } : {} }),
+        prisma.faculty.count({ where: deptCode ? { department: deptCode } : {} }),
+        prisma.student.count({ where: deptCode ? { department: deptCode } : {} }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval', ...(deptId ? { departmentId: deptId } : {}) } }),
         prisma.syllabusVersion.count({
           where: {

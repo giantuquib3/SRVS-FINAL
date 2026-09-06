@@ -102,48 +102,49 @@ model DepartmentHead {
   employeeId     String     @unique // e.g. 10001
   fullName       String
   email          String
-  departmentId   Int
-  department     Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  department     String     @map("department") // e.g. CPE, CE, EE (department code, not numeric ID)
+  departmentRel  Department @relation(fields: [department], references: [code], onDelete: Cascade)
   title          String?    @default("Department Chairperson")
   officeLocation String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  @@index([departmentId])
+  @@index([department])
   @@map("srvs_department_heads")
 }
 
 model Faculty {
-  id           Int        @id @default(autoincrement())
-  userId       Int        @unique
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employeeId   String     @unique // e.g. 10002
-  fullName     String
-  email        String
-  departmentId Int
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  academicRank String?    @default("Faculty Member")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id            Int        @id @default(autoincrement())
+  userId        Int        @unique
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId    String     @unique // e.g. 10002
+  fullName      String
+  email         String
+  department    String     @map("department") // e.g. CPE, CE, EE (department code, not numeric ID)
+  departmentRel Department @relation(fields: [department], references: [code], onDelete: Cascade)
+  academicRank  String?    @default("Faculty Member")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
-  @@index([departmentId])
+  @@index([department])
   @@map("srvs_faculties")
 }
 
 model Student {
-  id              Int         @id @default(autoincrement())
-  userId          Int         @unique
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  studentIdNumber String      @unique // e.g. 2022012708
-  fullName        String
-  email           String
-  departmentId    Int?
-  department      Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  yearLevel       String?     @default("1st Year")
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id               Int         @id @default(autoincrement())
+  userId           Int         @unique
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentIdNumber  String      @unique // e.g. 2022012708
+  fullName         String
+  email            String
+  department       String?     @map("department") // e.g. CPE, CE, EE (department code, not numeric ID)
+  departmentRel    Department? @relation(fields: [department], references: [code], onDelete: SetNull)
+  enrolledSubjects String?     @default("") // Enrolled subject codes only (e.g. "CPE101, CPE201")
+  yearLevel        String?     @default("1st Year")
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  @@index([departmentId])
+  @@index([department])
   @@map("srvs_students")
 }
 

@@ -69,6 +69,23 @@ async function checkDatabase() {
       console.log('  ⚠️ No Admin user found! Run "npm run db:seed" to create the initial admin account.');
     }
 
+    // Inspect srvs_students records
+    const studentRecords = await prisma.student.findMany({
+      orderBy: { id: 'asc' },
+    });
+
+    console.log('\nStudent Table Records (srvs_students):');
+    console.table(
+      studentRecords.map((s) => ({
+        'PK_id': s.id,
+        'Student_ID_Number': s.studentIdNumber,
+        'Full_Name': s.fullName,
+        'Department': s.department, // "CPE" (not an ID or number)
+        'Enrolled_Subjects (Codes Only)': s.enrolledSubjects || 'None',
+        'Year_Level': s.yearLevel,
+      }))
+    );
+
     console.log('\n✅ Database verification completed successfully!');
   } catch (err) {
     console.error('❌ Database connection error:', err.message);

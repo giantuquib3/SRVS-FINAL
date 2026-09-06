@@ -152,46 +152,47 @@ async function main() {
     } else if (user.role === 'DepartmentHead') {
       await prisma.departmentHead.upsert({
         where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, departmentId: deptId },
+        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, department: u.deptCode || 'CPE' },
         create: {
           userId: user.id,
           employeeId: user.idNumber,
           fullName: user.fullName,
           email: user.email,
-          departmentId: deptId,
+          department: u.deptCode || 'CPE',
           title: 'Department Chairperson',
           officeLocation: 'Engineering Complex Room 302',
         },
       });
-      console.log(`  └─ Created srvs_department_heads profile for Dept Head ${user.idNumber}`);
+      console.log(`  └─ Created srvs_department_heads profile for Dept Head ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
     } else if (user.role === 'Educator') {
       await prisma.faculty.upsert({
         where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, departmentId: deptId },
+        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, department: u.deptCode || 'CPE' },
         create: {
           userId: user.id,
           employeeId: user.idNumber,
           fullName: user.fullName,
           email: user.email,
-          departmentId: deptId,
+          department: u.deptCode || 'CPE',
           academicRank: 'Assistant Professor',
         },
       });
-      console.log(`  └─ Created srvs_faculties profile for Faculty ${user.idNumber}`);
+      console.log(`  └─ Created srvs_faculties profile for Faculty ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
     } else if (user.role === 'Student') {
       await prisma.student.upsert({
         where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, studentIdNumber: user.idNumber, departmentId: deptId },
+        update: { fullName: user.fullName, email: user.email, studentIdNumber: user.idNumber, department: u.deptCode || 'CPE' },
         create: {
           userId: user.id,
           studentIdNumber: user.idNumber,
           fullName: user.fullName,
           email: user.email,
-          departmentId: deptId,
+          department: u.deptCode || 'CPE',
+          enrolledSubjects: '',
           yearLevel: user.idNumber === '2022012708' ? '3rd Year' : '1st Year',
         },
       });
-      console.log(`  └─ Created srvs_students profile for Student ${user.idNumber}`);
+      console.log(`  └─ Created srvs_students profile for Student ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
     }
   }
 
@@ -331,8 +332,11 @@ async function main() {
 
   // 5. Seed Student Enrolled Subjects
   const studentGian = userMap['2022012708'];
+  const studentMaria = userMap['2022012709'];
+
+  const enrollmentsToSeed = [];
   if (studentGian && subjectMap['CPE101'] && subjectMap['CPE201']) {
-    const enrollmentsToSeed = [
+    enrollmentsToSeed.push(
       {
         studentId: studentGian.id,
         subjectId: subjectMap['CPE101'].id,
@@ -348,24 +352,58 @@ async function main() {
         academicYear: '2026-2027',
         section: 'A',
         status: 'ENROLLED',
-      },
-    ];
+      }
+    );
+  }
 
-    for (const enr of enrollmentsToSeed) {
-      await prisma.enrollment.upsert({
-        where: {
-          studentId_subjectId_semester_academicYear: {
-            studentId: enr.studentId,
-            subjectId: enr.subjectId,
-            semester: enr.semester,
-            academicYear: enr.academicYear,
+  if (studentMaria && subjectMap['CPE101']) {
+    enrollmentsToSeed.push({
+      studentId: studentMaria.id,
+      subjectId: subjectMap['CPE101'].id,
+      semester: '1st Semester',
+      academicYear: '2026-2027',
+      section: 'B',
+      status: 'ENROLLED',
+    });
+  }
+
+  for (const enr of enrollmentsToSeed) {
+    await prisma.enrollment.upsert({
+      where: {
+        studentId_subjectId_semester_academicYear: {
+          studentId: enr.studentId,
+          subjectId: enr.subjectId,
+          semester: enr.semester,
+          academicYear: enr.academicYear,
+        },
+      },
+      update: { section: enr.section, status: enr.status },
+      create: enr,
+    });
+  }
+  console.log(`✓ Seeded student subject enrollments`);
+
+  // Synchronize enrolled subjects code-only list in srvs_students
+  const allStudents = await prisma.student.findMany({
+    include: {
+      user: {
+        include: {
+          enrollments: {
+            where: { status: 'ENROLLED' },
+            include: { subject: true },
           },
         },
-        update: { section: enr.section, status: enr.status },
-        create: enr,
-      });
-      console.log(`✓ Enrolled Student ${studentGian.fullName} into Subject ID: ${enr.subjectId}`);
-    }
+      },
+    },
+  });
+
+  for (const s of allStudents) {
+    const codes = Array.from(new Set(s.user.enrollments.map((e) => e.subject.code))).join(', ');
+    await prisma.student.update({
+      where: { id: s.id },
+      data: { enrolledSubjects: codes },
+    });
+    console.log(`✓ Synchronized Student ${s.studentIdNumber} enrolled subjects codes: [${codes || 'None'}]`);
   }
 
   // 6. Seed Official Active Syllabus for CPE101
