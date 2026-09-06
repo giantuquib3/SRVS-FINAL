@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   BookOpen,
   Plus,
+  PlusCircle,
   Search,
   Filter,
   Layers,
@@ -108,6 +109,10 @@ export default function CoursesPage() {
   };
 
   const canCreateCourse = currentUser?.role === 'Admin' || currentUser?.role === 'DepartmentHead';
+  const canManageSyllabus =
+    currentUser?.role === 'Educator' ||
+    currentUser?.role === 'DepartmentHead' ||
+    currentUser?.role === 'Admin';
 
   return (
     <div className="space-y-8">
@@ -125,15 +130,27 @@ export default function CoursesPage() {
           </h1>
         </div>
 
-        {canCreateCourse && (
-          <button
-            onClick={() => setModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-2 cursor-pointer self-start sm:self-auto"
-          >
-            <Plus className="w-4 h-4 text-[#FEF08A]" />
-            <span>Create Course / Subject</span>
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+          {canManageSyllabus && (
+            <Link
+              href="/syllabi/new"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-2"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Create / Upload Syllabus</span>
+            </Link>
+          )}
+
+          {canCreateCourse && (
+            <button
+              onClick={() => setModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-2 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-[#FEF08A]" />
+              <span>Create Course / Subject</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Dynamic Search and Filter Bar */}

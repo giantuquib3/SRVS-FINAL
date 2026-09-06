@@ -12,7 +12,6 @@ import {
   ArrowRight,
   GitCompare,
   RefreshCw,
-  PlusCircle,
   Eye,
   History
 } from 'lucide-react';
@@ -82,13 +81,6 @@ export default function DeptHeadDashboard() {
           >
             <Clock className="w-4 h-4" />
             <span>Review Approvals {stats.pendingApprovals ? `(${stats.pendingApprovals})` : ''}</span>
-          </Link>
-          <Link
-            href="/syllabi/new"
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-1.5"
-          >
-            <PlusCircle className="w-4 h-4 text-[#FEF08A]" />
-            <span>Create / Upload Syllabus</span>
           </Link>
           <Link
             href="/courses"

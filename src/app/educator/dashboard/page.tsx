@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   BookOpen,
-  PlusCircle,
   FileEdit,
   History,
   Send,
@@ -94,11 +93,11 @@ export default function EducatorDashboard() {
             <span>Refresh</span>
           </button>
           <Link
-            href="/syllabi/new"
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-2"
+            href="/courses"
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm transition-all flex items-center space-x-1.5"
           >
-            <PlusCircle className="w-4 h-4 text-[#FEF08A]" />
-            <span>Create New Syllabus</span>
+            <BookOpen className="w-4 h-4 text-[#005A36]" />
+            <span>Course Catalog</span>
           </Link>
         </div>
       </div>
@@ -186,11 +185,11 @@ export default function EducatorDashboard() {
             <p className="text-sm font-bold text-slate-700">No syllabi found in this category.</p>
             <p className="text-xs text-slate-500">Create your course syllabus to begin.</p>
             <Link
-              href="/syllabi/new"
+              href="/courses"
               className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm"
             >
-              <PlusCircle className="w-4 h-4 text-[#FEF08A]" />
-              <span>New Syllabus</span>
+              <BookOpen className="w-4 h-4 text-[#FEF08A]" />
+              <span>Browse Courses</span>
             </Link>
           </div>
         ) : (
