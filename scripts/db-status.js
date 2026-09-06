@@ -6,14 +6,29 @@ async function checkDatabase() {
   const start = Date.now();
 
   try {
-    const departments = await prisma.department.count();
-    const courses = await prisma.course.count();
-    const users = await prisma.user.count();
-    const enrollments = await prisma.enrollment.count();
-    const syllabi = await prisma.syllabus.count();
-    const versions = await prisma.syllabusVersion.count();
-    const auditLogs = await prisma.auditLog.count();
-    const notifications = await prisma.notification.count();
+    const [
+      departments,
+      subjects,
+      users,
+      admins,
+      deptHeads,
+      faculties,
+      students,
+      syllabi,
+      versions,
+      enrollments,
+    ] = await Promise.all([
+      prisma.department.count(),
+      prisma.subject.count(),
+      prisma.user.count(),
+      prisma.admin.count(),
+      prisma.departmentHead.count(),
+      prisma.faculty.count(),
+      prisma.student.count(),
+      prisma.syllabus.count(),
+      prisma.syllabusVersion.count(),
+      prisma.enrollment.count(),
+    ]);
 
     const latency = Date.now() - start;
 
@@ -24,29 +39,32 @@ async function checkDatabase() {
     console.log(`Roundtrip Latency: ${latency} ms`);
     console.log(`Connection Status: HEALTHY & ONLINE\n`);
 
-    console.log('Table Record Counts:');
+    console.log('Streamlined & Segregated Table Record Counts:');
     console.table({
-      'srvs_departments': { Records: departments, Description: 'Engineering Departments (CE, CPE, ECE, EE, IE, ME)' },
-      'srvs_courses': { Records: courses, Description: 'Course Catalog & Department Mapping' },
-      'srvs_users': { Records: users, Description: 'System Users (Admin, Faculty, Students)' },
-      'srvs_enrollments': { Records: enrollments, Description: 'Student Subject Enrollments' },
-      'srvs_syllabi': { Records: syllabi, Description: 'Course Syllabi Master Records' },
-      'srvs_syllabus_versions': { Records: versions, Description: 'Immutable Version Snapshots (v1, v2, v3...)' },
-      'srvs_audit_logs': { Records: auditLogs, Description: 'Security & Activity Audit Trail' },
-      'srvs_notifications': { Records: notifications, Description: 'In-app Notification Alerts' },
+      'srvs_departments': { Records: departments, PK_Type: 'Integer (SERIAL)', Description: 'Engineering Departments' },
+      'srvs_subjects': { Records: subjects, PK_Type: 'Integer (SERIAL)', Description: 'Academic Subjects Curriculum' },
+      'srvs_users': { Records: users, PK_Type: 'Integer (SERIAL)', Description: 'Central User Accounts & Credentials' },
+      'srvs_admins': { Records: admins, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Admin Profiles' },
+      'srvs_department_heads': { Records: deptHeads, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Dept Head Profiles' },
+      'srvs_faculties': { Records: faculties, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Faculty Profiles' },
+      'srvs_students': { Records: students, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Student Profiles' },
+      'srvs_syllabi': { Records: syllabi, PK_Type: 'Integer (SERIAL)', Description: 'Course Syllabi Master Records' },
+      'srvs_syllabus_versions': { Records: versions, PK_Type: 'Integer (SERIAL)', Description: 'Immutable Version Snapshots (v1, v2...)' },
+      'srvs_enrollments': { Records: enrollments, PK_Type: 'Integer (SERIAL)', Description: 'Student Subject Enrollments' },
     });
 
     const admin = await prisma.user.findFirst({
       where: { role: 'Admin' },
-      select: { id: true, email: true, fullName: true, role: true, accountStatus: true },
+      include: { adminProfile: true },
     });
 
     console.log('\nSystem Administrator Status:');
     if (admin) {
-      console.log(`  ✓ University ID (PK id): ${admin.id}`);
+      console.log(`  ✓ Database ID (PK id): ${admin.id} [Type: Integer]`);
+      console.log(`  ✓ University ID Number: ${admin.idNumber}`);
       console.log(`  ✓ Email: ${admin.email}`);
       console.log(`  ✓ Name: ${admin.fullName}`);
-      console.log(`  ✓ Status: ${admin.accountStatus}`);
+      console.log(`  ✓ Admin Profile Link: ${admin.adminProfile ? 'Linked (PK ID: ' + admin.adminProfile.id + ')' : 'None'}`);
     } else {
       console.log('  ⚠️ No Admin user found! Run "npm run db:seed" to create the initial admin account.');
     }

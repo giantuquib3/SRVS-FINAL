@@ -42,45 +42,74 @@ export async function POST(req: NextRequest) {
       where: {
         OR: [
           { email: cleanEmail },
-          { id: cleanId },
+          { idNumber: cleanId },
         ],
       },
     });
 
     if (existing) {
-      if (existing.id === cleanId) {
+      if (existing.idNumber === cleanId) {
         return NextResponse.json({ error: `An account with ID Number ${cleanId} already exists.` }, { status: 409 });
       }
       return NextResponse.json({ error: 'An account with this institutional email already exists.' }, { status: 409 });
     }
 
-    // Check department exists
-    const dept = await prisma.department.findUnique({
-      where: { id: departmentId },
-    });
+    // Resolve department
+    let dept = null;
+    const numericDeptId = Number(departmentId);
+    if (!isNaN(numericDeptId)) {
+      dept = await prisma.department.findUnique({ where: { id: numericDeptId } });
+    } else {
+      dept = await prisma.department.findUnique({ where: { code: String(departmentId).toUpperCase() } });
+    }
 
     if (!dept) {
       return NextResponse.json({ error: 'Selected department is invalid.' }, { status: 400 });
     }
 
-    // Both need approval if Educator or Student per workflow.
     const initialStatus = 'PendingApproval';
-
     const passwordHash = await hashPassword(password);
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
-    const user = await prisma.user.create({
-      data: {
-        id: cleanId, // Primary key is ID Number (00000, 10001, 2022012708)
-        email: cleanEmail,
-        passwordHash,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        fullName,
-        role: selectedRole,
-        departmentId: dept.id,
-        accountStatus: initialStatus,
-      },
+    // Create user and segregated role profile
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          idNumber: cleanId,
+          email: cleanEmail,
+          passwordHash,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          fullName,
+          role: selectedRole,
+          departmentId: dept.id,
+          accountStatus: initialStatus,
+        },
+      });
+
+      if (selectedRole === 'Educator') {
+        await tx.faculty.create({
+          data: {
+            userId: created.id,
+            employeeId: cleanId,
+            fullName,
+            email: cleanEmail,
+            departmentId: dept.id,
+          },
+        });
+      } else {
+        await tx.student.create({
+          data: {
+            userId: created.id,
+            studentIdNumber: cleanId,
+            fullName,
+            email: cleanEmail,
+            departmentId: dept.id,
+          },
+        });
+      }
+
+      return created;
     });
 
     await logAuditEvent({
@@ -88,7 +117,7 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'Register',
       resultStatus: 'Success',
-      description: `New ${selectedRole} registration submitted (Status: PendingApproval) for department ${dept.code}`,
+      description: `New ${selectedRole} registration submitted (Status: PendingApproval) for department ${dept.code} [ID: ${cleanId}]`,
       entityType: 'User',
       entityId: user.id,
       ipAddress: req.ip || '127.0.0.1',
@@ -108,17 +137,19 @@ export async function POST(req: NextRequest) {
       await createNotification(
         approver.id,
         'New Registration Pending Review',
-        `${fullName} registered as ${selectedRole} in ${dept.name}.`,
+        `A new ${selectedRole} (${fullName}, ID: ${cleanId}) from ${dept.name} has registered and awaits account verification.`,
         '/admin/users'
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Registration submitted successfully! Your account is pending approval by the Department Head or Administrator.',
-    });
+      message: 'Account registration submitted successfully. Please wait for Department Head or Administrator approval.',
+      userId: user.id,
+      idNumber: user.idNumber,
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Registration error:', error);
-    return NextResponse.json({ error: 'An unexpected error occurred during registration.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to complete registration: ' + error.message }, { status: 500 });
   }
 }

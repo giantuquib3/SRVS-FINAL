@@ -11,18 +11,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const students = await prisma.user.findMany({
-      where: {
-        role: 'Student',
-        accountStatus: 'Active',
-        ...(user.role === 'DepartmentHead' && user.departmentId ? { departmentId: user.departmentId } : {}),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
+    const deptId = user.role === 'DepartmentHead' && user.departmentId ? Number(user.departmentId) : undefined;
+
+    const rawStudents = await prisma.student.findMany({
+      where: deptId ? { departmentId: deptId } : {},
+      include: {
         department: {
           select: {
+            id: true,
             code: true,
             name: true,
           },
@@ -30,6 +26,15 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { fullName: 'asc' },
     });
+
+    const students = rawStudents.map((s) => ({
+      id: s.userId,
+      idNumber: s.studentIdNumber,
+      fullName: s.fullName,
+      email: s.email,
+      department: s.department,
+      yearLevel: s.yearLevel,
+    }));
 
     return NextResponse.json({ students });
   } catch (error: any) {

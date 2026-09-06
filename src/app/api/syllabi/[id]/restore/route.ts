@@ -13,7 +13,11 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized: Only educators or administrators can restore versions.' }, { status: 403 });
     }
 
-    const { id } = params;
+    const numericId = Number(params.id);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
+    }
+
     const { versionNumber } = await req.json();
 
     if (!versionNumber) {
@@ -21,9 +25,9 @@ export async function POST(
     }
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id },
+      where: { id: numericId },
       include: {
-        course: true,
+        subject: true,
       },
     });
 
@@ -31,7 +35,9 @@ export async function POST(
       return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
     }
 
-    if (user.role === 'Educator' && syllabus.instructorId !== user.id) {
+    const currentUserId = Number(user.id);
+
+    if (user.role === 'Educator' && syllabus.instructorId !== currentUserId) {
       return NextResponse.json({ error: 'You may only restore versions on your own syllabi.' }, { status: 403 });
     }
 
@@ -39,7 +45,7 @@ export async function POST(
     const historicalVersion = await prisma.syllabusVersion.findUnique({
       where: {
         syllabusId_versionNumber: {
-          syllabusId: id,
+          syllabusId: numericId,
           versionNumber: Number(versionNumber),
         },
       },
@@ -54,22 +60,24 @@ export async function POST(
 
     // Find latest version number to determine next version
     const latestVersion = await prisma.syllabusVersion.findFirst({
-      where: { syllabusId: id },
+      where: { syllabusId: numericId },
       orderBy: { versionNumber: 'desc' },
     });
     const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
     const changeSummary = `Restored from Version ${historicalVersion.versionNumber} (originally created by ${historicalVersion.editor.fullName} on ${new Date(historicalVersion.createdAt).toLocaleDateString()})`;
+    const uIdNumber = String(user.idNumber || user.username || user.id);
 
     // Transaction to insert new version without overwriting prior history
     const result = await prisma.$transaction(async (tx) => {
       const restoredVersion = await tx.syllabusVersion.create({
         data: {
-          syllabusId: id,
+          syllabusId: numericId,
           versionNumber: newVersionNumber,
-          editorId: user.id,
+          editorId: currentUserId,
+          uploadedByUserId: uIdNumber,
           changeSummary,
           changeType: 'Restore',
-          statusAtSave: 'Draft',
+          statusAtSave: 'DRAFT',
           approvalStatus: 'DRAFT',
           content: historicalVersion.content as any,
           fileName: historicalVersion.fileName,
@@ -79,26 +87,22 @@ export async function POST(
         },
       });
 
-      // Syllabus currentVersionNumber stays pointing to the official approved version!
-      // Status can stay or remain draft if not active
       const updatedSyllabus = await tx.syllabus.findUnique({
-        where: { id },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: user.id,
-          userDisplayName: user.fullName,
-          actionType: 'RestoreVersion',
-          resultStatus: 'Success',
-          description: `Restored syllabus [${syllabus.course.code}] to Version ${historicalVersion.versionNumber}, creating new Version ${newVersionNumber} [Draft]`,
-          entityType: 'Syllabus',
-          entityId: syllabus.id,
-          ipAddress: req.ip || '127.0.0.1',
-        },
+        where: { id: numericId },
       });
 
       return { syllabus: updatedSyllabus, version: restoredVersion };
+    });
+
+    await logAuditEvent({
+      userId: currentUserId,
+      userDisplayName: user.fullName,
+      actionType: 'RestoreVersion',
+      resultStatus: 'Success',
+      description: `Restored syllabus [${syllabus.subject.code}] to Version ${historicalVersion.versionNumber}, creating new Version ${newVersionNumber} [Draft]`,
+      entityType: 'Syllabus',
+      entityId: syllabus.id,
+      ipAddress: req.ip || '127.0.0.1',
     });
 
     return NextResponse.json({
@@ -108,7 +112,7 @@ export async function POST(
       version: result.version,
     });
   } catch (error: any) {
-    console.error('Error restoring syllabus version:', error);
-    return NextResponse.json({ error: 'Failed to restore version.' }, { status: 500 });
+    console.error('Error restoring version:', error);
+    return NextResponse.json({ error: 'Failed to restore version: ' + error.message }, { status: 500 });
   }
 }

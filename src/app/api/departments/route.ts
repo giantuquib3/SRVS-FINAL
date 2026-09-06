@@ -12,7 +12,7 @@ export async function GET() {
       include: {
         _count: {
           select: {
-            courses: true,
+            subjects: true,
             users: true,
             syllabi: true,
           },
@@ -52,7 +52,6 @@ export async function POST(req: NextRequest) {
 
     const department = await prisma.department.create({
       data: {
-        id: upperCode, // Primary key is Department Code (CPE, CE, EE, etc.)
         code: upperCode,
         name: name.trim(),
         description: description?.trim() || null,

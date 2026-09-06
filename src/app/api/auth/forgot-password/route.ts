@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     // Locate the user matching both ID number and institutional email
     const user = await prisma.user.findFirst({
       where: {
-        id: cleanId,
+        idNumber: cleanId,
         email: cleanEmail,
       },
     });

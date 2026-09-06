@@ -15,14 +15,14 @@ export async function GET(req: NextRequest) {
     const statusParam = searchParams.get('status') || 'PENDING_APPROVAL';
     const departmentParam = searchParams.get('departmentId');
 
-    // Scoping rule: Department Head CANNOT bypass their assigned department!
     const effectiveDeptId = user.role === 'DepartmentHead' ? user.departmentId : departmentParam;
+    const numericDeptId = effectiveDeptId ? Number(effectiveDeptId) : null;
 
     const where: any = {};
 
-    if (effectiveDeptId) {
+    if (numericDeptId && !isNaN(numericDeptId)) {
       where.syllabus = {
-        departmentId: effectiveDeptId,
+        departmentId: numericDeptId,
       };
     }
 
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       include: {
         syllabus: {
           include: {
-            course: {
+            subject: {
               include: {
                 department: true,
               },
@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
             instructor: {
               select: {
                 id: true,
+                idNumber: true,
                 fullName: true,
                 email: true,
                 role: true,
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
         editor: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
           },
@@ -62,6 +64,7 @@ export async function GET(req: NextRequest) {
         submittedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
           },
@@ -69,16 +72,26 @@ export async function GET(req: NextRequest) {
         reviewedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
           },
         },
       },
     });
 
-    // Compute summary statistics for the Department Head
+    // Map course alias so existing UI continues working without issues
+    const formattedApprovals = pendingApprovals.map((v) => ({
+      ...v,
+      syllabus: {
+        ...v.syllabus,
+        course: v.syllabus.subject,
+        courseId: v.syllabus.subjectId,
+      },
+    }));
+
     const statsWhere: any = {};
-    if (effectiveDeptId) {
-      statsWhere.syllabus = { departmentId: effectiveDeptId };
+    if (numericDeptId && !isNaN(numericDeptId)) {
+      statsWhere.syllabus = { departmentId: numericDeptId };
     }
 
     const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
@@ -88,7 +101,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      approvals: pendingApprovals,
+      approvals: formattedApprovals,
       stats: {
         pending: pendingCount,
         approved: approvedCount,

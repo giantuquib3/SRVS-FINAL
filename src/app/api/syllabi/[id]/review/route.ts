@@ -14,17 +14,21 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
     }
 
-    const { id } = params;
-    const { action, remarks } = await req.json(); // action: "Approve" | "Reject"
+    const numericId = Number(params.id);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
+    }
+
+    const { action, remarks } = await req.json();
 
     if (action !== 'Approve' && action !== 'Reject') {
       return NextResponse.json({ error: 'Invalid review action. Must be Approve or Reject.' }, { status: 400 });
     }
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id },
+      where: { id: numericId },
       include: {
-        course: true,
+        subject: true,
         instructor: true,
       },
     });
@@ -33,40 +37,40 @@ export async function POST(
       return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && user.departmentId !== syllabus.departmentId) {
+    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== syllabus.departmentId) {
       return NextResponse.json({ error: 'Department Heads may only review departmental syllabi.' }, { status: 403 });
     }
 
     const targetStatus = action === 'Approve' ? 'Approved' : 'Rejected';
+    const currentUserId = Number(user.id);
 
     const updated = await prisma.syllabus.update({
-      where: { id },
+      where: { id: numericId },
       data: {
         status: targetStatus,
         reviewerRemarks: remarks?.trim() || null,
         reviewedAt: new Date(),
-        reviewedByUserId: user.id,
+        reviewedByUserId: currentUserId,
       },
     });
 
     await logAuditEvent({
-      userId: user.id,
+      userId: currentUserId,
       userDisplayName: user.fullName,
       actionType: action === 'Approve' ? 'ApproveSyllabus' : 'RejectSyllabus',
       resultStatus: 'Success',
-      description: `${action}d syllabus for [${syllabus.course.code}] ${syllabus.course.title}${remarks ? ` with feedback: "${remarks}"` : ''}`,
+      description: `${action}d syllabus for [${syllabus.subject.code}] ${syllabus.subject.title}${remarks ? ` with feedback: "${remarks}"` : ''}`,
       entityType: 'Syllabus',
       entityId: syllabus.id,
       ipAddress: req.ip || '127.0.0.1',
     });
 
-    // Notify submitting educator
     await createNotification(
       syllabus.instructorId,
-      `Syllabus ${targetStatus}: ${syllabus.course.code}`,
+      `Syllabus ${targetStatus}: ${syllabus.subject.code}`,
       action === 'Approve'
-        ? `Your syllabus for ${syllabus.course.code} has been approved and published to students.`
-        : `Your syllabus for ${syllabus.course.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
+        ? `Your syllabus for ${syllabus.subject.code} has been approved and published to students.`
+        : `Your syllabus for ${syllabus.subject.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
       `/syllabi/${syllabus.id}`
     );
 

@@ -18,9 +18,18 @@ export async function GET(req: NextRequest) {
 
     // Department Head can only view subjects in their department
     if (user?.role === 'DepartmentHead') {
-      where.departmentId = user.departmentId || '__NO_DEPT__';
+      if (user.departmentId) {
+        where.departmentId = Number(user.departmentId);
+      }
     } else if (departmentId) {
-      where.departmentId = departmentId;
+      const parsedDeptId = Number(departmentId);
+      if (!isNaN(parsedDeptId)) {
+        where.departmentId = parsedDeptId;
+      } else {
+        // Maybe department code was passed (e.g. 'CPE')
+        const dept = await prisma.department.findUnique({ where: { code: departmentId } });
+        if (dept) where.departmentId = dept.id;
+      }
     }
 
     if (yearLevel) where.yearLevel = yearLevel;
@@ -101,8 +110,21 @@ export async function POST(req: NextRequest) {
 
     const upperCode = code.trim().toUpperCase();
 
+    // Resolve Department
+    let targetDept = null;
+    const numericDeptId = Number(departmentId);
+    if (!isNaN(numericDeptId)) {
+      targetDept = await prisma.department.findUnique({ where: { id: numericDeptId } });
+    } else {
+      targetDept = await prisma.department.findUnique({ where: { code: String(departmentId).trim().toUpperCase() } });
+    }
+
+    if (!targetDept) {
+      return NextResponse.json({ error: 'Invalid department specified.' }, { status: 400 });
+    }
+
     // Dept head scoping
-    if (user.role === 'DepartmentHead' && user.departmentId && user.departmentId !== departmentId) {
+    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== targetDept.id) {
       return NextResponse.json({ error: 'Department Heads may only manage subjects within their assigned department.' }, { status: 403 });
     }
 
@@ -119,10 +141,9 @@ export async function POST(req: NextRequest) {
     const parsedLecHours = Number(lecHours) || 3;
     const parsedLabHours = Number(labHours) || 0;
 
-    // Create subject record in srvs_subjects
+    // Create subject record in srvs_subjects with auto-increment integer ID
     const subject = await prisma.subject.create({
       data: {
-        id: upperCode,
         code: upperCode,
         title: title.trim(),
         description: description?.trim() || null,
@@ -132,39 +153,10 @@ export async function POST(req: NextRequest) {
         prerequisite: prerequisite?.trim() || 'None',
         yearLevel: yearLevel || '1st Year',
         semester: semester || '1st Semester',
-        departmentId,
+        departmentId: targetDept.id,
       },
       include: {
         department: true,
-      },
-    });
-
-    // Mirror in Course table for seamless cross-compatibility
-    await prisma.course.upsert({
-      where: { code: upperCode },
-      update: {
-        title: title.trim(),
-        description: description?.trim() || null,
-        units: parsedUnits,
-        lecHours: parsedLecHours,
-        labHours: parsedLabHours,
-        prerequisite: prerequisite?.trim() || 'None',
-        yearLevel: yearLevel || '1st Year',
-        semester: semester || '1st Semester',
-        departmentId,
-      },
-      create: {
-        id: upperCode,
-        code: upperCode,
-        title: title.trim(),
-        description: description?.trim() || null,
-        units: parsedUnits,
-        lecHours: parsedLecHours,
-        labHours: parsedLabHours,
-        prerequisite: prerequisite?.trim() || 'None',
-        yearLevel: yearLevel || '1st Year',
-        semester: semester || '1st Semester',
-        departmentId,
       },
     });
 

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { createNotification } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,28 +24,38 @@ export async function GET(req: NextRequest) {
       where.OR = [
         { fullName: { contains: search.trim(), mode: 'insensitive' } },
         { email: { contains: search.trim(), mode: 'insensitive' } },
-        { id: { contains: search.trim(), mode: 'insensitive' } },
+        { idNumber: { contains: search.trim(), mode: 'insensitive' } },
       ];
     }
 
     // Dept Head only sees their department users
     if (user.role === 'DepartmentHead' && user.departmentId) {
-      where.departmentId = user.departmentId;
+      where.departmentId = Number(user.departmentId);
     }
 
-    const users = await prisma.user.findMany({
+    const rawUsers = await prisma.user.findMany({
       where,
       include: {
         department: true,
+        adminProfile: true,
+        deptHeadProfile: true,
+        facultyProfile: true,
+        studentProfile: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
+    // Format output providing backward-compatible string username/id for UI
+    const users = rawUsers.map((u) => ({
+      ...u,
+      username: u.idNumber,
+    }));
+
     const baseWhere: any = {};
     if (user.role === 'DepartmentHead' && user.departmentId) {
-      baseWhere.departmentId = user.departmentId;
+      baseWhere.departmentId = Number(user.departmentId);
     }
     if (status) baseWhere.accountStatus = status;
 
@@ -114,16 +123,28 @@ export async function POST(req: NextRequest) {
       where: {
         OR: [
           { email: trimmedEmail },
-          { id: trimmedId },
+          { idNumber: trimmedId },
         ],
       },
     });
 
     if (existing) {
-      if (existing.id === trimmedId) {
+      if (existing.idNumber === trimmedId) {
         return NextResponse.json({ error: `An account with ID Number ${trimmedId} already exists.` }, { status: 400 });
       }
       return NextResponse.json({ error: 'A user with this email address already exists.' }, { status: 400 });
+    }
+
+    // Resolve Department ID if specified
+    let targetDeptId: number | null = null;
+    if (departmentId) {
+      const parsed = Number(departmentId);
+      if (!isNaN(parsed)) {
+        targetDeptId = parsed;
+      } else {
+        const d = await prisma.department.findUnique({ where: { code: String(departmentId).toUpperCase() } });
+        if (d) targetDeptId = d.id;
+      }
     }
 
     const bcrypt = await import('bcryptjs');
@@ -133,21 +154,71 @@ export async function POST(req: NextRequest) {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const newUser = await prisma.user.create({
-      data: {
-        id: trimmedId, // Primary key is ID Number
-        fullName: fullName.trim(),
-        firstName,
-        lastName,
-        email: trimmedEmail,
-        passwordHash,
-        role,
-        departmentId: departmentId || null,
-        accountStatus: accountStatus || 'Active',
-      },
-      include: {
-        department: true,
-      },
+    // Create user and segregated role profile in atomic transaction
+    const newUser = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          idNumber: trimmedId,
+          fullName: fullName.trim(),
+          firstName,
+          lastName,
+          email: trimmedEmail,
+          passwordHash,
+          role,
+          departmentId: targetDeptId,
+          accountStatus: accountStatus || 'Active',
+        },
+        include: {
+          department: true,
+        },
+      });
+
+      if (role === 'Admin') {
+        await tx.admin.create({
+          data: {
+            userId: createdUser.id,
+            adminNumber: trimmedId,
+            fullName: createdUser.fullName,
+            email: createdUser.email,
+          },
+        });
+      } else if (role === 'DepartmentHead') {
+        if (targetDeptId) {
+          await tx.departmentHead.create({
+            data: {
+              userId: createdUser.id,
+              employeeId: trimmedId,
+              fullName: createdUser.fullName,
+              email: createdUser.email,
+              departmentId: targetDeptId,
+            },
+          });
+        }
+      } else if (role === 'Educator') {
+        if (targetDeptId) {
+          await tx.faculty.create({
+            data: {
+              userId: createdUser.id,
+              employeeId: trimmedId,
+              fullName: createdUser.fullName,
+              email: createdUser.email,
+              departmentId: targetDeptId,
+            },
+          });
+        }
+      } else if (role === 'Student') {
+        await tx.student.create({
+          data: {
+            userId: createdUser.id,
+            studentIdNumber: trimmedId,
+            fullName: createdUser.fullName,
+            email: createdUser.email,
+            departmentId: targetDeptId,
+          },
+        });
+      }
+
+      return createdUser;
     });
 
     await logAuditEvent({
@@ -155,13 +226,19 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'CreateUser',
       resultStatus: 'Success',
-      description: `Created user account for ${newUser.fullName} (${newUser.email}) with role ${newUser.role}`,
+      description: `Created user account for ${newUser.fullName} (${newUser.email}) with role ${newUser.role} [ID Number: ${trimmedId}]`,
       entityType: 'User',
       entityId: newUser.id,
       ipAddress: req.ip || '127.0.0.1',
     });
 
-    return NextResponse.json({ success: true, user: newUser }, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      user: {
+        ...newUser,
+        username: newUser.idNumber,
+      },
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating user:', error);
     return NextResponse.json({ error: error.message || 'Failed to create user account.' }, { status: 500 });
@@ -175,10 +252,16 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const { userId, action, newRole } = await req.json(); // action: "Approve" | "Reject" | "Deactivate" | "Activate" | "ChangeRole"
+    const { userId, action, newRole } = await req.json();
 
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
+    const numericUserId = Number(userId);
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { idNumber: String(userId) },
+          { id: isNaN(numericUserId) ? -1 : numericUserId },
+        ],
+      },
       include: { department: true },
     });
 
@@ -186,7 +269,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && targetUser.departmentId !== user.departmentId) {
+    if (user.role === 'DepartmentHead' && targetUser.departmentId !== Number(user.departmentId)) {
       return NextResponse.json({ error: 'Department Heads may only manage users in their assigned department.' }, { status: 403 });
     }
 
@@ -201,15 +284,17 @@ export async function PATCH(req: NextRequest) {
       updatedStatus = 'Deactivated';
     } else if (action === 'Activate') {
       updatedStatus = 'Active';
-    } else if (action === 'ChangeRole' && newRole) {
+    } else if (action === 'ChangeRole') {
       if (user.role !== 'Admin') {
-        return NextResponse.json({ error: 'Only administrators may alter user roles.' }, { status: 403 });
+        return NextResponse.json({ error: 'Only administrators may change user roles.' }, { status: 403 });
       }
-      updatedRole = newRole;
+      if (newRole) {
+        updatedRole = newRole;
+      }
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUser.id },
       data: {
         accountStatus: updatedStatus,
         role: updatedRole,
@@ -219,104 +304,16 @@ export async function PATCH(req: NextRequest) {
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
-      actionType: `User${action}`,
+      actionType: `User_${action}`,
       resultStatus: 'Success',
-      description: `${action}d account for ${targetUser.fullName} (${targetUser.email}). Status: ${updatedStatus}, Role: ${updatedRole}`,
+      description: `Performed [${action}] on user ${targetUser.fullName} (Status: ${updatedStatus}, Role: ${updatedRole})`,
       entityType: 'User',
       entityId: targetUser.id,
-      ipAddress: req.ip || '127.0.0.1',
     });
 
-    if (action === 'Approve') {
-      await createNotification(
-        targetUser.id,
-        'Account Approved',
-        'Your registration has been approved. You now have full access to SRVS.',
-        '/'
-      );
-    }
-
-    return NextResponse.json({ success: true, user: updated });
+    return NextResponse.json({ success: true, user: updatedUser });
   } catch (error: any) {
     console.error('Error updating user:', error);
-    return NextResponse.json({ error: 'Failed to update user.' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to update user.' }, { status: 500 });
   }
 }
-
-export async function DELETE(req: NextRequest) {
-  try {
-    const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'Admin') {
-      return NextResponse.json({ error: 'Only administrators may delete user accounts.' }, { status: 403 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
-    }
-
-    if (userId === user.id) {
-      return NextResponse.json({ error: 'You cannot delete your own administrator account.' }, { status: 400 });
-    }
-
-    const targetUser = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!targetUser) {
-      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
-    }
-
-    // Check if user has authored syllabus versions
-    const versionsCount = await prisma.syllabusVersion.count({
-      where: { editorId: userId },
-    });
-
-    if (versionsCount > 0) {
-      // Deactivate instead to preserve version audit trail integrity
-      await prisma.user.update({
-        where: { id: userId },
-        data: { accountStatus: 'Deactivated' },
-      });
-
-      await logAuditEvent({
-        userId: user.id,
-        userDisplayName: user.fullName,
-        actionType: 'DeactivateUser',
-        resultStatus: 'Success',
-        description: `Account for ${targetUser.fullName} (${targetUser.email}) deactivated (preserved audit integrity for ${versionsCount} version records).`,
-        entityType: 'User',
-        entityId: targetUser.id,
-        ipAddress: req.ip || '127.0.0.1',
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Account has historical syllabus records and was deactivated to maintain audit integrity.`,
-      });
-    }
-
-    await prisma.user.delete({
-      where: { id: userId },
-    });
-
-    await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
-      actionType: 'DeleteUser',
-      resultStatus: 'Success',
-      description: `Permanently deleted user account for ${targetUser.fullName} (${targetUser.email})`,
-      entityType: 'User',
-      entityId: targetUser.id,
-      ipAddress: req.ip || '127.0.0.1',
-    });
-
-    return NextResponse.json({ success: true, message: 'User permanently deleted.' });
-  } catch (error: any) {
-    console.error('Error deleting user:', error);
-    return NextResponse.json({ error: error.message || 'Failed to delete user.' }, { status: 500 });
-  }
-}
-

@@ -7,18 +7,33 @@ export async function GET() {
   const startTime = Date.now();
 
   try {
-    // Run counts across all 8 PostgreSQL tables
-    const departmentsCount = await prisma.department.count();
-    const coursesCount = await prisma.course.count();
-    const usersCount = await prisma.user.count();
-    const enrollmentsCount = await prisma.enrollment.count();
-    const syllabiCount = await prisma.syllabus.count();
-    const versionsCount = await prisma.syllabusVersion.count();
-    const auditLogsCount = await prisma.auditLog.count();
-    const notificationsCount = await prisma.notification.count();
+    const [
+      departmentsCount,
+      subjectsCount,
+      usersCount,
+      adminsCount,
+      deptHeadsCount,
+      facultiesCount,
+      studentsCount,
+      syllabiCount,
+      versionsCount,
+      enrollmentsCount,
+    ] = await Promise.all([
+      prisma.department.count(),
+      prisma.subject.count(),
+      prisma.user.count(),
+      prisma.admin.count(),
+      prisma.departmentHead.count(),
+      prisma.faculty.count(),
+      prisma.student.count(),
+      prisma.syllabus.count(),
+      prisma.syllabusVersion.count(),
+      prisma.enrollment.count(),
+    ]);
+
     const adminUser = await prisma.user.findFirst({
       where: { role: 'Admin' },
-      select: { id: true, email: true, fullName: true, role: true, accountStatus: true },
+      select: { id: true, idNumber: true, email: true, fullName: true, role: true, accountStatus: true },
     });
 
     const latencyMs = Date.now() - startTime;
@@ -30,13 +45,15 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       tables: {
         srvs_departments: departmentsCount,
-        srvs_courses: coursesCount,
+        srvs_subjects: subjectsCount,
         srvs_users: usersCount,
-        srvs_enrollments: enrollmentsCount,
+        srvs_admins: adminsCount,
+        srvs_department_heads: deptHeadsCount,
+        srvs_faculties: facultiesCount,
+        srvs_students: studentsCount,
         srvs_syllabi: syllabiCount,
         srvs_syllabus_versions: versionsCount,
-        srvs_audit_logs: auditLogsCount,
-        srvs_notifications: notificationsCount,
+        srvs_enrollments: enrollmentsCount,
       },
       seededAdmin: adminUser,
     });

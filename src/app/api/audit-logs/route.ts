@@ -11,38 +11,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const actionType = searchParams.get('actionType');
-    const resultStatus = searchParams.get('resultStatus');
-    const search = searchParams.get('search')?.trim();
-
-    const where: any = {};
-
-    if (actionType) where.actionType = actionType;
-    if (resultStatus) where.resultStatus = resultStatus;
-    if (search) {
-      where.OR = [
-        { description: { contains: search, mode: 'insensitive' } },
-        { userDisplayName: { contains: search, mode: 'insensitive' } },
-        { actionType: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    const logs = await prisma.auditLog.findMany({
-      where,
+    const versions = await prisma.syllabusVersion.findMany({
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
-        user: {
+        editor: {
           select: {
             id: true,
+            idNumber: true,
             email: true,
             fullName: true,
             role: true,
           },
         },
+        syllabus: {
+          include: { subject: true },
+        },
       },
     });
+
+    const logs = versions.map((v) => ({
+      id: v.id,
+      actionType: v.changeType,
+      resultStatus: 'Success',
+      description: `${v.changeSummary} (${v.syllabus?.subject?.code || 'Syllabus'} v${v.versionNumber})`,
+      userDisplayName: v.editor.fullName,
+      createdAt: v.createdAt,
+      user: v.editor,
+    }));
 
     return NextResponse.json({ logs });
   } catch (error: any) {

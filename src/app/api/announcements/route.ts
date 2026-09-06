@@ -13,17 +13,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    // Retrieve notifications with '[Announcement]' in title for this user
-    const announcements = await prisma.notification.findMany({
-      where: {
-        userId: user.id,
-        title: { startsWith: '[Announcement]' },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    });
-
-    return NextResponse.json({ announcements });
+    return NextResponse.json({ announcements: [] });
   } catch (error: any) {
     return NextResponse.json({ error: 'Failed to retrieve announcements.' }, { status: 500 });
   }
@@ -47,10 +37,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Target department ID is required.' }, { status: 400 });
     }
 
+    const numericDeptId = Number(targetDeptId);
+
     // Find all users in this department (Educators, Students)
     const departmentUsers = await prisma.user.findMany({
       where: {
-        departmentId: targetDeptId,
+        departmentId: numericDeptId,
         accountStatus: 'Active',
       },
       select: { id: true, fullName: true, role: true },
@@ -58,7 +50,6 @@ export async function POST(req: NextRequest) {
 
     const announcementTitle = `[Announcement] ${title.trim()}`;
 
-    // Broadcast in-app notification to all users in the department
     for (const recipient of departmentUsers) {
       await createNotification(
         recipient.id,
@@ -75,7 +66,7 @@ export async function POST(req: NextRequest) {
       resultStatus: 'Success',
       description: `Posted department announcement: "${title.trim()}" to ${departmentUsers.length} members`,
       entityType: 'Department',
-      entityId: targetDeptId,
+      entityId: numericDeptId,
       ipAddress: req.ip || '127.0.0.1',
     });
 

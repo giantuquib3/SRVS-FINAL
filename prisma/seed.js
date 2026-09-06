@@ -4,390 +4,460 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting SRVS database seeding with Subjects, Segregated Users, and Enrolled Subjects...');
+  console.log('🌱 Starting SRVS database seeding with Integer IDs, Segregated Role Tables, and Subjects...');
 
   // 1. Seed Engineering Departments
   const departmentsData = [
-    { id: 'CE', code: 'CE', name: 'Civil Engineering', description: 'Department of Civil Engineering' },
-    { id: 'CPE', code: 'CPE', name: 'Computer Engineering', description: 'Department of Computer Engineering' },
-    { id: 'ECE', code: 'ECE', name: 'Electronics Engineering', description: 'Department of Electronics Engineering' },
-    { id: 'IE', code: 'IE', name: 'Industrial Engineering', description: 'Department of Industrial Engineering' },
-    { id: 'ME', code: 'ME', name: 'Mechanical Engineering', description: 'Department of Mechanical Engineering' },
-    { id: 'EE', code: 'EE', name: 'Electrical Engineering', description: 'Department of Electrical Engineering' },
+    { code: 'CE', name: 'Civil Engineering', description: 'Department of Civil Engineering' },
+    { code: 'CPE', name: 'Computer Engineering', description: 'Department of Computer Engineering' },
+    { code: 'ECE', name: 'Electronics Engineering', description: 'Department of Electronics Engineering' },
+    { code: 'IE', name: 'Industrial Engineering', description: 'Department of Industrial Engineering' },
+    { code: 'ME', name: 'Mechanical Engineering', description: 'Department of Mechanical Engineering' },
+    { code: 'EE', name: 'Electrical Engineering', description: 'Department of Electrical Engineering' },
   ];
 
+  const deptMap = {};
   for (const dept of departmentsData) {
-    await prisma.department.upsert({
+    const record = await prisma.department.upsert({
       where: { code: dept.code },
       update: { name: dept.name, description: dept.description },
       create: dept,
     });
-    console.log(`✓ Seeded Department: [${dept.code}] ${dept.name}`);
+    deptMap[dept.code] = record;
+    console.log(`✓ Seeded Department: [${record.code}] ${record.name} (PK ID: ${record.id})`);
   }
 
   // 2. Hash default passwords
   const defaultPasswordHash = await bcrypt.hash('Giangwapo123?', 10);
   const adminPasswordHash = await bcrypt.hash('Giangwapo123?', 10);
 
-  // 3. Seed Segregated Users by Role
+  // 3. Seed Users and Segregated Role Records
   // Admin: 00000 (5 digits)
   // Dept Head: 10001 (5 digits)
   // Faculty / Educator: 10002, 10003 (5 digits)
   // Student: 2022012708, 2022012709 (10 digits)
-  const usersData = [
+  const usersToSeed = [
     {
-      id: '00000',
+      idNumber: '00000',
       email: 'admin@srvs.local',
       passwordHash: adminPasswordHash,
       firstName: 'System',
       lastName: 'Administrator',
       fullName: 'System Administrator',
       role: 'Admin',
-      departmentId: 'CPE',
+      deptCode: 'CPE',
       accountStatus: 'Active',
     },
     {
-      id: '10001',
+      idNumber: '10001',
       email: 'depthead.cpe@srvs.local',
       passwordHash: defaultPasswordHash,
       firstName: 'Engr. Roberto',
       lastName: 'Del Rosario',
       fullName: 'Engr. Roberto Del Rosario',
       role: 'DepartmentHead',
-      departmentId: 'CPE',
+      deptCode: 'CPE',
       accountStatus: 'Active',
     },
     {
-      id: '10002',
+      idNumber: '10002',
       email: 'faculty.cpe@srvs.local',
       passwordHash: defaultPasswordHash,
       firstName: 'Prof. Maria',
       lastName: 'Santos',
       fullName: 'Prof. Maria Santos',
       role: 'Educator',
-      departmentId: 'CPE',
+      deptCode: 'CPE',
       accountStatus: 'Active',
     },
     {
-      id: '10003',
+      idNumber: '10003',
       email: 'faculty.ce@srvs.local',
       passwordHash: defaultPasswordHash,
       firstName: 'Engr. Manuel',
       lastName: 'Reyes',
       fullName: 'Engr. Manuel Reyes',
       role: 'Educator',
-      departmentId: 'CE',
+      deptCode: 'CE',
       accountStatus: 'Active',
     },
     {
-      id: '2022012708',
+      idNumber: '2022012708',
       email: 'student.gian@srvs.local',
       passwordHash: defaultPasswordHash,
       firstName: 'Gian Carlo',
       lastName: 'Tuquib',
       fullName: 'Gian Carlo Tuquib',
       role: 'Student',
-      departmentId: 'CPE',
+      deptCode: 'CPE',
       accountStatus: 'Active',
     },
     {
-      id: '2022012709',
+      idNumber: '2022012709',
       email: 'student.cpe@srvs.local',
       passwordHash: defaultPasswordHash,
       firstName: 'Bea',
       lastName: 'Alonzo',
       fullName: 'Bea Alonzo',
       role: 'Student',
-      departmentId: 'CPE',
+      deptCode: 'CPE',
       accountStatus: 'Active',
     },
   ];
 
-  for (const user of usersData) {
-    await prisma.user.upsert({
-      where: { email: user.email },
+  const userMap = {};
+  for (const u of usersToSeed) {
+    const deptId = u.deptCode && deptMap[u.deptCode] ? deptMap[u.deptCode].id : null;
+    const user = await prisma.user.upsert({
+      where: { email: u.email },
       update: {
-        id: user.id,
-        role: user.role,
-        departmentId: user.departmentId,
-        accountStatus: user.accountStatus,
-        fullName: user.fullName,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        passwordHash: user.passwordHash,
+        idNumber: u.idNumber,
+        fullName: u.fullName,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+        departmentId: deptId,
+        accountStatus: u.accountStatus,
+        passwordHash: u.passwordHash,
       },
-      create: user,
+      create: {
+        idNumber: u.idNumber,
+        email: u.email,
+        passwordHash: u.passwordHash,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        fullName: u.fullName,
+        role: u.role,
+        departmentId: deptId,
+        accountStatus: u.accountStatus,
+      },
     });
-    console.log(`✓ Seeded User: [${user.role}] ID: ${user.id} | ${user.fullName} (${user.email})`);
+
+    userMap[u.idNumber] = user;
+    console.log(`✓ Seeded User: [ID: ${user.id} | ID Number: ${user.idNumber}] ${user.fullName} (${user.role})`);
+
+    // Segregate into role tables
+    if (user.role === 'Admin') {
+      await prisma.admin.upsert({
+        where: { userId: user.id },
+        update: { fullName: user.fullName, email: user.email, adminNumber: user.idNumber },
+        create: {
+          userId: user.id,
+          adminNumber: user.idNumber,
+          fullName: user.fullName,
+          email: user.email,
+        },
+      });
+      console.log(`  └─ Created srvs_admins profile for Admin ${user.idNumber}`);
+    } else if (user.role === 'DepartmentHead') {
+      await prisma.departmentHead.upsert({
+        where: { userId: user.id },
+        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, departmentId: deptId },
+        create: {
+          userId: user.id,
+          employeeId: user.idNumber,
+          fullName: user.fullName,
+          email: user.email,
+          departmentId: deptId,
+          title: 'Department Chairperson',
+          officeLocation: 'Engineering Complex Room 302',
+        },
+      });
+      console.log(`  └─ Created srvs_department_heads profile for Dept Head ${user.idNumber}`);
+    } else if (user.role === 'Educator') {
+      await prisma.faculty.upsert({
+        where: { userId: user.id },
+        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, departmentId: deptId },
+        create: {
+          userId: user.id,
+          employeeId: user.idNumber,
+          fullName: user.fullName,
+          email: user.email,
+          departmentId: deptId,
+          academicRank: 'Assistant Professor',
+        },
+      });
+      console.log(`  └─ Created srvs_faculties profile for Faculty ${user.idNumber}`);
+    } else if (user.role === 'Student') {
+      await prisma.student.upsert({
+        where: { userId: user.id },
+        update: { fullName: user.fullName, email: user.email, studentIdNumber: user.idNumber, departmentId: deptId },
+        create: {
+          userId: user.id,
+          studentIdNumber: user.idNumber,
+          fullName: user.fullName,
+          email: user.email,
+          departmentId: deptId,
+          yearLevel: user.idNumber === '2022012708' ? '3rd Year' : '1st Year',
+        },
+      });
+      console.log(`  └─ Created srvs_students profile for Student ${user.idNumber}`);
+    }
   }
 
-  // 4. Seed Subjects & Courses with Full Academic Columns (units, lecHours, labHours, prerequisite, yearLevel, semester)
+  // 4. Seed Academic Curriculum Subjects
   const subjectsData = [
     {
-      id: 'CPE101',
       code: 'CPE101',
       title: 'Introduction to Computer Engineering',
-      description: 'Foundations of computer engineering, digital logic, ethics, and computing paradigms.',
+      deptCode: 'CPE',
       units: 3,
       lecHours: 3,
       labHours: 0,
       prerequisite: 'None',
       yearLevel: '1st Year',
       semester: '1st Semester',
-      departmentId: 'CPE',
+      description: 'Foundations of computer engineering, digital logic, ethics, and computing paradigms.',
     },
     {
-      id: 'CPE102',
       code: 'CPE102',
       title: 'Computer Programming 1',
-      description: 'Fundamental concepts of programming, algorithms, structured code, and problem solving.',
+      deptCode: 'CPE',
       units: 3,
       lecHours: 2,
       labHours: 3,
       prerequisite: 'None',
       yearLevel: '1st Year',
       semester: '1st Semester',
-      departmentId: 'CPE',
+      description: 'Fundamental concepts of programming, algorithms, structured code, and problem solving.',
     },
     {
-      id: 'CPE201',
       code: 'CPE201',
       title: 'Data Structures and Algorithms',
-      description: 'Design, analysis, and implementation of fundamental data structures and algorithmic efficiency.',
+      deptCode: 'CPE',
       units: 3,
       lecHours: 2,
       labHours: 3,
       prerequisite: 'CPE102',
       yearLevel: '2nd Year',
       semester: '1st Semester',
-      departmentId: 'CPE',
+      description: 'Design, analysis, and implementation of fundamental data structures and algorithmic efficiency.',
     },
     {
-      id: 'CE101',
       code: 'CE101',
       title: 'Fundamentals of Surveying',
-      description: 'Theory and practice of measurement of distances, elevations, directions, and topographic mapping.',
+      deptCode: 'CE',
       units: 3,
       lecHours: 2,
       labHours: 3,
       prerequisite: 'None',
       yearLevel: '1st Year',
       semester: '1st Semester',
-      departmentId: 'CE',
+      description: 'Theory and practice of measurement of distances, elevations, directions, and topographic mapping.',
     },
     {
-      id: 'ECE101',
       code: 'ECE101',
       title: 'Electronic Devices and Circuits',
-      description: 'Solid state electronic physics, semiconductor diodes, BJT and FET characteristics, and power circuits.',
+      deptCode: 'ECE',
       units: 4,
       lecHours: 3,
       labHours: 3,
       prerequisite: 'None',
       yearLevel: '2nd Year',
       semester: '1st Semester',
-      departmentId: 'ECE',
+      description: 'Solid state electronic physics, semiconductor diodes, BJT and FET characteristics, and power circuits.',
     },
     {
-      id: 'IE101',
       code: 'IE101',
       title: 'Engineering Economics',
-      description: 'Concepts of economic equivalence, time value of money, capital financing, and depreciation models.',
+      deptCode: 'IE',
       units: 3,
       lecHours: 3,
       labHours: 0,
       prerequisite: 'None',
       yearLevel: '2nd Year',
       semester: '1st Semester',
-      departmentId: 'IE',
+      description: 'Concepts of economic equivalence, time value of money, capital financing, and depreciation models.',
     },
     {
-      id: 'ME101',
       code: 'ME101',
       title: 'Thermodynamics 1',
-      description: 'First and second laws of thermodynamics, ideal gas processes, and heat engine cycles.',
+      deptCode: 'ME',
       units: 3,
       lecHours: 3,
       labHours: 0,
       prerequisite: 'None',
       yearLevel: '2nd Year',
       semester: '1st Semester',
-      departmentId: 'ME',
+      description: 'First and second laws of thermodynamics, ideal gas processes, and heat engine cycles.',
     },
     {
-      id: 'EE101',
       code: 'EE101',
       title: 'Electric Circuit Theory 1',
-      description: 'DC circuit analysis, Kirchhoff laws, node and mesh methods, Thevenin and Norton theorems.',
+      deptCode: 'EE',
       units: 4,
       lecHours: 3,
       labHours: 3,
       prerequisite: 'None',
       yearLevel: '2nd Year',
       semester: '1st Semester',
-      departmentId: 'EE',
+      description: 'DC circuit analysis, Kirchhoff laws, node and mesh methods, Thevenin and Norton theorems.',
     },
   ];
 
+  const subjectMap = {};
   for (const s of subjectsData) {
-    // Upsert into srvs_subjects
-    await prisma.subject.upsert({
+    const departmentId = deptMap[s.deptCode].id;
+    const subject = await prisma.subject.upsert({
       where: { code: s.code },
-      update: s,
-      create: s,
-    });
-    // Also upsert into srvs_courses for backward compatibility
-    await prisma.course.upsert({
-      where: { code: s.code },
-      update: s,
-      create: s,
-    });
-    console.log(`✓ Seeded Subject [${s.code}] ${s.title} (${s.units} Units, Lec: ${s.lecHours}h, Lab: ${s.labHours}h, Pre: ${s.prerequisite})`);
-  }
-
-  // 5. Seed Student Enrollments for Student 2022012708 (Enrolled in CPE101 and CPE201)
-  const enrollmentsData = [
-    {
-      studentId: '2022012708',
-      courseId: 'CPE101',
-      subjectId: 'CPE101',
-      semester: '1st Semester',
-      academicYear: '2026-2027',
-      section: 'A',
-      status: 'ENROLLED',
-    },
-    {
-      studentId: '2022012708',
-      courseId: 'CPE201',
-      subjectId: 'CPE201',
-      semester: '1st Semester',
-      academicYear: '2026-2027',
-      section: 'A',
-      status: 'ENROLLED',
-    },
-  ];
-
-  for (const enroll of enrollmentsData) {
-    const existing = await prisma.enrollment.findFirst({
-      where: {
-        studentId: enroll.studentId,
-        courseId: enroll.courseId,
-        semester: enroll.semester,
-        academicYear: enroll.academicYear,
+      update: {
+        title: s.title,
+        description: s.description,
+        units: s.units,
+        lecHours: s.lecHours,
+        labHours: s.labHours,
+        prerequisite: s.prerequisite,
+        yearLevel: s.yearLevel,
+        semester: s.semester,
+        departmentId,
+      },
+      create: {
+        code: s.code,
+        title: s.title,
+        description: s.description,
+        units: s.units,
+        lecHours: s.lecHours,
+        labHours: s.labHours,
+        prerequisite: s.prerequisite,
+        yearLevel: s.yearLevel,
+        semester: s.semester,
+        departmentId,
       },
     });
 
-    if (!existing) {
-      await prisma.enrollment.create({ data: enroll });
+    subjectMap[s.code] = subject;
+    console.log(`✓ Seeded Subject: [PK ID: ${subject.id} | ${subject.code}] ${subject.title} (${subject.units} Units)`);
+  }
+
+  // 5. Seed Student Enrolled Subjects
+  const studentGian = userMap['2022012708'];
+  if (studentGian && subjectMap['CPE101'] && subjectMap['CPE201']) {
+    const enrollmentsToSeed = [
+      {
+        studentId: studentGian.id,
+        subjectId: subjectMap['CPE101'].id,
+        semester: '1st Semester',
+        academicYear: '2026-2027',
+        section: 'A',
+        status: 'ENROLLED',
+      },
+      {
+        studentId: studentGian.id,
+        subjectId: subjectMap['CPE201'].id,
+        semester: '1st Semester',
+        academicYear: '2026-2027',
+        section: 'A',
+        status: 'ENROLLED',
+      },
+    ];
+
+    for (const enr of enrollmentsToSeed) {
+      await prisma.enrollment.upsert({
+        where: {
+          studentId_subjectId_semester_academicYear: {
+            studentId: enr.studentId,
+            subjectId: enr.subjectId,
+            semester: enr.semester,
+            academicYear: enr.academicYear,
+          },
+        },
+        update: { section: enr.section, status: enr.status },
+        create: enr,
+      });
+      console.log(`✓ Enrolled Student ${studentGian.fullName} into Subject ID: ${enr.subjectId}`);
     }
-    console.log(`✓ Seeded Enrollment: Student ${enroll.studentId} enrolled in ${enroll.courseId} (AY ${enroll.academicYear})`);
   }
 
-  // 6. Seed Approved Syllabus for CPE101 with uploadedByUserId = '10001' (UserID, NOT string name)
-  const cpe101Syllabus = await prisma.syllabus.upsert({
-    where: { id: 'cpe101-approved-syllabus' },
-    update: {
-      status: 'ACTIVE',
-      currentVersionNumber: 1,
-      uploadedByUserId: '10001', // User ID of Dept Head
-      createdById: '10001',
-      instructorId: '10002', // Faculty User ID
-    },
-    create: {
-      id: 'cpe101-approved-syllabus',
-      courseId: 'CPE101',
-      subjectId: 'CPE101',
-      instructorId: '10002', // User ID of Faculty
-      createdById: '10001',  // User ID of Creator
-      uploadedByUserId: '10001', // User ID of Uploader (NOT string name)
-      departmentId: 'CPE',
-      academicYear: '2026-2027',
-      semester: '1st Semester',
-      section: 'A',
-      status: 'ACTIVE',
-      currentVersionNumber: 1,
-      submittedAt: new Date(),
-      reviewedAt: new Date(),
-      reviewedByUserId: '10001',
-      reviewerRemarks: 'Approved official syllabus for academic year 2026-2027.',
-    },
-  });
+  // 6. Seed Official Active Syllabus for CPE101
+  const deptHeadUser = userMap['10001'];
+  const cpe101 = subjectMap['CPE101'];
 
-  await prisma.syllabusVersion.upsert({
-    where: {
-      syllabusId_versionNumber: {
-        syllabusId: cpe101Syllabus.id,
-        versionNumber: 1,
-      },
-    },
-    update: {
-      approvalStatus: 'APPROVED',
-      uploadedByUserId: '10001', // User ID
-    },
-    create: {
-      syllabusId: cpe101Syllabus.id,
-      versionNumber: 1,
-      editorId: '10001',
-      uploadedByUserId: '10001', // User ID of Uploader
-      changeSummary: 'Official curriculum syllabus upload and approval',
-      changeType: 'Approve',
-      statusAtSave: 'APPROVED',
-      approvalStatus: 'APPROVED',
-      fileName: 'CPE101_Official_Syllabus_2026.pdf',
-      fileType: 'PDF',
-      fileSize: 2048576,
-      submittedById: '10001',
-      submittedAt: new Date(),
-      reviewedById: '10001',
-      reviewedAt: new Date(),
-      content: {
-        courseDescription: 'Foundations of computer engineering, digital logic, ethics, and computing paradigms.',
-        learningOutcomes: [
-          'Understand fundamental computer engineering disciplines and career pathways.',
-          'Analyze basic combinational and sequential digital logic systems.',
-          'Formulate and execute problem-solving methodologies using computing tools.',
-        ],
-        topics: [
-          { week: 1, topic: 'Introduction to Computer Engineering & Professional Ethics' },
-          { week: 2, topic: 'Number Systems, Binary Arithmetic, and Codes' },
-          { week: 3, topic: 'Boolean Algebra and Logic Gates' },
-          { week: 4, topic: 'Combinational Logic Circuit Design' },
-        ],
-        references: [
-          'Mano, M. M. (2020). Digital Design: With an Introduction to the Verilog HDL.',
-          'Patterson, D. A., & Hennessy, J. L. (2021). Computer Organization and Design.',
-        ],
-        gradingSystem: [
-          { component: 'Major Exams (Prelim, Midterm, Semi, Final)', weight: 50 },
-          { component: 'Quizzes & Assignments', weight: 25 },
-          { component: 'Laboratory & Mini-Projects', weight: 25 },
-        ],
-        schedule: 'MWF 09:00 AM - 10:00 AM',
-      },
-    },
-  });
-  console.log(`✓ Seeded Approved Syllabus for CPE101 (uploadedByUserId: 10001)`);
+  if (deptHeadUser && cpe101) {
+    const existingSyllabus = await prisma.syllabus.findFirst({
+      where: { subjectId: cpe101.id },
+    });
 
-  // 7. Seed Initial Audit Log
-  await prisma.auditLog.create({
-    data: {
-      userId: '00000',
-      userDisplayName: 'System Administrator',
-      actionType: 'SystemInitialization',
-      resultStatus: 'Success',
-      description: 'Database initialized with Subject table, segregated users (Admin, DeptHead, Faculty, Students), and student enrolled subjects.',
-      entityType: 'System',
-      entityId: 'Init',
-    },
-  });
-  console.log('✓ Seeded Initial Audit Log');
+    let syllabus = existingSyllabus;
+    if (!syllabus) {
+      syllabus = await prisma.syllabus.create({
+        data: {
+          subjectId: cpe101.id,
+          instructorId: deptHeadUser.id,
+          createdById: deptHeadUser.id,
+          uploadedByUserId: '10001', // Stored by University ID Number, NOT name
+          departmentId: deptMap['CPE'].id,
+          academicYear: '2026-2027',
+          semester: '1st Semester',
+          section: 'A',
+          status: 'ACTIVE',
+          currentVersionNumber: 1,
+          reviewedAt: new Date(),
+          reviewerRemarks: 'Approved official syllabus version for 1st Semester 2026-2027',
+        },
+      });
+      console.log(`✓ Created Active Syllabus (PK ID: ${syllabus.id}) for CPE101 (Uploaded by User ID: 10001)`);
+    }
 
-  console.log('✅ SRVS database seeding completed successfully!');
+    const existingVersion = await prisma.syllabusVersion.findFirst({
+      where: { syllabusId: syllabus.id, versionNumber: 1 },
+    });
+
+    if (!existingVersion) {
+      await prisma.syllabusVersion.create({
+        data: {
+          syllabusId: syllabus.id,
+          versionNumber: 1,
+          editorId: deptHeadUser.id,
+          uploadedByUserId: '10001',
+          changeSummary: 'Initial curriculum-approved syllabus release for academic year 2026-2027',
+          changeType: 'Create',
+          statusAtSave: 'APPROVED',
+          approvalStatus: 'APPROVED',
+          content: {
+            courseDescription: cpe101.description,
+            learningOutcomes: [
+              'Understand computer engineering principles and hardware architecture fundamentals.',
+              'Analyze basic digital logic circuits, number representations, and memory units.',
+              'Adhere to professional and ethical standards in computer engineering practice.',
+            ],
+            topics: [
+              'Week 1: Orientation, USJ-R Vision/Mission, and Introduction to Computer Engineering',
+              'Week 2-4: Fundamentals of Number Systems, Boolean Algebra, and Logic Gates',
+              'Week 5-7: Combinational Logic Circuits and Adders',
+              'Week 8-9: Midterm Examinations and System Architecture Overviews',
+              'Week 10-14: Sequential Logic, Latches, Flip-Flops, and Memory Registers',
+              'Week 15-17: Ethical Paradigms, Microprocessors, and Emerging Technologies',
+              'Week 18: Final Course Project Presentation and Evaluation',
+            ],
+            references: [
+              'Patterson, D. A., & Hennessy, J. L. Computer Organization and Design (6th ed.).',
+              'Mano, M. M., & Ciletti, M. D. Digital Design: With an Introduction to the Verilog HDL (6th ed.).',
+              'USJ-R Department of Computer Engineering Syllabus Guidelines (2026).',
+            ],
+            gradingSystem: [
+              'Major Examinations: 40%',
+              'Laboratory / Technical Projects: 30%',
+              'Quizzes & Homework: 20%',
+              'Class Participation & Ethics: 10%',
+            ],
+            schedule: 'MWF 09:00 AM - 10:00 AM / Engineering Lab 201',
+          },
+          submittedById: deptHeadUser.id,
+          submittedAt: new Date(),
+          reviewedById: deptHeadUser.id,
+          reviewedAt: new Date(),
+        },
+      });
+      console.log(`✓ Created Approved Syllabus Version 1 for Syllabus ID: ${syllabus.id}`);
+    }
+  }
+
+  console.log('\n🎉 Database seeding completed successfully with all Integer PK IDs and Segregated Tables!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding error:', e);
+    console.error('❌ Error during seeding:', e);
     process.exit(1);
   })
   .finally(async () => {

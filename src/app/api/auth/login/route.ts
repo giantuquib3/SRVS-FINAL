@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { id: idInput },
+          { idNumber: idInput },
           { email: idInput.toLowerCase() },
         ],
       },
@@ -80,8 +80,9 @@ export async function POST(req: NextRequest) {
     // Create session token
     const token = await signToken({
       id: user.id,
+      idNumber: user.idNumber,
       email: user.email,
-      username: user.id,
+      username: user.idNumber,
       fullName: user.fullName,
       role: user.role,
       departmentId: user.departmentId,
@@ -105,7 +106,8 @@ export async function POST(req: NextRequest) {
       success: true,
       user: {
         id: user.id,
-        username: user.id,
+        idNumber: user.idNumber,
+        username: user.idNumber,
         email: user.email,
         fullName: user.fullName,
         role: user.role,
