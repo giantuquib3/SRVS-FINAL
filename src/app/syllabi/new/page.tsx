@@ -213,8 +213,9 @@ export default function NewSyllabusPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div className="flex items-center space-x-3">
           <Link
-            href={currentUser?.role === 'DepartmentHead' ? '/dept/dashboard' : '/educator/dashboard'}
-            className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm"
+            href="/courses"
+            className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm flex items-center justify-center"
+            title="Back to Courses"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
@@ -621,6 +622,12 @@ export default function NewSyllabusPage() {
               Drafts are strictly private to you. Submitting for approval routes this syllabus to your Department Head.
             </div>
             <div className="flex items-center space-x-2.5">
+              <Link
+                href="/courses"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors"
+              >
+                <span>Cancel</span>
+              </Link>
               <button
                 type="button"
                 disabled={submitting}

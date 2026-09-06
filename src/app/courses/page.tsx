@@ -140,16 +140,6 @@ export default function CoursesPage() {
               <span>Create / Upload Syllabus</span>
             </Link>
           )}
-
-          {canCreateCourse && (
-            <button
-              onClick={() => setModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 text-[#FEF08A]" />
-              <span>Create Course / Subject</span>
-            </button>
-          )}
         </div>
       </div>
 
