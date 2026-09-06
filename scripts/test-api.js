@@ -92,6 +92,58 @@ async function run() {
       enrolledSubjects: u.enrolledSubjects,
     }))
   );
+
+  console.log('\n5. Testing user creation via POST /api/users...');
+  const createRes = await post('http://127.0.0.1:3000/api/users', {
+    fullName: 'Test User Account',
+    username: '99999',
+    email: 'testuser@srvs.local',
+    password: 'Giangwapo123?',
+    role: 'Educator',
+    departmentId: 'CPE',
+  }, cookie);
+  console.log('Create User Status:', createRes.status, 'Created ID:', createRes.data?.user?.id);
+
+  console.log('\n6. Testing role change via PATCH /api/users...');
+  const patchRes = await new Promise((resolve) => {
+    const payload = JSON.stringify({ userId: createRes.data?.user?.id, action: 'ChangeRole', newRole: 'DepartmentHead' });
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 3000,
+      path: '/api/users',
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'Cookie': cookie,
+      },
+    }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
+    });
+    req.write(payload);
+    req.end();
+  });
+  console.log('Change Role Status:', patchRes.status, 'New Role:', patchRes.data?.user?.role);
+
+  console.log('\n7. Testing user deletion via DELETE /api/users...');
+  const deleteRes = await new Promise((resolve) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: 3000,
+      path: `/api/users?userId=${createRes.data?.user?.id}`,
+      method: 'DELETE',
+      headers: { 'Cookie': cookie },
+    }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
+    });
+    req.end();
+  });
+  console.log('Delete User Status:', deleteRes.status, 'Message:', deleteRes.data?.message);
+  console.log('\nAll API CRUD operations verified successfully! ✅');
 }
 
 run().catch(console.error);

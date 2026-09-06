@@ -292,8 +292,61 @@ export async function PATCH(req: NextRequest) {
       if (user.role !== 'Admin') {
         return NextResponse.json({ error: 'Only administrators may change user roles.' }, { status: 403 });
       }
-      if (newRole) {
+      if (newRole && newRole !== targetUser.role) {
         updatedRole = newRole;
+
+        // Synchronize segregated role tables
+        await prisma.$transaction(async (tx) => {
+          // Remove old role profile
+          if (targetUser.role === 'Admin') await tx.admin.deleteMany({ where: { userId: targetUser.id } });
+          if (targetUser.role === 'DepartmentHead') await tx.departmentHead.deleteMany({ where: { userId: targetUser.id } });
+          if (targetUser.role === 'Educator') await tx.faculty.deleteMany({ where: { userId: targetUser.id } });
+          if (targetUser.role === 'Student') await tx.student.deleteMany({ where: { userId: targetUser.id } });
+
+          // Create new role profile
+          const deptCode = targetUser.department?.code || 'CPE';
+          if (newRole === 'Admin') {
+            await tx.admin.create({
+              data: {
+                userId: targetUser.id,
+                adminNumber: targetUser.idNumber,
+                fullName: targetUser.fullName,
+                email: targetUser.email,
+              },
+            });
+          } else if (newRole === 'DepartmentHead') {
+            await tx.departmentHead.create({
+              data: {
+                userId: targetUser.id,
+                employeeId: targetUser.idNumber,
+                fullName: targetUser.fullName,
+                email: targetUser.email,
+                department: deptCode,
+              },
+            });
+          } else if (newRole === 'Educator') {
+            await tx.faculty.create({
+              data: {
+                userId: targetUser.id,
+                employeeId: targetUser.idNumber,
+                fullName: targetUser.fullName,
+                email: targetUser.email,
+                department: deptCode,
+              },
+            });
+          } else if (newRole === 'Student') {
+            await tx.student.create({
+              data: {
+                userId: targetUser.id,
+                studentIdNumber: targetUser.idNumber,
+                fullName: targetUser.fullName,
+                email: targetUser.email,
+                department: deptCode,
+                enrolledSubjects: '',
+              },
+            });
+          }
+        });
       }
     }
 
@@ -319,5 +372,62 @@ export async function PATCH(req: NextRequest) {
   } catch (error: any) {
     console.error('Error updating user:', error);
     return NextResponse.json({ error: error.message || 'Failed to update user.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = await getSessionFromRequest(req);
+    if (!user || user.role !== 'Admin') {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const userIdParam = searchParams.get('userId');
+    if (!userIdParam) {
+      return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
+    }
+
+    const numericId = Number(userIdParam);
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { idNumber: userIdParam },
+          { id: isNaN(numericId) ? -1 : numericId },
+        ],
+      },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    }
+
+    if (targetUser.id === Number(user.id)) {
+      return NextResponse.json({ error: 'Cannot delete your own administrator account.' }, { status: 400 });
+    }
+
+    // Delete user (cascades to segregated role profiles and enrollments)
+    await prisma.user.delete({
+      where: { id: targetUser.id },
+    });
+
+    await logAuditEvent({
+      userId: user.id,
+      userDisplayName: user.fullName,
+      actionType: 'DeleteUser',
+      resultStatus: 'Success',
+      description: `Deleted user account ${targetUser.fullName} (${targetUser.email}, ID: ${targetUser.idNumber})`,
+      entityType: 'User',
+      entityId: targetUser.id,
+      ipAddress: req.ip || '127.0.0.1',
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Account for ${targetUser.fullName} deleted successfully.`,
+    });
+  } catch (error: any) {
+    console.error('Error deleting user:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete user.' }, { status: 500 });
   }
 }
