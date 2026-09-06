@@ -199,7 +199,7 @@ export default function SyllabusReviewPage() {
 
         {/* Action Decision Buttons */}
         <div className="flex items-center space-x-2">
-          {isPending && !isSelfSubmission && (
+          {isPending && (
             <>
               <button
                 onClick={() => setRejectModalOpen(true)}
@@ -249,14 +249,14 @@ export default function SyllabusReviewPage() {
         </div>
       )}
 
-      {/* Self-Approval Prohibition Warning Banner */}
+      {/* Department Head Teaching Faculty Notice Banner */}
       {isSelfSubmission && isPending && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start space-x-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-start space-x-3">
+          <CheckCircle2 className="w-5 h-5 text-[#005A36] shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h4 className="font-bold">Self-Approval Strictly Prohibited</h4>
-            <p className="text-amber-800 leading-relaxed">
-              You are the instructor or submitter of this syllabus. Under USJ-R SRVS institutional policy, a Department Head cannot approve their own syllabus. This review request must be evaluated and approved by another Department Head or an authorized Administrator.
+            <h4 className="font-bold text-[#005A36]">Department Head & Course Instructor</h4>
+            <p className="text-emerald-900 leading-relaxed">
+              You are the instructor of this syllabus for your department. As Department Head, you are authorized to review and approve your syllabus for student access.
             </p>
           </div>
         </div>

@@ -216,6 +216,13 @@ export default function Navbar() {
                   >
                     Enrollments
                   </Link>
+                  <Link
+                    href="/syllabi/new"
+                    className="px-3 py-1.5 rounded-lg bg-[#C99700] hover:bg-[#B48600] text-slate-950 font-bold flex items-center space-x-1.5 transition-all shadow"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Create / Upload Syllabus</span>
+                  </Link>
                 </>
               )}
 

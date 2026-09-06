@@ -84,11 +84,18 @@ export default function DeptHeadDashboard() {
             <span>Review Approvals {stats.pendingApprovals ? `(${stats.pendingApprovals})` : ''}</span>
           </Link>
           <Link
-            href="/courses"
+            href="/syllabi/new"
             className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-1.5"
           >
             <PlusCircle className="w-4 h-4 text-[#FEF08A]" />
-            <span>Add Course</span>
+            <span>Create / Upload Syllabus</span>
+          </Link>
+          <Link
+            href="/courses"
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm transition-all flex items-center space-x-1.5"
+          >
+            <BookOpen className="w-4 h-4 text-[#005A36]" />
+            <span>Courses</span>
           </Link>
         </div>
       </div>

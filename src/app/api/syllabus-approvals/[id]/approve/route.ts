@@ -49,16 +49,10 @@ export async function POST(
       }, { status: 403 });
     }
 
-    // 2. Self-Approval Prevention Check
+    // 2. Department Head Teaching Faculty Check (Self-Approval Permitted)
     const isSelfSubmission =
       user.id === version.submittedById ||
       user.id === version.syllabus.instructorId;
-
-    if (isSelfSubmission) {
-      return NextResponse.json({
-        error: 'Self-approval is strictly prohibited. Syllabi submitted by a Department Head must be reviewed and approved by another authorized reviewer or administrator.',
-      }, { status: 403 });
-    }
 
     // 3. Status Check
     if (version.approvalStatus !== 'PENDING_APPROVAL') {

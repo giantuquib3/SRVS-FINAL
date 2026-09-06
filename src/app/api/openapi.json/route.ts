@@ -839,7 +839,7 @@ Deep inspection of a submitted syllabus version.
 Department Head approves a pending syllabus version.
 - **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
 - **Department Authorization**: Verifies syllabus belongs to reviewer's authorized department.
-- **Self-Approval Prevention**: Enforces institutional policy — Department Heads CANNOT approve their own syllabus submissions.
+- **Teaching Faculty Authorization**: Department Heads are also faculty members at USJ-R and are authorized to upload, create, review, and approve their own teaching syllabi for their department.
 - **Atomic Transaction**:
   1. Sets version \`approvalStatus\` to \`APPROVED\`.
   2. Updates syllabus \`currentVersionNumber\` to this version number.
@@ -870,7 +870,7 @@ Department Head approves a pending syllabus version.
             },
             400: { description: 'Version is not pending approval' },
             401: { description: 'Unauthorized' },
-            403: { description: 'Forbidden: Self-approval prohibited OR department unauthorized' },
+            403: { description: 'Forbidden: Department unauthorized' },
             404: { description: 'Approval request version not found' },
           },
         },
@@ -883,7 +883,7 @@ Department Head approves a pending syllabus version.
 Department Head rejects a pending syllabus version with required feedback remarks.
 - **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
 - **Mandatory Reason**: Requires \`rejectionReason\` (minimum 5 characters).
-- **Self-Review Prevention**: Enforces policy against self-reviewing.
+- **Teaching Faculty Review**: Department Heads can also return revisions for courses in their department.
 - **Revision Rule**: Does NOT modify syllabus \`currentVersionNumber\`. Previously approved version remains visible to students.
 - **Atomic Transaction**:
   1. Sets version \`approvalStatus\` to \`REJECTED\`.
