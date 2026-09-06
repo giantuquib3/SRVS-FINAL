@@ -1,0 +1,655 @@
+import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const openApiSpec = {
+    openapi: '3.0.3',
+    info: {
+      title: 'USJ-R SRVS API Documentation — Role & Permission Specifications',
+      version: '1.1.0',
+      description: `
+# University of San Jose - Recoletos (USJ-R)
+### Syllabus Repository, Revision and Versioning System (SRVS)
+
+This API documentation is organized by **User Roles and Permissions** matching institutional workflows:
+
+1. **User Authentication & Identity**: Registration, login, JWT token management, account status lifecycle, and password hashing.
+2. **System Administrator**: Full system control, account creation, registration approvals, department management, and security audit logs.
+3. **Department Head**: Departmental curriculum management, course catalogs, student enrollment approvals, syllabus reviews, and announcements.
+4. **Educator (Faculty)**: Course syllabus drafting, non-destructive sequential versioning, version history diffs, and rollback restoration.
+5. **Student**: Enrolled course access, viewing approved current syllabus versions, notifications, and departmental announcements.
+6. **System & Database Health**: PostgreSQL connection latency, live table counts, and database engine diagnostics.
+      `.trim(),
+      contact: {
+        name: 'USJ-R SRVS System Administrator',
+        email: 'admin@srvs.local',
+      },
+    },
+    servers: [
+      { url: 'http://localhost:3000', description: 'Local Server (Port 3000)' },
+      { url: 'http://localhost:3001', description: 'Local Server (Port 3001)' },
+    ],
+    tags: [
+      {
+        name: '1. User Authentication & Identity',
+        description: 'User registration, login, logout, password hashing, and account status checking (Pending, Approved, Rejected).',
+      },
+      {
+        name: '2. Role: System Administrator',
+        description: 'Manage user accounts, approve Department Head registrations, manage departments, and inspect system audit logs.',
+      },
+      {
+        name: '3. Role: Department Head',
+        description: 'Manage department courses, approve Educator & Student registrations, manage enrollments, review syllabi, and broadcast announcements.',
+      },
+      {
+        name: '4. Role: Educator (Faculty)',
+        description: 'Create syllabi, edit syllabi with mandatory change summaries, increment immutable version snapshots, and restore older versions.',
+      },
+      {
+        name: '5. Role: Student',
+        description: 'View enrolled courses, access current approved syllabus versions, and receive departmental announcements.',
+      },
+      {
+        name: '6. System & PostgreSQL Database',
+        description: 'PostgreSQL database connectivity, schema table counts, and real-time latency monitoring.',
+      },
+    ],
+    paths: {
+      // =========================================================================
+      // 1. USER AUTHENTICATION & IDENTITY
+      // =========================================================================
+      '/api/auth/register': {
+        post: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'User Registration (Self-Service)',
+          description: `
+Registers a new user account with strict ID Number format enforcement:
+- **Student**: Requires exactly **10 digits** (e.g., \`2022012708\`)
+- **Educator (Faculty)**: Requires exactly **5 digits** (e.g., \`10001\`)
+Passwords are automatically hashed using **bcrypt** (salt rounds: 10).
+New accounts default to **PendingApproval** status awaiting review.
+          `.trim(),
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['firstName', 'lastName', 'username', 'email', 'password', 'role', 'departmentId'],
+                  properties: {
+                    firstName: { type: 'string', example: 'Gian' },
+                    lastName: { type: 'string', example: 'Carlo' },
+                    username: {
+                      type: 'string',
+                      example: '2022012708',
+                      description: 'University ID Number: 10 digits for Student, 5 digits for Educator',
+                    },
+                    email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph' },
+                    password: { type: 'string', minLength: 6, example: 'Password123!' },
+                    role: { type: 'string', enum: ['Student', 'Educator'], example: 'Student' },
+                    departmentId: { type: 'string', description: 'Department ID from /api/departments' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Registration submitted successfully (Status: PendingApproval)' },
+            400: { description: 'Invalid input or invalid ID number digit count' },
+            409: { description: 'Account with this ID number or email already exists' },
+          },
+        },
+      },
+      '/api/auth/login': {
+        post: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'User Sign In (ID Number & Password)',
+          description: `
+Authenticates a user via their **University ID Number** (username) and password:
+- Validates 5 digits (Faculty/Admin) or 10 digits (Students)
+- Compares password against bcrypt hash in PostgreSQL
+- Checks account status (blocks \`PendingApproval\`, \`Rejected\`, \`Deactivated\`)
+- Issues signed JWT session token stored in an **HTTP-only, Secure cookie** (\`srvs_token\`)
+          `.trim(),
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['username', 'password'],
+                  properties: {
+                    username: {
+                      type: 'string',
+                      example: '00000',
+                      description: '5-digit ID (Admin/Faculty/Dept Head) or 10-digit ID (Student)',
+                    },
+                    password: { type: 'string', format: 'password', example: 'admin123' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Successful authentication; returns session user and sets cookie',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      user: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          username: { type: 'string', example: '00000' },
+                          email: { type: 'string', example: 'admin@srvs.local' },
+                          fullName: { type: 'string', example: 'System Administrator' },
+                          role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
+                          departmentName: { type: 'string', example: 'Computer Engineering' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing credentials or invalid ID number format' },
+            401: { description: 'Invalid username or password' },
+            403: { description: 'Account pending approval or deactivated' },
+          },
+        },
+      },
+      '/api/auth/me': {
+        get: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'Check Current Session & Account Status',
+          description: 'Validates JWT token and returns the current user profile, role permissions, and department info.',
+          responses: {
+            200: { description: 'Active authenticated session profile' },
+            401: { description: 'Unauthenticated or expired token' },
+          },
+        },
+      },
+      '/api/auth/logout': {
+        post: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'User Sign Out',
+          description: 'Clears the authentication session cookie and logs out the user.',
+          responses: {
+            200: { description: 'Logged out successfully' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 2. ROLE: SYSTEM ADMINISTRATOR
+      // =========================================================================
+      '/api/users': {
+        get: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Manage Users: Query All Accounts',
+          description: 'System Administrator lists all users with filtering by role, status, or search term (name/email/ID number).',
+          parameters: [
+            { name: 'role', in: 'query', schema: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] } },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['Active', 'PendingApproval', 'Rejected', 'Deactivated'] } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'List of user accounts' },
+            403: { description: 'Unauthorized' },
+          },
+        },
+        post: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Manage Users: Create User Account',
+          description: 'Administrator creates a user account with role-enforced University ID Number (5 digits for Staff/Admin, 10 digits for Student).',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['fullName', 'username', 'email', 'password', 'role'],
+                  properties: {
+                    fullName: { type: 'string', example: 'Engr. Juan Dela Cruz' },
+                    username: { type: 'string', example: '10001', description: '5 digits for Staff/Admin, 10 digits for Student' },
+                    email: { type: 'string', format: 'email', example: 'jdelacruz@usjr.edu.ph' },
+                    password: { type: 'string', minLength: 6, example: 'TempPass123!' },
+                    role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
+                    departmentId: { type: 'string', nullable: true },
+                    accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Deactivated'], default: 'Active' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'User account created' },
+            400: { description: 'Validation error or duplicate ID number' },
+            403: { description: 'Forbidden' },
+          },
+        },
+        patch: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Manage Users: Update Role & Approve/Reject Status',
+          description: 'Approve or reject Department Head registrations, modify system roles, or activate/deactivate accounts.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['userId'],
+                  properties: {
+                    userId: { type: 'string' },
+                    role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
+                    accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Rejected', 'Deactivated'] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'User account updated successfully' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/api/departments': {
+        get: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Manage Engineering Departments',
+          description: 'List the 6 institutional engineering departments (CE, CPE, ECE, EE, IE, ME) and course counts.',
+          responses: {
+            200: { description: 'List of departments' },
+          },
+        },
+      },
+      '/api/audit-logs': {
+        get: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'View System-Wide Audit Logs',
+          description: 'Inspect complete system activity and security log entries recording all logins, creations, revisions, and status changes.',
+          parameters: [
+            { name: 'actionType', in: 'query', schema: { type: 'string' } },
+            { name: 'resultStatus', in: 'query', schema: { type: 'string' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'Audit trail records' },
+            403: { description: 'Unauthorized' },
+          },
+        },
+      },
+      '/api/dashboard/stats': {
+        get: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Monitor System Activity & Analytics',
+          description: 'Live real-time statistics computed directly from PostgreSQL for users, pending approvals, syllabi, and versions.',
+          responses: {
+            200: { description: 'System metrics' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 3. ROLE: DEPARTMENT HEAD
+      // =========================================================================
+      '/api/courses': {
+        get: {
+          tags: ['3. Role: Department Head'],
+          summary: 'View Department Courses Catalog',
+          parameters: [
+            { name: 'departmentId', in: 'query', schema: { type: 'string' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'List of courses' },
+          },
+        },
+        post: {
+          tags: ['3. Role: Department Head'],
+          summary: 'Create Course in Department',
+          description: 'Department Head creates a new course/subject with unique course code validation.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['code', 'title', 'departmentId'],
+                  properties: {
+                    code: { type: 'string', example: 'CPE301' },
+                    title: { type: 'string', example: 'Operating Systems' },
+                    description: { type: 'string', example: 'Operating system structures and concurrency.' },
+                    departmentId: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Course created' },
+            400: { description: 'Duplicate course code or invalid fields' },
+          },
+        },
+      },
+      '/api/enrollments': {
+        get: {
+          tags: ['3. Role: Department Head'],
+          summary: 'Manage Student Enrollments: List All',
+          parameters: [
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { name: 'semester', in: 'query', schema: { type: 'string' } },
+            { name: 'academicYear', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'List of enrollments with student and course details' },
+          },
+        },
+        post: {
+          tags: ['3. Role: Department Head'],
+          summary: 'Manage Student Enrollments: Enroll Student in Course',
+          description: 'Enrolls a student in a course subject with duplicate prevention.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['studentId', 'courseId', 'semester', 'academicYear'],
+                  properties: {
+                    studentId: { type: 'string' },
+                    courseId: { type: 'string' },
+                    semester: { type: 'string', example: '1st Semester' },
+                    academicYear: { type: 'string', example: '2026-2027' },
+                    section: { type: 'string', default: 'A' },
+                    status: { type: 'string', default: 'ENROLLED' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Student enrolled' },
+            409: { description: 'Student already enrolled in this course for this term' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/review': {
+        post: {
+          tags: ['3. Role: Department Head'],
+          summary: 'Review Syllabus: Approve or Reject',
+          description: 'Department Head reviews submitted syllabus and updates status to Approved or Rejected with feedback remarks.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['action'],
+                  properties: {
+                    action: { type: 'string', enum: ['Approve', 'Reject'] },
+                    reviewerRemarks: { type: 'string', example: 'Approved. Meets USJ-R curriculum standards.' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Syllabus reviewed successfully; instructor notified' },
+          },
+        },
+      },
+      '/api/announcements': {
+        get: {
+          tags: ['3. Role: Department Head'],
+          summary: 'View Department Announcements',
+          description: 'Retrieves announcements broadcasted to department faculty and students.',
+          responses: {
+            200: { description: 'List of department announcements' },
+          },
+        },
+        post: {
+          tags: ['3. Role: Department Head'],
+          summary: 'Create & Broadcast Department Announcement',
+          description: 'Department Head broadcasts an announcement alert to all educators and students in their department.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['title', 'message'],
+                  properties: {
+                    title: { type: 'string', example: 'Syllabus Submission Deadline for 1st Semester' },
+                    message: { type: 'string', example: 'All faculty members must submit syllabi for review by Friday.' },
+                    departmentId: { type: 'string', description: 'Defaults to Department Head department' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Announcement broadcasted to all department members' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 4. ROLE: EDUCATOR (FACULTY)
+      // =========================================================================
+      '/api/syllabi': {
+        get: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'View Syllabi List',
+          description: 'Educator views their created syllabi and department syllabi.',
+          parameters: [
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Submitted', 'Approved', 'Rejected'] } },
+            { name: 'departmentId', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            200: { description: 'List of syllabi' },
+          },
+        },
+        post: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'Create Syllabus + Version 1 Snapshot',
+          description: 'Educator creates a new syllabus. Creates master record and initial Version 1 snapshot in a PostgreSQL atomic transaction.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['courseId', 'academicYear', 'semester', 'content'],
+                  properties: {
+                    courseId: { type: 'string' },
+                    academicYear: { type: 'string', example: '2026-2027' },
+                    semester: { type: 'string', example: '1st Semester' },
+                    status: { type: 'string', enum: ['Draft', 'Submitted'], default: 'Draft' },
+                    content: {
+                      type: 'object',
+                      required: ['courseDescription', 'learningOutcomes', 'topics', 'gradingSystem'],
+                      properties: {
+                        courseDescription: { type: 'string' },
+                        learningOutcomes: { type: 'array', items: { type: 'string' } },
+                        topics: { type: 'array', items: { type: 'object', properties: { week: { type: 'number' }, topic: { type: 'string' } } } },
+                        gradingSystem: { type: 'array', items: { type: 'object', properties: { component: { type: 'string' }, weight: { type: 'number' } } } },
+                        references: { type: 'array', items: { type: 'string' } },
+                        schedule: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Syllabus and Version 1 created' },
+          },
+        },
+      },
+      '/api/syllabi/{id}': {
+        get: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'View Syllabus Details and Active Version',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Syllabus details and current version snapshot content' },
+            404: { description: 'Syllabus not found' },
+          },
+        },
+        patch: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'Edit Syllabus: Create New Version Snapshot',
+          description: 'Non-destructively saves modifications by creating a new sequential version snapshot with a mandatory change summary.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['content', 'changeSummary'],
+                  properties: {
+                    changeSummary: { type: 'string', example: 'Updated Week 4 laboratory topics and modified grading criteria.' },
+                    content: { type: 'object' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'New version snapshot created' },
+            400: { description: 'Missing change summary or content' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/submit': {
+        post: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'Submit Syllabus for Department Review',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Status updated to Submitted; Department Head notified' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/versions': {
+        get: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'View Version History & Compare Versions',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Chronological list of all immutable version snapshots' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/restore': {
+        post: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'Restore Older Syllabus Version',
+          description: 'Safe rollback: restores a previous version by creating a new sequential version snapshot rather than deleting history.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['versionNumber'],
+                  properties: {
+                    versionNumber: { type: 'number', example: 1 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Historical version cloned as new current version' },
+          },
+        },
+      },
+      '/api/notifications': {
+        get: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'View In-App Notifications & Alerts',
+          responses: {
+            200: { description: 'List of alerts and unread counts' },
+          },
+        },
+        patch: {
+          tags: ['4. Role: Educator (Faculty)'],
+          summary: 'Mark Notifications as Read',
+          responses: {
+            200: { description: 'Notifications marked read' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 5. ROLE: STUDENT
+      // =========================================================================
+      '/api/students/me/enrollments': {
+        get: {
+          tags: ['5. Role: Student'],
+          summary: 'View Enrolled Subjects',
+          description: 'Returns active enrolled course subjects dynamically mapped to the student account.',
+          responses: {
+            200: { description: 'List of enrolled courses' },
+          },
+        },
+      },
+      '/api/students/me/syllabi/{courseId}': {
+        get: {
+          tags: ['5. Role: Student'],
+          summary: 'View Current Syllabus Version Only',
+          description: 'Students view only the current approved syllabus version for their enrolled course subjects (historical drafts are restricted).',
+          parameters: [{ name: 'courseId', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            200: { description: 'Current approved syllabus document' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 6. SYSTEM & DATABASE HEALTH
+      // =========================================================================
+      '/api/system/db-status': {
+        get: {
+          tags: ['6. System & PostgreSQL Database'],
+          summary: 'PostgreSQL Database Health & Table Inspection',
+          description: 'Live roundtrip latency, connection status, and record counts across all 8 normalized PostgreSQL tables.',
+          responses: {
+            200: {
+              description: 'Database status and metrics',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'healthy' },
+                      database: { type: 'string', example: 'PostgreSQL (Supabase Pooler)' },
+                      latencyMs: { type: 'string', example: '115ms' },
+                      tables: { type: 'object' },
+                      seededAdmin: { type: 'object' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  return NextResponse.json(openApiSpec);
+}

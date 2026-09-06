@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Department {
+  id          String     @id // e.g. CPE, CE, EE, ME, ECE, IE
+  code        String     @unique // CE, CPE, ECE, IE, ME, EE
+  name        String     @unique // Civil Engineering, etc.
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  courses     Course[]
+  users       User[]
+  syllabi     Syllabus[]
+
+  @@map("srvs_departments")
+}
+
+model Course {
+  id           String       @id // e.g. CPE101, CE101
+  code         String       @unique // e.g. CPE101
+  title        String
+  description  String?
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  syllabi      Syllabus[]
+  enrollments  Enrollment[]
+
+  @@map("srvs_courses")
+}
+
+model User {
+  id             String            @id // University ID Number: 00000 (Admin), 5 digits (Faculty/Staff), 10 digits (Student)
+  email          String            @unique
+  passwordHash   String
+  firstName      String            @default("")
+  lastName       String            @default("")
+  fullName       String
+  role           String            @default("Student") // Admin, DepartmentHead, Educator, Student
+  departmentId   String?
+  department     Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  accountStatus  String            @default("Active") // Active, PendingApproval, Rejected, Deactivated
+  createdAt      DateTime          @default(now())
+  lastLoginAt    DateTime?
+  enrollments    Enrollment[]
+  syllabi        Syllabus[]        @relation("InstructorSyllabi")
+  reviewedSyllabi Syllabus[]       @relation("ReviewedSyllabi")
+  editedVersions SyllabusVersion[] @relation("EditorVersions")
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+
+  @@map("srvs_users")
+}
+
+model Enrollment {
+  id           String   @id @default(cuid())
+  studentId    String
+  student      User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId     String
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester     String // 1st Semester, 2nd Semester, Summer Term
+  academicYear String // e.g. 2026-2027
+  section      String   @default("A")
+  status       String   @default("ENROLLED") // ENROLLED, COMPLETED, DROPPED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([studentId, courseId, semester, academicYear])
+  @@map("srvs_enrollments")
+}
+
+model Syllabus {
+  id                   String            @id @default(uuid())
+  courseId             String
+  course               Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructorId         String
+  instructor           User              @relation("InstructorSyllabi", fields: [instructorId], references: [id], onDelete: Cascade)
+  departmentId         String
+  department           Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  academicYear         String
+  semester             String
+  status               String            @default("Draft") // Draft, Submitted, Approved, Rejected
+  currentVersionNumber Int               @default(1)
+  reviewerRemarks      String?
+  submittedAt          DateTime?
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  reviewedBy           User?             @relation("ReviewedSyllabi", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  versions             SyllabusVersion[]
+
+  @@map("srvs_syllabi")
+}
+
+model SyllabusVersion {
+  id            String   @id @default(uuid())
+  syllabusId    String
+  syllabus      Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  editorId      String
+  editor        User     @relation("EditorVersions", fields: [editorId], references: [id])
+  changeSummary String // User-supplied change summary on revisions
+  changeType    String   @default("Create") // Create, Edit, Submit, Approve, Reject, Restore
+  statusAtSave  String   @default("Draft")
+  content       Json // Complete immutable content snapshot
+  createdAt     DateTime @default(now())
+
+  @@unique([syllabusId, versionNumber])
+  @@map("srvs_syllabus_versions")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userDisplayName String?
+  actionType      String // Login, Register, CreateCourse, EnrollStudent, CreateSyllabus, EditSyllabus, etc.
+  resultStatus    String   @default("Success") // Success, Failed, Warning
+  description     String
+  entityType      String?
+  entityId        String?
+  ipAddress       String?
+  createdAt       DateTime @default(now())
+
+  @@map("srvs_audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("srvs_notifications")
+}
