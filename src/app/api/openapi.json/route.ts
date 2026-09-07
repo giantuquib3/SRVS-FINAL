@@ -6,20 +6,24 @@ export async function GET() {
   const openApiSpec = {
     openapi: '3.0.3',
     info: {
-      title: 'USJ-R SRVS API Documentation — Role & Permission Specifications',
-      version: '1.1.0',
+      title: 'USJ-R SRVS API Documentation — Complete Role, Permission & Endpoint Specifications',
+      version: '1.2.0',
       description: `
 # University of San Jose - Recoletos (USJ-R)
-### Syllabus Repository, Revision and Versioning System (SRVS)
+### Syllabus Repository, Revision and Versioning System (SRVS) — Official API Reference
 
-This API documentation is organized by **User Roles and Permissions** matching institutional workflows:
+This interactive OpenAPI documentation provides complete, executable specifications for every endpoint in the SRVS backend.
 
-1. **User Authentication & Identity**: Registration, login, JWT token management, account status lifecycle, and password hashing.
-2. **System Administrator**: Full system control, account creation, registration approvals, department management, and security audit logs.
-3. **Department Head**: Departmental curriculum management, course catalogs, student enrollment approvals, syllabus reviews, and announcements.
-4. **Educator (Faculty)**: Course syllabus drafting, non-destructive sequential versioning, version history diffs, and rollback restoration.
-5. **Student**: Enrolled course access, viewing approved current syllabus versions, notifications, and departmental announcements.
-6. **System & Database Health**: PostgreSQL connection latency, live table counts, and database engine diagnostics.
+### Authentication & Authorization Workflow
+- **Authentication Mechanism**: Session-based JSON Web Tokens (JWT) stored in HTTP-only, Secure \`srvs_token\` cookies.
+- **ID Number Standards**:
+  - **Students**: Exactly 10 digits (e.g., \`2022012708\`)
+  - **Faculty / Educators, Department Heads, System Administrators**: Exactly 5 digits (e.g., \`00000\`, \`10001\`)
+- **Role Hierarchy**:
+  1. **Admin**: System-wide administrative permissions, user role management, account approvals/deactivations, audit inspection.
+  2. **DepartmentHead**: Department-scoped course and curriculum management, enrollment assignments, syllabus approval/rejection with mandatory feedback.
+  3. **Educator**: Syllabus drafting, document uploads (PDF/DOCX), sequential version creation, revision tracking, version rollback.
+  4. **Student**: Access to active approved syllabi for actively enrolled subjects, departmental notifications.
       `.trim(),
       contact: {
         name: 'USJ-R SRVS System Administrator',
@@ -27,47 +31,157 @@ This API documentation is organized by **User Roles and Permissions** matching i
       },
     },
     servers: [
-      { url: 'http://localhost:3000', description: 'Local Server (Port 3000)' },
-      { url: 'http://localhost:3001', description: 'Local Server (Port 3001)' },
+      { url: 'http://localhost:3000', description: 'Primary Server (Port 3000)' },
+      { url: 'http://localhost:3001', description: 'Secondary Server (Port 3001)' },
     ],
     tags: [
       {
         name: '1. User Authentication & Identity',
-        description: 'User registration, login, logout, password hashing, and account status checking (Pending, Approved, Rejected).',
+        description: 'User registration, login, logout, password reset, session identity, and bcrypt credential management.',
       },
       {
         name: '2. Role: System Administrator',
-        description: 'Manage user accounts, approve Department Head registrations, manage departments, and inspect system audit logs.',
+        description: 'Manage institutional user accounts, approve/deactivate registrations, manage academic departments, and inspect security audit logs.',
       },
       {
         name: '3. Role: Department Head',
-        description: 'Manage department courses, approve Educator & Student registrations, manage enrollments, review syllabi, and broadcast announcements.',
+        description: 'Manage departmental subjects, approve student enrollments, review faculty syllabi submissions, and broadcast departmental announcements.',
       },
       {
         name: '4. Role: Educator (Faculty)',
-        description: 'Create syllabi, edit syllabi with mandatory change summaries, increment immutable version snapshots, and restore older versions.',
+        description: 'Create and revise syllabi, upload course outlines (PDF/DOCX), manage immutable sequential version histories, and restore previous versions.',
       },
       {
         name: '5. Role: Student',
-        description: 'View enrolled courses, access current approved syllabus versions, and receive departmental announcements.',
+        description: 'Query enrolled subjects, inspect approved and active course syllabi, and receive institutional announcements.',
       },
       {
-        name: '6. System & PostgreSQL Database',
-        description: 'PostgreSQL database connectivity, schema table counts, and real-time latency monitoring.',
+        name: '6. Academic Curriculum & Subjects',
+        description: 'Catalog management for institutional subjects and courses, course units, lecture/laboratory hours, prerequisites, and year levels.',
       },
       {
-        name: 'Syllabus Submission',
-        description: 'Endpoints for Faculty / Educators to upload documents (PDF, DOC, DOCX) and submit syllabi and revisions for Department Head approval.',
+        name: '7. Student Enrollments',
+        description: 'Assign and inspect student enrollments by semester and academic year with automatic subject code synchronization.',
       },
       {
-        name: 'Syllabus Approval',
-        description: 'Endpoints for Department Heads to query department-scoped pending approval requests, review approval details, approve syllabus versions, and reject syllabus versions with mandatory reasons.',
+        name: '8. Syllabus Management & Revisions',
+        description: 'Complete lifecycle of course syllabi, draft preservation, document upload, change summary tracking, and version rollback.',
       },
       {
-        name: 'Syllabus Review',
-        description: 'Inspection of submitted syllabus versions, side-by-side comparison with previous approved versions, document attachments, and self-approval prevention enforcement.',
+        name: '9. Syllabus Review & Approval Workflow',
+        description: 'Dedicated Department Head workflow to review pending syllabus versions, provide approval, or reject with mandatory revision feedback.',
+      },
+      {
+        name: '10. System & PostgreSQL Database Health',
+        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all segregated entities.',
       },
     ],
+    components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'srvs_token',
+          description: 'HTTP-only secure session cookie issued upon successful sign-in at /api/auth/login.',
+        },
+      },
+      schemas: {
+        StandardError: {
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Detailed error message explaining the failure condition.' },
+          },
+        },
+        User: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            idNumber: { type: 'string', example: '2022012708' },
+            email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph' },
+            fullName: { type: 'string', example: 'Gian Carlo' },
+            role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'Student' },
+            accountStatus: { type: 'string', enum: ['PendingApproval', 'Active', 'Rejected', 'Deactivated'], example: 'Active' },
+            departmentId: { type: 'integer', nullable: true, example: 1 },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        Department: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            code: { type: 'string', example: 'CPE' },
+            name: { type: 'string', example: 'Computer Engineering Department' },
+            description: { type: 'string', nullable: true, example: 'College of Engineering' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        Subject: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            code: { type: 'string', example: 'CPE 101' },
+            title: { type: 'string', example: 'Introduction to Computer Engineering' },
+            description: { type: 'string', nullable: true, example: 'Foundations of engineering principles and ethics.' },
+            units: { type: 'integer', example: 3 },
+            lecHours: { type: 'integer', example: 3 },
+            labHours: { type: 'integer', example: 0 },
+            prerequisite: { type: 'string', example: 'None' },
+            yearLevel: { type: 'string', example: '1st Year' },
+            semester: { type: 'string', example: '1st Semester' },
+            departmentId: { type: 'integer', example: 1 },
+          },
+        },
+        Enrollment: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            studentId: { type: 'integer', example: 4 },
+            subjectId: { type: 'integer', example: 1 },
+            semester: { type: 'string', example: '1st Semester' },
+            academicYear: { type: 'string', example: '2024-2025' },
+            section: { type: 'string', example: 'A' },
+            status: { type: 'string', enum: ['ENROLLED', 'DROPPED', 'COMPLETED'], example: 'ENROLLED' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        Syllabus: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            subjectId: { type: 'integer', example: 1 },
+            instructorId: { type: 'integer', example: 3 },
+            departmentId: { type: 'integer', example: 1 },
+            academicYear: { type: 'string', example: '2024-2025' },
+            semester: { type: 'string', example: '1st Semester' },
+            section: { type: 'string', example: 'A' },
+            status: { type: 'string', enum: ['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'Draft', 'Submitted', 'Approved', 'Rejected'], example: 'ACTIVE' },
+            currentVersionNumber: { type: 'integer', example: 1 },
+            uploadedByUserId: { type: 'string', example: '10001', description: 'University ID Number of uploader' },
+            submittedAt: { type: 'string', format: 'date-time', nullable: true },
+            reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+            reviewerRemarks: { type: 'string', nullable: true },
+          },
+        },
+        SyllabusVersion: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 1 },
+            syllabusId: { type: 'integer', example: 1 },
+            versionNumber: { type: 'integer', example: 1 },
+            editorId: { type: 'integer', example: 3 },
+            uploadedByUserId: { type: 'string', example: '10001' },
+            changeSummary: { type: 'string', example: 'Initial creation with uploaded PDF' },
+            changeType: { type: 'string', enum: ['Create', 'Edit', 'Restore'], example: 'Create' },
+            approvalStatus: { type: 'string', enum: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED'], example: 'APPROVED' },
+            fileName: { type: 'string', nullable: true, example: 'CPE101_Syllabus.pdf' },
+            fileUrl: { type: 'string', nullable: true, example: '/uploads/syllabi/CPE101_Syllabus_1710000000000.pdf' },
+            fileType: { type: 'string', nullable: true, example: 'PDF' },
+            fileSize: { type: 'integer', nullable: true, example: 2048576 },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
     paths: {
       // =========================================================================
       // 1. USER AUTHENTICATION & IDENTITY
@@ -77,11 +191,11 @@ This API documentation is organized by **User Roles and Permissions** matching i
           tags: ['1. User Authentication & Identity'],
           summary: 'User Registration (Self-Service)',
           description: `
-Registers a new user account with strict ID Number format enforcement:
+Registers a new user account with strict institutional ID Number format enforcement:
 - **Student**: Requires exactly **10 digits** (e.g., \`2022012708\`)
 - **Educator (Faculty)**: Requires exactly **5 digits** (e.g., \`10001\`)
 Passwords are automatically hashed using **bcrypt** (salt rounds: 10).
-New accounts default to **PendingApproval** status awaiting review.
+New self-registered accounts default to **PendingApproval** status awaiting administrative review.
           `.trim(),
           requestBody: {
             required: true,
@@ -91,26 +205,50 @@ New accounts default to **PendingApproval** status awaiting review.
                   type: 'object',
                   required: ['firstName', 'lastName', 'username', 'email', 'password', 'role', 'departmentId'],
                   properties: {
-                    firstName: { type: 'string', example: 'Gian' },
-                    lastName: { type: 'string', example: 'Carlo' },
+                    firstName: { type: 'string', example: 'Gian', description: 'First name' },
+                    lastName: { type: 'string', example: 'Carlo', description: 'Last name' },
                     username: {
                       type: 'string',
                       example: '2022012708',
-                      description: 'University ID Number: 10 digits for Student, 5 digits for Educator',
+                      description: 'University ID Number: 10 digits for Student, 5 digits for Educator/Faculty',
                     },
-                    email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph' },
-                    password: { type: 'string', minLength: 6, example: 'Password123!' },
-                    role: { type: 'string', enum: ['Student', 'Educator'], example: 'Student' },
-                    departmentId: { type: 'string', description: 'Department ID from /api/departments' },
+                    email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph', description: 'Institutional email address' },
+                    password: { type: 'string', minLength: 6, example: 'Password123!', description: 'Password (min 6 characters)' },
+                    role: { type: 'string', enum: ['Student', 'Educator'], example: 'Student', description: 'Role requested' },
+                    departmentId: { type: 'string', example: '1', description: 'Department ID or Department code (e.g. 1 or "CPE")' },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'Registration submitted successfully (Status: PendingApproval)' },
-            400: { description: 'Invalid input or invalid ID number digit count' },
-            409: { description: 'Account with this ID number or email already exists' },
+            200: {
+              description: 'Registration submitted successfully (Status: PendingApproval)',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Account registered successfully. Waiting for administrator approval.' },
+                      user: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+            400: {
+              description: 'Invalid input or invalid ID number digit count',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            409: {
+              description: 'Account with this ID number or email already exists',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            500: {
+              description: 'Internal server error',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
           },
         },
       },
@@ -119,10 +257,10 @@ New accounts default to **PendingApproval** status awaiting review.
           tags: ['1. User Authentication & Identity'],
           summary: 'User Sign In (ID Number & Password)',
           description: `
-Authenticates a user via their **University ID Number** (username) and password:
-- Validates 5 digits (Faculty/Admin) or 10 digits (Students)
+Authenticates a user via their **University ID Number** (or username) and password:
+- Validates 5 digits (Faculty/Admin/DeptHead) or 10 digits (Students)
 - Compares password against bcrypt hash in PostgreSQL
-- Checks account status (blocks \`PendingApproval\`, \`Rejected\`, \`Deactivated\`)
+- Verifies account status (blocks \`PendingApproval\`, \`Rejected\`, \`Deactivated\`)
 - Issues signed JWT session token stored in an **HTTP-only, Secure cookie** (\`srvs_token\`)
           `.trim(),
           requestBody: {
@@ -138,7 +276,7 @@ Authenticates a user via their **University ID Number** (username) and password:
                       example: '00000',
                       description: '5-digit ID (Admin/Faculty/Dept Head) or 10-digit ID (Student)',
                     },
-                    password: { type: 'string', format: 'password', example: 'admin123' },
+                    password: { type: 'string', format: 'password', example: 'admin123', description: 'Account password' },
                   },
                 },
               },
@@ -146,22 +284,71 @@ Authenticates a user via their **University ID Number** (username) and password:
           },
           responses: {
             200: {
-              description: 'Successful authentication; returns session user and sets cookie',
+              description: 'Successful authentication; returns session user and sets HTTP-only cookie',
+              headers: {
+                'Set-Cookie': {
+                  schema: { type: 'string', example: 'srvs_token=eyJhbGci...; Path=/; HttpOnly; SameSite=Lax' },
+                  description: 'Session authentication cookie',
+                },
+              },
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Authentication successful.' },
+                      user: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+            400: {
+              description: 'Missing ID number or password',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            401: {
+              description: 'Invalid credentials or incorrect password',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            403: {
+              description: 'Account pending approval, rejected, or deactivated',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            500: {
+              description: 'Server authentication error',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+          },
+        },
+      },
+      '/api/auth/me': {
+        get: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'Get Current Authenticated Session Profile',
+          description: 'Validates the current session JWT cookie and returns authenticated user identity, role, and department metadata.',
+          security: [{ cookieAuth: [] }],
+          responses: {
+            200: {
+              description: 'Active authenticated session found',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
                       user: {
                         type: 'object',
                         properties: {
-                          id: { type: 'string' },
-                          username: { type: 'string', example: '00000' },
+                          id: { type: 'integer', example: 1 },
+                          idNumber: { type: 'string', example: '00000' },
                           email: { type: 'string', example: 'admin@srvs.local' },
+                          username: { type: 'string', example: '00000' },
                           fullName: { type: 'string', example: 'System Administrator' },
-                          role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
-                          departmentName: { type: 'string', example: 'Computer Engineering' },
+                          role: { type: 'string', example: 'Admin' },
+                          departmentId: { type: 'integer', nullable: true, example: null },
+                          departmentCode: { type: 'string', nullable: true, example: null },
+                          departmentName: { type: 'string', nullable: true, example: null },
                         },
                       },
                     },
@@ -169,415 +356,1062 @@ Authenticates a user via their **University ID Number** (username) and password:
                 },
               },
             },
-            400: { description: 'Missing credentials or invalid ID number format' },
-            401: { description: 'Invalid username or password' },
-            403: { description: 'Account pending approval or deactivated' },
-          },
-        },
-      },
-      '/api/auth/me': {
-        get: {
-          tags: ['1. User Authentication & Identity'],
-          summary: 'Check Current Session & Account Status',
-          description: 'Validates JWT token and returns the current user profile, role permissions, and department info.',
-          responses: {
-            200: { description: 'Active authenticated session profile' },
-            401: { description: 'Unauthenticated or expired token' },
+            401: {
+              description: 'No active session or session cookie expired',
+              content: { 'application/json': { schema: { type: 'object', properties: { user: { type: 'null' } } } } },
+            },
           },
         },
       },
       '/api/auth/logout': {
         post: {
           tags: ['1. User Authentication & Identity'],
-          summary: 'User Sign Out',
-          description: 'Clears the authentication session cookie and logs out the user.',
+          summary: 'Sign Out & Invalidate Session Cookie',
+          description: 'Clears the `srvs_token` HTTP-only session cookie, invalidating active credentials, and records an audit log entry.',
+          security: [{ cookieAuth: [] }],
           responses: {
-            200: { description: 'Logged out successfully' },
+            200: {
+              description: 'Successfully signed out and cookie cleared',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Logged out successfully.' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/auth/forgot-password': {
+        post: {
+          tags: ['1. User Authentication & Identity'],
+          summary: 'Self-Service Password Reset',
+          description: 'Allows verified users to securely reset their password by confirming both their University ID Number and registered institutional email address.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['idNumber', 'email', 'newPassword'],
+                  properties: {
+                    idNumber: { type: 'string', example: '2022012708', description: 'University ID Number' },
+                    email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph', description: 'Registered institutional email' },
+                    newPassword: { type: 'string', minLength: 6, example: 'NewSecurePass123!', description: 'New password (minimum 6 characters)' },
+                    confirmPassword: { type: 'string', example: 'NewSecurePass123!', description: 'Optional confirmation password match' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Password reset successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Password reset successfully. You can now log in with your new password.' },
+                    },
+                  },
+                },
+              },
+            },
+            400: {
+              description: 'Missing required fields or passwords do not match',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            403: {
+              description: 'Account is deactivated or rejected',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            404: {
+              description: 'No account found matching this ID number and email',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
+            500: {
+              description: 'Server error during password reset',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/StandardError' } } },
+            },
           },
         },
       },
 
       // =========================================================================
-      // 2. ROLE: SYSTEM ADMINISTRATOR
+      // 2. ROLE: SYSTEM ADMINISTRATOR & USER MANAGEMENT
       // =========================================================================
       '/api/users': {
         get: {
           tags: ['2. Role: System Administrator'],
-          summary: 'Manage Users: Query All Accounts',
-          description: 'System Administrator lists all users with filtering by role, status, or search term (name/email/ID number).',
+          summary: 'List Users with Role and Status Filters',
+          description: `
+Retrieves a paginated list of all system users.
+- **Admin**: Has full visibility across all university departments.
+- **Department Head**: Automatically scoped to users within their assigned department.
+- Includes segregated profile information (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, \`srvs_students\`).
+          `.trim(),
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'role', in: 'query', schema: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] } },
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['Active', 'PendingApproval', 'Rejected', 'Deactivated'] } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              description: 'Filter by account status',
+              schema: { type: 'string', enum: ['PendingApproval', 'Active', 'Rejected', 'Deactivated'], example: 'Active' },
+            },
+            {
+              name: 'role',
+              in: 'query',
+              required: false,
+              description: 'Filter by user role',
+              schema: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'Educator' },
+            },
+            {
+              name: 'search',
+              in: 'query',
+              required: false,
+              description: 'Search substring across full name, email, or ID number',
+              schema: { type: 'string', example: 'Gian' },
+            },
           ],
           responses: {
-            200: { description: 'List of user accounts' },
-            403: { description: 'Unauthorized' },
+            200: {
+              description: 'Users retrieved successfully with role counts breakdown',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      users: { type: 'array', items: { $ref: '#/components/schemas/User' } },
+                      counts: {
+                        type: 'object',
+                        properties: {
+                          total: { type: 'integer', example: 4 },
+                          deptHeads: { type: 'integer', example: 1 },
+                          educators: { type: 'integer', example: 1 },
+                          students: { type: 'integer', example: 1 },
+                          admins: { type: 'integer', example: 1 },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            403: { description: 'Unauthorized: Admin or Department Head access required.' },
           },
         },
         post: {
           tags: ['2. Role: System Administrator'],
-          summary: 'Manage Users: Create User Account',
-          description: 'Administrator creates a user account with role-enforced University ID Number (5 digits for Staff/Admin, 10 digits for Student).',
+          summary: 'Create User Account (Admin Direct Provisioning)',
+          description: `
+System Administrator direct account creation with immediate role allocation and segregated profile synchronization:
+- Automatically creates entry in \`srvs_users\` and corresponding segregated profile (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, or \`srvs_students\`).
+- Validates 10-digit ID for Students and 5-digit ID for Faculty/Admin.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['fullName', 'username', 'email', 'password', 'role'],
+                  required: ['fullName', 'email', 'idNumber', 'password', 'role'],
                   properties: {
-                    fullName: { type: 'string', example: 'Engr. Juan Dela Cruz' },
-                    username: { type: 'string', example: '10001', description: '5 digits for Staff/Admin, 10 digits for Student' },
-                    email: { type: 'string', format: 'email', example: 'jdelacruz@usjr.edu.ph' },
-                    password: { type: 'string', minLength: 6, example: 'TempPass123!' },
-                    role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
-                    departmentId: { type: 'string', nullable: true },
-                    accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Deactivated'], default: 'Active' },
+                    fullName: { type: 'string', example: 'Engr. Juan Dela Cruz', description: 'Full name of the user' },
+                    email: { type: 'string', format: 'email', example: 'jdelacruz@usjr.edu.ph', description: 'Institutional email' },
+                    idNumber: { type: 'string', example: '10002', description: '5-digit ID for Faculty/Admin or 10-digit ID for Student' },
+                    password: { type: 'string', minLength: 6, example: 'FacultyPass123!', description: 'Initial account password' },
+                    role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'Educator', description: 'Institutional role' },
+                    departmentId: { type: 'string', example: '1', description: 'Department numeric ID or code (e.g. 1 or "CPE")' },
+                    accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Deactivated'], example: 'Active', description: 'Initial account status' },
                   },
                 },
               },
             },
           },
           responses: {
-            201: { description: 'User account created' },
-            400: { description: 'Validation error or duplicate ID number' },
-            403: { description: 'Forbidden' },
+            201: {
+              description: 'User account created and segregated profile synchronized',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      user: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing required fields or invalid ID number digit format' },
+            403: { description: 'Unauthorized: Admin access required.' },
           },
         },
         patch: {
           tags: ['2. Role: System Administrator'],
-          summary: 'Manage Users: Update Role & Approve/Reject Status',
-          description: 'Approve or reject Department Head registrations, modify system roles, or activate/deactivate accounts.',
+          summary: 'Update User Account Lifecycle Status or Role',
+          description: `
+Executes administrative account actions:
+- \`Approve\`: Sets account status to Active
+- \`Reject\`: Rejects pending registration
+- \`Activate\`: Re-enables a deactivated user
+- \`Deactivate\`: Suspends account access
+- \`ChangeRole\`: Switches user role and cleanly synchronizes segregated role profile tables (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, \`srvs_students\`).
+          `.trim(),
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['userId'],
+                  required: ['userId', 'action'],
                   properties: {
-                    userId: { type: 'string' },
-                    role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'] },
-                    accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Rejected', 'Deactivated'] },
+                    userId: { type: 'string', example: '1', description: 'User ID (numeric ID or ID Number string)' },
+                    action: {
+                      type: 'string',
+                      enum: ['Approve', 'Reject', 'Activate', 'Deactivate', 'ChangeRole'],
+                      example: 'Approve',
+                      description: 'Administrative action to perform',
+                    },
+                    newRole: {
+                      type: 'string',
+                      enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'],
+                      example: 'DepartmentHead',
+                      description: 'Required if action is ChangeRole',
+                    },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'User account updated successfully' },
-            403: { description: 'Forbidden' },
+            200: {
+              description: 'User account updated successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      user: { $ref: '#/components/schemas/User' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Invalid action or user not found' },
+            403: { description: 'Unauthorized: Admin access required for role changes' },
+          },
+        },
+        delete: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Delete User Account (Admin Only)',
+          description: 'Permanently deletes a user account, cascading deletion to segregated role profiles and course enrollments. System administrators cannot delete their own active account.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'userId',
+              in: 'query',
+              required: true,
+              description: 'User numeric ID or ID Number string to delete',
+              schema: { type: 'string', example: '4' },
+            },
+          ],
+          responses: {
+            200: {
+              description: 'Account deleted successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Account for Gian Carlo deleted successfully.' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing userId or attempting to delete self' },
+            403: { description: 'Unauthorized: Admin access required.' },
+            404: { description: 'User account not found' },
           },
         },
       },
       '/api/departments': {
         get: {
           tags: ['2. Role: System Administrator'],
-          summary: 'Manage Engineering Departments',
-          description: 'List the 6 institutional engineering departments (CE, CPE, ECE, EE, IE, ME) and course counts.',
+          summary: 'List All Academic Departments',
+          description: 'Retrieves all academic departments with real-time relation counts for enrolled subjects, users, and syllabi.',
+          parameters: [
+            {
+              name: 'search',
+              in: 'query',
+              required: false,
+              description: 'Search substring across department code or full name',
+              schema: { type: 'string', example: 'CPE' },
+            },
+          ],
           responses: {
-            200: { description: 'List of departments' },
+            200: {
+              description: 'List of departments retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      departments: {
+                        type: 'array',
+                        items: {
+                          allOf: [
+                            { $ref: '#/components/schemas/Department' },
+                            {
+                              type: 'object',
+                              properties: {
+                                _count: {
+                                  type: 'object',
+                                  properties: {
+                                    subjects: { type: 'integer', example: 5 },
+                                    users: { type: 'integer', example: 4 },
+                                    syllabi: { type: 'integer', example: 2 },
+                                  },
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          tags: ['2. Role: System Administrator'],
+          summary: 'Create Academic Department (Admin Only)',
+          description: 'Registers a new academic department with unique uppercase departmental code (e.g., CPE, CE, EE, ME, CS).',
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['code', 'name'],
+                  properties: {
+                    code: { type: 'string', example: 'CPE', description: 'Department code abbreviation (e.g., CPE, CE, EE)' },
+                    name: { type: 'string', example: 'Computer Engineering Department', description: 'Official departmental title' },
+                    description: { type: 'string', example: 'College of Engineering and Architecture', description: 'Optional departmental description' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Department created successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      department: { $ref: '#/components/schemas/Department' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing department code or name' },
+            403: { description: 'Unauthorized: Admin access required.' },
+            409: { description: 'Department with this code already exists' },
           },
         },
       },
       '/api/audit-logs': {
         get: {
           tags: ['2. Role: System Administrator'],
-          summary: 'View System-Wide Audit Logs',
-          description: 'Inspect complete system activity and security log entries recording all logins, creations, revisions, and status changes.',
-          parameters: [
-            { name: 'actionType', in: 'query', schema: { type: 'string' } },
-            { name: 'resultStatus', in: 'query', schema: { type: 'string' } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
-          ],
+          summary: 'Query System Security Audit Trail (Admin Only)',
+          description: 'Inspects immutable security and version audit trail entries recorded in PostgreSQL, including user attribution, action types, and timestamp.',
+          security: [{ cookieAuth: [] }],
           responses: {
-            200: { description: 'Audit trail records' },
-            403: { description: 'Unauthorized' },
-          },
-        },
-      },
-      '/api/dashboard/stats': {
-        get: {
-          tags: ['2. Role: System Administrator'],
-          summary: 'Monitor System Activity & Analytics',
-          description: 'Live real-time statistics computed directly from PostgreSQL for users, pending approvals, syllabi, and versions.',
-          responses: {
-            200: { description: 'System metrics' },
+            200: {
+              description: 'Audit logs retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      logs: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'integer', example: 1 },
+                            actionType: { type: 'string', example: 'ApproveSyllabusVersion' },
+                            resultStatus: { type: 'string', example: 'Success' },
+                            description: { type: 'string', example: 'Approved [CPE 101] Version 1 as official syllabus' },
+                            userDisplayName: { type: 'string', example: 'Engr. Department Head' },
+                            createdAt: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            403: { description: 'Unauthorized: Admin access required.' },
           },
         },
       },
 
       // =========================================================================
-      // 3. ROLE: DEPARTMENT HEAD
+      // 3. ROLE: DEPARTMENT HEAD & STUDENTS DIRECTORY
       // =========================================================================
-      '/api/courses': {
+      '/api/students': {
         get: {
-          tags: ['3. Role: Department Head'],
-          summary: 'View Department Courses Catalog',
+          tags: ['3. Role: Department Head', '5. Role: Student'],
+          summary: 'List Students with Enrolled Subject Codes',
+          description: `
+Retrieves students directory with departmental filtering:
+- Returns \`department\` string code (e.g. \`"CPE"\`, \`"CE"\`, \`"EE"\`) rather than numeric IDs.
+- Returns \`enrolledSubjects\` as subject codes only (e.g., \`"CPE 101, CPE 201"\`).
+- Scoped to Department Head's assigned department.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'departmentId', in: 'query', schema: { type: 'string' } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'department',
+              in: 'query',
+              required: false,
+              description: 'Filter by department code (e.g., "CPE") or department ID',
+              schema: { type: 'string', example: 'CPE' },
+            },
+            {
+              name: 'search',
+              in: 'query',
+              required: false,
+              description: 'Search student name, email, or 10-digit ID number',
+              schema: { type: 'string', example: '2022012708' },
+            },
           ],
           responses: {
-            200: { description: 'List of courses' },
-          },
-        },
-        post: {
-          tags: ['3. Role: Department Head'],
-          summary: 'Create Course in Department',
-          description: 'Department Head creates a new course/subject with unique course code validation.',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['code', 'title', 'departmentId'],
-                  properties: {
-                    code: { type: 'string', example: 'CPE301' },
-                    title: { type: 'string', example: 'Operating Systems' },
-                    description: { type: 'string', example: 'Operating system structures, process scheduling, and concurrency.' },
-                    units: { type: 'integer', example: 3, default: 3 },
-                    lecHours: { type: 'integer', example: 3, default: 3 },
-                    labHours: { type: 'integer', example: 0, default: 0 },
-                    prerequisite: { type: 'string', example: 'CPE201', default: 'None' },
-                    yearLevel: { type: 'string', example: '2nd Year', default: '1st Year' },
-                    semester: { type: 'string', example: '1st Semester', default: '1st Semester' },
-                    departmentId: { type: 'string', example: 'CPE' },
+            200: {
+              description: 'Students directory retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      students: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'integer', example: 4, description: 'User master ID' },
+                            studentTableId: { type: 'integer', example: 1, description: 'srvs_students table integer ID' },
+                            idNumber: { type: 'string', example: '2022012708', description: '10-digit Student ID Number' },
+                            fullName: { type: 'string', example: 'Gian Carlo' },
+                            email: { type: 'string', example: 'gian@usjr.edu.ph' },
+                            department: { type: 'string', example: 'CPE', description: 'Department code (not a number)' },
+                            enrolledSubjects: { type: 'string', example: 'CPE 101', description: 'Codes only of enrolled subjects' },
+                            yearLevel: { type: 'string', example: '3rd Year' },
+                          },
+                        },
+                      },
+                      count: { type: 'integer', example: 1 },
+                    },
                   },
                 },
               },
             },
-          },
-          responses: {
-            201: { description: 'Course created' },
-            400: { description: 'Duplicate course code or invalid fields' },
-          },
-        },
-      },
-      '/api/subjects': {
-        get: {
-          tags: ['3. Role: Department Head'],
-          summary: 'View Department Subjects Catalog',
-          description: 'Query curriculum subjects with academic metadata including credit units, lecture hours, lab hours, and prerequisites.',
-          parameters: [
-            { name: 'departmentId', in: 'query', schema: { type: 'string' } },
-            { name: 'yearLevel', in: 'query', schema: { type: 'string', enum: ['1st Year', '2nd Year', '3rd Year', '4th Year'] } },
-            { name: 'semester', in: 'query', schema: { type: 'string', enum: ['1st Semester', '2nd Semester', 'Summer Term'] } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
-          ],
-          responses: {
-            200: { description: 'List of academic subjects with full curriculum parameters' },
-          },
-        },
-        post: {
-          tags: ['3. Role: Department Head'],
-          summary: 'Create Subject in Curriculum',
-          description: 'Department Head or Administrator creates a new academic subject with units, contact hours, and prerequisites.',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['code', 'title', 'departmentId'],
-                  properties: {
-                    code: { type: 'string', example: 'CPE102' },
-                    title: { type: 'string', example: 'Computer Programming 1' },
-                    description: { type: 'string', example: 'Fundamental concepts of programming and structured algorithms.' },
-                    units: { type: 'integer', example: 3, default: 3 },
-                    lecHours: { type: 'integer', example: 2, default: 3 },
-                    labHours: { type: 'integer', example: 3, default: 0 },
-                    prerequisite: { type: 'string', example: 'None', default: 'None' },
-                    yearLevel: { type: 'string', example: '1st Year', default: '1st Year' },
-                    semester: { type: 'string', example: '1st Semester', default: '1st Semester' },
-                    departmentId: { type: 'string', example: 'CPE' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            201: { description: 'Subject created successfully' },
-            400: { description: 'Validation error or duplicate subject code' },
-          },
-        },
-      },
-      '/api/enrollments': {
-        get: {
-          tags: ['3. Role: Department Head'],
-          summary: 'Manage Student Enrollments: List All',
-          parameters: [
-            { name: 'search', in: 'query', schema: { type: 'string' } },
-            { name: 'semester', in: 'query', schema: { type: 'string' } },
-            { name: 'academicYear', in: 'query', schema: { type: 'string' } },
-          ],
-          responses: {
-            200: { description: 'List of enrollments with student and course details' },
-          },
-        },
-        post: {
-          tags: ['3. Role: Department Head'],
-          summary: 'Manage Student Enrollments: Enroll Student in Course',
-          description: 'Enrolls a student in a course subject with duplicate prevention.',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['studentId', 'courseId', 'semester', 'academicYear'],
-                  properties: {
-                    studentId: { type: 'string' },
-                    courseId: { type: 'string' },
-                    semester: { type: 'string', example: '1st Semester' },
-                    academicYear: { type: 'string', example: '2026-2027' },
-                    section: { type: 'string', default: 'A' },
-                    status: { type: 'string', default: 'ENROLLED' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            201: { description: 'Student enrolled' },
-            409: { description: 'Student already enrolled in this course for this term' },
-          },
-        },
-      },
-      '/api/syllabi/{id}/review': {
-        post: {
-          tags: ['3. Role: Department Head'],
-          summary: 'Review Syllabus: Approve or Reject',
-          description: 'Department Head reviews submitted syllabus and updates status to Approved or Rejected with feedback remarks.',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['action'],
-                  properties: {
-                    action: { type: 'string', enum: ['Approve', 'Reject'] },
-                    reviewerRemarks: { type: 'string', example: 'Approved. Meets USJ-R curriculum standards.' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            200: { description: 'Syllabus reviewed successfully; instructor notified' },
+            403: { description: 'Unauthorized: Admin or Department Head access required.' },
           },
         },
       },
       '/api/announcements': {
         get: {
-          tags: ['3. Role: Department Head'],
-          summary: 'View Department Announcements',
-          description: 'Retrieves announcements broadcasted to department faculty and students.',
+          tags: ['3. Role: Department Head', '5. Role: Student'],
+          summary: 'Retrieve User Announcements',
+          description: 'Fetches announcements relevant to the authenticated user and their department.',
+          security: [{ cookieAuth: [] }],
           responses: {
-            200: { description: 'List of department announcements' },
+            200: {
+              description: 'Announcements list retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      announcements: { type: 'array', items: { type: 'object' } },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
           },
         },
         post: {
           tags: ['3. Role: Department Head'],
-          summary: 'Create & Broadcast Department Announcement',
-          description: 'Department Head broadcasts an announcement alert to all educators and students in their department.',
+          summary: 'Broadcast Department Announcement',
+          description: 'Posts an official announcement broadcast to all educators and students within the designated department.',
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['title', 'message'],
+                  required: ['title', 'message', 'departmentId'],
                   properties: {
-                    title: { type: 'string', example: 'Syllabus Submission Deadline for 1st Semester' },
-                    message: { type: 'string', example: 'All faculty members must submit syllabi for review by Friday.' },
-                    departmentId: { type: 'string', description: 'Defaults to Department Head department' },
+                    title: { type: 'string', example: 'Midterm Syllabus Review Schedule', description: 'Announcement title' },
+                    message: { type: 'string', example: 'All faculty members are requested to submit draft syllabi by Friday.', description: 'Body text' },
+                    departmentId: { type: 'integer', example: 1, description: 'Target department ID' },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'Announcement broadcasted to all department members' },
-            403: { description: 'Forbidden' },
+            200: {
+              description: 'Announcement broadcast successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Announcement broadcast to 5 department members.' },
+                      recipientsCount: { type: 'integer', example: 5 },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing title, message, or departmentId' },
+            403: { description: 'Unauthorized: Only Department Heads or Admins may post announcements' },
           },
         },
       },
 
       // =========================================================================
-      // 4. ROLE: EDUCATOR (FACULTY)
+      // 6. ACADEMIC CURRICULUM & SUBJECTS
       // =========================================================================
-      '/api/syllabi': {
+      '/api/subjects': {
         get: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'View Syllabi List',
-          description: 'Educator views their created syllabi and department syllabi.',
+          tags: ['6. Academic Curriculum & Subjects'],
+          summary: 'Catalog of Academic Subjects',
+          description: 'Queries university curriculum subjects. Department Heads see subjects in their department; Admins view all.',
           parameters: [
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['Draft', 'Submitted', 'Approved', 'Rejected'] } },
-            { name: 'departmentId', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'search',
+              in: 'query',
+              required: false,
+              description: 'Search subject code or title',
+              schema: { type: 'string', example: 'CPE' },
+            },
+            {
+              name: 'departmentId',
+              in: 'query',
+              required: false,
+              description: 'Filter by department ID or department code (e.g., "CPE")',
+              schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'yearLevel',
+              in: 'query',
+              required: false,
+              description: 'Filter by year level',
+              schema: { type: 'string', example: '1st Year' },
+            },
+            {
+              name: 'semester',
+              in: 'query',
+              required: false,
+              description: 'Filter by semester',
+              schema: { type: 'string', example: '1st Semester' },
+            },
           ],
           responses: {
-            200: { description: 'List of syllabi' },
+            200: {
+              description: 'Subjects retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      subjects: { type: 'array', items: { $ref: '#/components/schemas/Subject' } },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         post: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'Create Syllabus + Version 1 Snapshot',
-          description: 'Educator creates a new syllabus. Creates master record and initial Version 1 snapshot in a PostgreSQL atomic transaction.',
+          tags: ['6. Academic Curriculum & Subjects'],
+          summary: 'Create Academic Subject',
+          description: 'Registers a new subject in the curriculum with lecture/laboratory units and prerequisites.',
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['courseId', 'academicYear', 'semester'],
+                  required: ['code', 'title', 'departmentId'],
                   properties: {
-                    courseId: { type: 'string', example: 'CPE101' },
-                    subjectId: { type: 'string', example: 'CPE101' },
-                    academicYear: { type: 'string', example: '2026-2027' },
-                    semester: { type: 'string', example: '1st Semester' },
-                    section: { type: 'string', example: 'A', default: 'A' },
-                    courseDescription: { type: 'string', example: 'Foundations of computer engineering and digital logic.' },
-                    learningOutcomes: { type: 'array', items: { type: 'string' } },
-                    topics: { type: 'array', items: { type: 'object', properties: { week: { type: 'number' }, topic: { type: 'string' } } } },
-                    gradingSystem: { type: 'array', items: { type: 'object', properties: { component: { type: 'string' }, weight: { type: 'number' } } } },
-                    references: { type: 'array', items: { type: 'string' } },
-                    schedule: { type: 'string', example: 'MWF 09:00 AM - 10:00 AM' },
-                    fileName: { type: 'string', example: 'CPE101_Syllabus.pdf' },
-                    fileUrl: { type: 'string', example: '/uploads/syllabi/CPE101_Syllabus.pdf' },
-                    fileType: { type: 'string', example: 'PDF' },
-                    fileSize: { type: 'integer', example: 2048576 },
-                    saveAsDraft: { type: 'boolean', default: true },
-                    directApprove: { type: 'boolean', default: false, description: 'Direct approval for Department Heads' },
+                    code: { type: 'string', example: 'CPE 101', description: 'Unique subject code' },
+                    title: { type: 'string', example: 'Introduction to Computer Engineering', description: 'Descriptive course title' },
+                    departmentId: { type: 'string', example: '1', description: 'Department numeric ID or code (e.g. 1 or "CPE")' },
+                    description: { type: 'string', example: 'Foundations of hardware-software co-design.', description: 'Course catalog description' },
+                    units: { type: 'integer', example: 3, description: 'Total academic units' },
+                    lecHours: { type: 'integer', example: 3, description: 'Lecture hours per week' },
+                    labHours: { type: 'integer', example: 0, description: 'Laboratory hours per week' },
+                    prerequisite: { type: 'string', example: 'None', description: 'Prerequisite subject codes' },
+                    yearLevel: { type: 'string', example: '1st Year', description: 'Year standing' },
+                    semester: { type: 'string', example: '1st Semester', description: 'Term offered' },
                   },
                 },
               },
             },
           },
           responses: {
-            201: { description: 'Syllabus and Version 1 created (recorded with uploadedByUserId)' },
+            201: {
+              description: 'Subject created successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      subject: { $ref: '#/components/schemas/Subject' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing required fields or invalid department' },
+            403: { description: 'Unauthorized: Admin or Department Head access required.' },
+            409: { description: 'Subject with this code already exists' },
+          },
+        },
+      },
+      '/api/courses': {
+        get: {
+          tags: ['6. Academic Curriculum & Subjects'],
+          summary: 'Courses Catalog (Legacy Compatibility Route for Subjects)',
+          description: 'Alias route returning academic subjects mapped as courses for existing UI consumers.',
+          parameters: [
+            { name: 'search', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'departmentId', in: 'query', required: false, schema: { type: 'string' } },
+          ],
+          responses: {
+            200: {
+              description: 'List of courses',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      courses: { type: 'array', items: { $ref: '#/components/schemas/Subject' } },
+                      subjects: { type: 'array', items: { $ref: '#/components/schemas/Subject' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          tags: ['6. Academic Curriculum & Subjects'],
+          summary: 'Create Course (Legacy Compatibility Route for Subjects)',
+          description: 'Alias route to create a subject/course entry in the curriculum.',
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['code', 'title', 'departmentId'],
+                  properties: {
+                    code: { type: 'string', example: 'CPE 201' },
+                    title: { type: 'string', example: 'Data Structures and Algorithms' },
+                    departmentId: { type: 'string', example: '1' },
+                    description: { type: 'string', example: 'Algorithm analysis and abstract data types.' },
+                    units: { type: 'integer', example: 3 },
+                    lecHours: { type: 'integer', example: 2 },
+                    labHours: { type: 'integer', example: 3 },
+                    prerequisite: { type: 'string', example: 'CPE 101' },
+                    yearLevel: { type: 'string', example: '2nd Year' },
+                    semester: { type: 'string', example: '1st Semester' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: { description: 'Course created successfully' },
+            400: { description: 'Missing required fields' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 7. STUDENT ENROLLMENTS
+      // =========================================================================
+      '/api/enrollments': {
+        get: {
+          tags: ['7. Student Enrollments', '5. Role: Student'],
+          summary: 'Query Subject Enrollments',
+          description: `
+Retrieves student enrollments:
+- **Students**: Automatically restricted to viewing their own active enrollments.
+- **Department Heads**: Restricted to enrollments for subjects belonging to their assigned department.
+- **Admins**: View enrollments across all academic departments.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'studentId',
+              in: 'query',
+              required: false,
+              description: 'Filter by Student ID Number or integer user ID',
+              schema: { type: 'string', example: '4' },
+            },
+            {
+              name: 'subjectId',
+              in: 'query',
+              required: false,
+              description: 'Filter by Subject integer ID or code (e.g. "CPE 101")',
+              schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'courseId',
+              in: 'query',
+              required: false,
+              description: 'Alias parameter for subjectId',
+              schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'academicYear',
+              in: 'query',
+              required: false,
+              description: 'Filter by academic year',
+              schema: { type: 'string', example: '2024-2025' },
+            },
+            {
+              name: 'semester',
+              in: 'query',
+              required: false,
+              description: 'Filter by semester',
+              schema: { type: 'string', example: '1st Semester' },
+            },
+          ],
+          responses: {
+            200: {
+              description: 'Enrollments retrieved successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      enrollments: {
+                        type: 'array',
+                        items: {
+                          allOf: [
+                            { $ref: '#/components/schemas/Enrollment' },
+                            {
+                              type: 'object',
+                              properties: {
+                                student: { $ref: '#/components/schemas/User' },
+                                subject: { $ref: '#/components/schemas/Subject' },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
+          },
+        },
+        post: {
+          tags: ['7. Student Enrollments'],
+          summary: 'Enroll Student in Subject',
+          description: `
+Enrolls a student in an academic subject for a given semester and academic year:
+- Automatically synchronizes the student's \`enrolledSubjects\` field in \`srvs_students\` with subject codes only (e.g. \`"CPE 101, CPE 201"\`).
+- Prevents duplicate enrollments in the same subject within the same semester.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['studentId', 'subjectId', 'semester', 'academicYear'],
+                  properties: {
+                    studentId: { type: 'string', example: '4', description: 'Student integer ID or 10-digit ID Number' },
+                    subjectId: { type: 'string', example: '1', description: 'Subject integer ID or subject code (e.g. "CPE 101")' },
+                    courseId: { type: 'string', example: '1', description: 'Alias for subjectId' },
+                    semester: { type: 'string', example: '1st Semester', description: 'Academic term' },
+                    academicYear: { type: 'string', example: '2024-2025', description: 'Academic year' },
+                    section: { type: 'string', example: 'A', description: 'Class section' },
+                    status: { type: 'string', enum: ['ENROLLED', 'DROPPED', 'COMPLETED'], example: 'ENROLLED' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Student enrolled and subject codes synchronized',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      enrollment: { $ref: '#/components/schemas/Enrollment' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing required parameters or invalid student/subject' },
+            403: { description: 'Unauthorized: Admin or Department Head access required.' },
+            409: { description: 'Student is already enrolled in this subject for this term' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 8. SYLLABUS MANAGEMENT & REVISIONS
+      // =========================================================================
+      '/api/syllabi': {
+        get: {
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)', '5. Role: Student'],
+          summary: 'List Course Syllabi',
+          description: `
+Queries course syllabi based on user authorization:
+- **Students**: Only receive **ACTIVE / Approved** syllabi for subjects they are actively enrolled in.
+- **Educators**: Can filter by \`mySyllabi=true\` to see their drafted, submitted, and approved syllabi.
+- **Department Heads**: View all departmental syllabi across all lifecycle statuses.
+- **Admins**: View syllabi across all departments.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'departmentId',
+              in: 'query',
+              required: false,
+              description: 'Filter by department numeric ID',
+              schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              description: 'Filter by status (Draft, Submitted, Approved, Rejected, ACTIVE)',
+              schema: { type: 'string', example: 'ACTIVE' },
+            },
+            {
+              name: 'semester',
+              in: 'query',
+              required: false,
+              description: 'Filter by semester',
+              schema: { type: 'string', example: '1st Semester' },
+            },
+            {
+              name: 'academicYear',
+              in: 'query',
+              required: false,
+              description: 'Filter by academic year',
+              schema: { type: 'string', example: '2024-2025' },
+            },
+            {
+              name: 'search',
+              in: 'query',
+              required: false,
+              description: 'Search subject code or title',
+              schema: { type: 'string', example: 'CPE' },
+            },
+            {
+              name: 'mySyllabi',
+              in: 'query',
+              required: false,
+              description: 'Set to "true" for faculty to filter to their own authored syllabi',
+              schema: { type: 'string', enum: ['true', 'false'], example: 'true' },
+            },
+          ],
+          responses: {
+            200: {
+              description: 'Syllabi list retrieved',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      syllabi: {
+                        type: 'array',
+                        items: {
+                          allOf: [
+                            { $ref: '#/components/schemas/Syllabus' },
+                            {
+                              type: 'object',
+                              properties: {
+                                subject: { $ref: '#/components/schemas/Subject' },
+                                instructor: { $ref: '#/components/schemas/User' },
+                                versions: { type: 'array', items: { $ref: '#/components/schemas/SyllabusVersion' } },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Create Syllabus (Draft or Submit for Approval)',
+          description: `
+Creates a syllabus master record and initializes **Version 1**:
+- Records \`uploadedByUserId\` using the uploader's University ID Number.
+- Accepts course outline structured fields and/or uploaded syllabus document (PDF/DOCX).
+- Department Heads and Admins can set \`directApprove: true\` to immediately activate Version 1.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['subjectId', 'semester', 'academicYear'],
+                  properties: {
+                    subjectId: { type: 'string', example: '1', description: 'Subject integer ID or code (e.g. 1 or "CPE 101")' },
+                    courseId: { type: 'string', example: '1', description: 'Alias for subjectId' },
+                    semester: { type: 'string', example: '1st Semester', description: 'Academic term' },
+                    academicYear: { type: 'string', example: '2024-2025', description: 'Academic year' },
+                    section: { type: 'string', example: 'A', description: 'Class section' },
+                    courseDescription: { type: 'string', example: 'Comprehensive syllabus covering computer systems architecture.', description: 'Course overview' },
+                    learningOutcomes: { type: 'array', items: { type: 'string' }, example: ['Understand logic design', 'Implement sequential circuits'] },
+                    topics: { type: 'array', items: { type: 'string' }, example: ['Week 1: Boolean Algebra', 'Week 2: Combinational Logic'] },
+                    references: { type: 'array', items: { type: 'string' }, example: ['Digital Design by Morris Mano'] },
+                    gradingSystem: { type: 'array', items: { type: 'string' }, example: ['Quizzes: 30%', 'Midterm: 30%', 'Finals: 40%'] },
+                    schedule: { type: 'string', example: 'Mon/Wed 10:30 AM - 12:00 PM' },
+                    saveAsDraft: { type: 'boolean', example: true, description: 'True to save as Draft; False to submit immediately for Department Head review' },
+                    directApprove: { type: 'boolean', example: false, description: 'Dept Head or Admin only: directly activate without review' },
+                    fileName: { type: 'string', example: 'CPE101_Syllabus.pdf', description: 'Uploaded file original name' },
+                    fileUrl: { type: 'string', example: '/uploads/syllabi/CPE101_Syllabus_1710000000000.pdf', description: 'Uploaded file URL' },
+                    fileType: { type: 'string', example: 'PDF', description: 'File extension type' },
+                    fileSize: { type: 'integer', example: 1048576, description: 'File size in bytes' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            201: {
+              description: 'Syllabus master and Version 1 created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
+                      message: { type: 'string', example: 'Syllabus draft saved successfully.' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing required subject/term or missing course content/document' },
+            403: { description: 'Unauthorized: Educator, Dept Head, or Admin access required.' },
           },
         },
       },
       '/api/syllabi/{id}': {
         get: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'View Syllabus Details and Active Version',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          tags: ['8. Syllabus Management & Revisions'],
+          summary: 'Get Syllabus Details and Version Snapshots',
+          description: 'Fetches syllabus metadata, current active version, and version snapshot records for comparison.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
           responses: {
-            200: { description: 'Syllabus details, subject data, authoring info, and current version snapshot content' },
+            200: {
+              description: 'Syllabus details returned',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
+                      currentVersion: { $ref: '#/components/schemas/SyllabusVersion' },
+                      versions: { type: 'array', items: { $ref: '#/components/schemas/SyllabusVersion' } },
+                      canEdit: { type: 'boolean', example: true },
+                    },
+                  },
+                },
+              },
+            },
+            403: { description: 'Access denied: not enrolled or department unauthorized' },
             404: { description: 'Syllabus not found' },
           },
         },
         patch: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'Edit Syllabus: Create New Version Snapshot',
-          description: 'Non-destructively saves modifications by creating a new sequential version snapshot with a mandatory change summary.',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Revise Syllabus (Creates New Incremented Version)',
+          description: `
+Creates a new sequential, immutable version snapshot:
+- **Mandatory Change Summary**: Required for revision history tracking.
+- Increments version number sequentially (e.g., Version 1 → Version 2).
+- Non-destructive: previous versions remain untouched for audit trails.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID to revise',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
           requestBody: {
             required: true,
             content: {
@@ -586,56 +1420,181 @@ Authenticates a user via their **University ID Number** (username) and password:
                   type: 'object',
                   required: ['changeSummary'],
                   properties: {
-                    changeSummary: { type: 'string', example: 'Updated Week 4 laboratory topics and modified grading criteria.' },
-                    courseDescription: { type: 'string' },
+                    changeSummary: { type: 'string', minLength: 5, example: 'Updated course grading breakdown to include programming capstone project.', description: 'Mandatory explanation of revisions' },
+                    courseDescription: { type: 'string', example: 'Updated course description' },
                     learningOutcomes: { type: 'array', items: { type: 'string' } },
-                    topics: { type: 'array', items: { type: 'object', properties: { week: { type: 'number' }, topic: { type: 'string' } } } },
-                    gradingSystem: { type: 'array', items: { type: 'object', properties: { component: { type: 'string' }, weight: { type: 'number' } } } },
+                    topics: { type: 'array', items: { type: 'string' } },
                     references: { type: 'array', items: { type: 'string' } },
-                    schedule: { type: 'string' },
-                    fileName: { type: 'string' },
-                    fileUrl: { type: 'string' },
-                    fileType: { type: 'string' },
-                    fileSize: { type: 'integer' },
-                    saveAsDraft: { type: 'boolean', default: false },
-                    directApprove: { type: 'boolean', default: false },
+                    gradingSystem: { type: 'array', items: { type: 'string' } },
+                    schedule: { type: 'string', example: 'Mon/Wed 1:30 PM - 3:00 PM' },
+                    saveAsDraft: { type: 'boolean', example: false },
+                    submitForApproval: { type: 'boolean', example: true, description: 'Directly submit revised version for Department Head review' },
+                    directApprove: { type: 'boolean', example: false, description: 'Dept Head or Admin direct approval' },
+                    fileName: { type: 'string', example: 'CPE101_v2.pdf' },
+                    fileUrl: { type: 'string', example: '/uploads/syllabi/CPE101_v2_1710000000000.pdf' },
+                    fileType: { type: 'string', example: 'PDF' },
+                    fileSize: { type: 'integer', example: 2048576 },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'New version snapshot created' },
-            400: { description: 'Missing change summary or content' },
+            200: {
+              description: 'New syllabus version created and recorded',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Syllabus revised and Version 2 created.' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Missing change summary' },
+            403: { description: 'Forbidden: not authorized to modify this syllabus' },
+            404: { description: 'Syllabus not found' },
           },
         },
       },
       '/api/syllabi/{id}/submit': {
         post: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'Submit Syllabus for Department Review',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Submit Entire Syllabus for Administrative Review',
+          description: 'Updates syllabus master status to Submitted and dispatches review notifications to Department Heads.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID to submit',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
           responses: {
-            200: { description: 'Status updated to Submitted; Department Head notified' },
+            200: {
+              description: 'Syllabus submitted for review',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Syllabus submitted for review.' },
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
+                    },
+                  },
+                },
+              },
+            },
+            403: { description: 'Unauthorized' },
+            404: { description: 'Syllabus not found' },
           },
         },
       },
       '/api/syllabi/{id}/versions': {
         get: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'View Version History & Compare Versions',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Get Syllabus Version History (Audit Inspection)',
+          description: 'Inspects full chronological version list with editor attribution, change summaries, and approval statuses. Restricted from student access.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
           responses: {
-            200: { description: 'Chronological list of all immutable version snapshots' },
+            200: {
+              description: 'Version history returned',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
+                      versions: { type: 'array', items: { $ref: '#/components/schemas/SyllabusVersion' } },
+                    },
+                  },
+                },
+              },
+            },
+            403: { description: 'Students cannot view version history or department unauthorized' },
+            404: { description: 'Syllabus not found' },
+          },
+        },
+      },
+      '/api/syllabi/{id}/versions/{version}/submit': {
+        post: {
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Submit Specific Version for Department Head Approval',
+          description: 'Submits a specific historical or draft version number for official Department Head review.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
+            {
+              name: 'version',
+              in: 'path',
+              required: true,
+              description: 'Specific version number to submit (e.g., 1, 2)',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
+          responses: {
+            200: {
+              description: 'Version submitted for approval',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Syllabus Version 1 has been submitted for Department Head approval.' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Version already approved or already pending review' },
+            403: { description: 'Forbidden: You may only submit your own syllabus' },
+            404: { description: 'Syllabus or Version not found' },
           },
         },
       },
       '/api/syllabi/{id}/restore': {
         post: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'Restore Older Syllabus Version',
-          description: 'Safe rollback: restores a previous version by creating a new sequential version snapshot rather than deleting history.',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
+          summary: 'Rollback & Restore Prior Version',
+          description: `
+Non-destructive rollback:
+- Copies content of the historical version and appends a **new incremented version number**.
+- Ensures that audit trail of previous edits is preserved without history loss.
+          `.trim(),
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
           requestBody: {
             required: true,
             content: {
@@ -644,101 +1603,90 @@ Authenticates a user via their **University ID Number** (username) and password:
                   type: 'object',
                   required: ['versionNumber'],
                   properties: {
-                    versionNumber: { type: 'number', example: 1 },
+                    versionNumber: { type: 'integer', example: 1, description: 'Target historical version number to restore' },
                   },
                 },
               },
             },
           },
           responses: {
-            200: { description: 'Historical version cloned as new current version' },
-          },
-        },
-      },
-      '/api/notifications': {
-        get: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'View In-App Notifications & Alerts',
-          responses: {
-            200: { description: 'List of alerts and unread counts' },
-          },
-        },
-        patch: {
-          tags: ['4. Role: Educator (Faculty)'],
-          summary: 'Mark Notifications as Read',
-          responses: {
-            200: { description: 'Notifications marked read' },
-          },
-        },
-      },
-
-      // =========================================================================
-      // 5. ROLE: STUDENT
-      // =========================================================================
-      '/api/students/me/enrollments': {
-        get: {
-          tags: ['5. Role: Student'],
-          summary: 'View Enrolled Subjects',
-          description: 'Returns active enrolled course subjects dynamically mapped to the student account.',
-          responses: {
-            200: { description: 'List of enrolled courses' },
-          },
-        },
-      },
-      '/api/students/me/syllabi/{courseId}': {
-        get: {
-          tags: ['5. Role: Student'],
-          summary: 'View Current Syllabus Version Only',
-          description: 'Students view only the current approved syllabus version for their enrolled course subjects (historical drafts are restricted).',
-          parameters: [{ name: 'courseId', in: 'path', required: true, schema: { type: 'string' } }],
-          responses: {
-            200: { description: 'Current approved syllabus document' },
-          },
-        },
-      },
-
-      // =========================================================================
-      // 6. SYSTEM & DATABASE HEALTH
-      // =========================================================================
-      '/api/system/db-status': {
-        get: {
-          tags: ['6. System & PostgreSQL Database'],
-          summary: 'PostgreSQL Database Health & Table Inspection',
-          description: 'Live roundtrip latency, connection status, and record counts across all 8 normalized PostgreSQL tables.',
-          responses: {
             200: {
-              description: 'Database status and metrics',
+              description: 'Version restored as new draft snapshot',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
-                      status: { type: 'string', example: 'healthy' },
-                      database: { type: 'string', example: 'PostgreSQL (Supabase Pooler)' },
-                      latencyMs: { type: 'string', example: '115ms' },
-                      tables: { type: 'object' },
-                      seededAdmin: { type: 'object' },
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Version 1 successfully restored as new Version 3.' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
                     },
                   },
                 },
               },
             },
+            400: { description: 'Missing versionNumber' },
+            403: { description: 'Unauthorized' },
+            404: { description: 'Historical version not found' },
           },
         },
       },
-      // =========================================================================
-      // 7. SYLLABUS SUBMISSION & APPROVAL WORKFLOW
-      // =========================================================================
+      '/api/syllabi/{id}/review': {
+        post: {
+          tags: ['8. Syllabus Management & Revisions', '3. Role: Department Head'],
+          summary: 'Review Syllabus (Approve or Reject)',
+          description: 'Department Head direct review endpoint on syllabus master level.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['action'],
+                  properties: {
+                    action: { type: 'string', enum: ['Approve', 'Reject'], example: 'Approve' },
+                    remarks: { type: 'string', example: 'Approved for 1st Semester academic term.' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Syllabus review recorded',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Syllabus successfully approved.' },
+                    },
+                  },
+                },
+              },
+            },
+            400: { description: 'Invalid action' },
+            403: { description: 'Unauthorized: Admin or Department Head access required.' },
+          },
+        },
+      },
       '/api/syllabi/upload': {
         post: {
-          tags: ['Syllabus Submission'],
+          tags: ['8. Syllabus Management & Revisions', '4. Role: Educator (Faculty)'],
           summary: 'Upload Syllabus Document (PDF, DOC, DOCX)',
-          description: `
-Uploads an attached syllabus file (PDF, DOC, DOCX up to 15MB) to server storage.
-- **Allowed Roles**: \`Educator\`, \`DepartmentHead\`, \`Admin\`
-- **Authentication**: Required (JWT cookie)
-- Returns unique URL and metadata for inclusion in syllabus version creation.
-          `.trim(),
+          description: 'Uploads a course syllabus document file (up to 15MB) to `/uploads/syllabi/` and returns public URL metadata.',
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -750,7 +1698,7 @@ Uploads an attached syllabus file (PDF, DOC, DOCX up to 15MB) to server storage.
                     file: {
                       type: 'string',
                       format: 'binary',
-                      description: 'Supported file formats: .pdf, .doc, .docx (Max 15MB)',
+                      description: 'Syllabus file document (allowed: .pdf, .doc, .docx; max 15MB)',
                     },
                   },
                 },
@@ -759,96 +1707,69 @@ Uploads an attached syllabus file (PDF, DOC, DOCX up to 15MB) to server storage.
           },
           responses: {
             200: {
-              description: 'Document successfully uploaded and saved',
+              description: 'Document uploaded successfully',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean', example: true },
-                      fileUrl: { type: 'string', example: '/uploads/syllabi/1788539000-cpe101.pdf' },
                       fileName: { type: 'string', example: 'CPE101_Syllabus.pdf' },
-                      fileType: { type: 'string', example: 'application/pdf' },
-                      fileSize: { type: 'number', example: 204850 },
+                      fileUrl: { type: 'string', example: '/uploads/syllabi/CPE101_Syllabus_1710000000000.pdf' },
+                      fileType: { type: 'string', example: 'PDF' },
+                      fileSize: { type: 'integer', example: 1048576 },
                     },
                   },
                 },
               },
             },
-            400: { description: 'No file provided or unsupported file format / size exceeded' },
-            401: { description: 'Unauthorized — missing or invalid session token' },
-            403: { description: 'Forbidden — students cannot upload syllabi' },
+            400: { description: 'Missing file, disallowed file format, or size exceeds 15MB' },
+            403: { description: 'Unauthorized to upload syllabus documents' },
           },
         },
       },
-      '/api/syllabi/{id}/versions/{version}/submit': {
-        post: {
-          tags: ['Syllabus Submission'],
-          summary: 'Submit Syllabus Version for Department Head Approval',
-          description: `
-Submits a draft or rejected syllabus version for Department Head review.
-- **Allowed Roles**: \`Educator\`, \`DepartmentHead\` (teaching faculty), \`Admin\`
-- **Status Transition**: Version \`approvalStatus\` transitions to \`PENDING_APPROVAL\`. Syllabus \`status\` updates to \`Submitted\`.
-- **Department Notification**: Automatically notifies the Department Head.
-- **Revision Rule**: For revisions, the previous approved version remains active and student-visible.
-          `.trim(),
-          parameters: [
-            { name: 'id', in: 'path', required: true, description: 'Syllabus UUID', schema: { type: 'string' } },
-            { name: 'version', in: 'path', required: true, description: 'Version number (e.g., 1, 2)', schema: { type: 'string' } },
-          ],
-          responses: {
-            200: {
-              description: 'Version submitted successfully for Department Head approval',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean', example: true },
-                      message: { type: 'string', example: 'Your syllabus has been submitted for Department Head approval.' },
-                      version: { type: 'object' },
-                    },
-                  },
-                },
-              },
-            },
-            400: { description: 'Version is already pending review or already approved' },
-            401: { description: 'Unauthorized — user must be authenticated' },
-            403: { description: 'Forbidden — you can only submit your own syllabus' },
-            404: { description: 'Syllabus or specified version number not found' },
-          },
-        },
-      },
+
+      // =========================================================================
+      // 9. SYLLABUS REVIEW & APPROVAL WORKFLOW
+      // =========================================================================
       '/api/syllabus-approvals': {
         get: {
-          tags: ['Syllabus Approval'],
-          summary: 'Get Pending Approvals Queue (Department Scoped)',
-          description: `
-Retrieves all syllabus versions awaiting Department Head review and approval.
-- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
-- **Department Scoping**: Strictly scoped by the Department Head's authorized department ID. Clients cannot bypass department filtering.
-- **Metrics**: Computes real-time counts for \`pending\`, \`approved\`, \`rejected\`, and \`total\`.
-          `.trim(),
+          tags: ['9. Syllabus Review & Approval Workflow', '3. Role: Department Head'],
+          summary: 'Query Department Pending Syllabus Approvals',
+          description: 'Retrieves all syllabus versions awaiting Department Head approval, with departmental scoping and status breakdown stats.',
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'ALL'], default: 'PENDING_APPROVAL' } },
-            { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by course code, title, or instructor name' },
+            {
+              name: 'status',
+              in: 'query',
+              required: false,
+              description: 'Filter by approval status (default: PENDING_APPROVAL)',
+              schema: { type: 'string', enum: ['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'ALL'], example: 'PENDING_APPROVAL' },
+            },
+            {
+              name: 'departmentId',
+              in: 'query',
+              required: false,
+              description: 'Filter by department numeric ID (Admins only)',
+              schema: { type: 'string', example: '1' },
+            },
           ],
           responses: {
             200: {
-              description: 'List of syllabus approval requests within authorized department',
+              description: 'Approval requests retrieved',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
-                      approvals: { type: 'array', items: { type: 'object' } },
-                      metrics: {
+                      approvals: { type: 'array', items: { $ref: '#/components/schemas/SyllabusVersion' } },
+                      stats: {
                         type: 'object',
                         properties: {
-                          pending: { type: 'number', example: 3 },
-                          approved: { type: 'number', example: 12 },
-                          rejected: { type: 'number', example: 1 },
-                          total: { type: 'number', example: 16 },
+                          pending: { type: 'integer', example: 1 },
+                          approved: { type: 'integer', example: 2 },
+                          rejected: { type: 'integer', example: 0 },
+                          total: { type: 'integer', example: 3 },
                         },
                       },
                     },
@@ -856,86 +1777,97 @@ Retrieves all syllabus versions awaiting Department Head review and approval.
                 },
               },
             },
-            401: { description: 'Unauthorized — missing authentication' },
-            403: { description: 'Forbidden — only Department Heads and Administrators can access approval queues' },
+            403: { description: 'Unauthorized: Only Department Heads and Administrators may view approvals' },
           },
         },
       },
       '/api/syllabus-approvals/{id}': {
         get: {
-          tags: ['Syllabus Review'],
-          summary: 'View Approval Request & Side-by-Side Revision Diff',
-          description: `
-Deep inspection of a submitted syllabus version.
-- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
-- **Self-Approval Check**: Returns \`isSelfSubmission: true\` if the Department Head is the author/submitter.
-- **Revision Diff**: Locates the previous approved version to render side-by-side comparisons and change summaries.
-- **Attachment Viewer**: Supplies file URL for PDF/DOC/DOCX documents.
-          `.trim(),
+          tags: ['9. Syllabus Review & Approval Workflow', '3. Role: Department Head'],
+          summary: 'Get Approval Request Details & Side-by-Side Diff Comparison',
+          description: 'Retrieves detailed snapshot of a submitted syllabus version along with the previous approved version for comparative diff review.',
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus Version integer ID',
+              schema: { type: 'integer', example: 1 },
+            },
           ],
           responses: {
             200: {
-              description: 'Detailed approval request with course info, version content, document, and previous approved comparison',
+              description: 'Approval detail returned',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
-                      approval: { type: 'object' },
-                      previousApprovedVersion: { type: 'object', nullable: true },
+                      approval: { $ref: '#/components/schemas/SyllabusVersion' },
+                      previousApprovedVersion: { $ref: '#/components/schemas/SyllabusVersion', nullable: true },
                       isSelfSubmission: { type: 'boolean', example: false },
                     },
                   },
                 },
               },
             },
-            401: { description: 'Unauthorized' },
-            403: { description: 'Forbidden — syllabus does not belong to authorized department' },
+            403: { description: 'Forbidden: Department unauthorized' },
             404: { description: 'Approval request version not found' },
           },
         },
       },
       '/api/syllabus-approvals/{id}/approve': {
         post: {
-          tags: ['Syllabus Approval'],
-          summary: 'Approve Syllabus Version (Publish Official Active Version)',
+          tags: ['9. Syllabus Review & Approval Workflow', '3. Role: Department Head'],
+          summary: 'Approve Syllabus Version (Activates as Official Active Syllabus)',
           description: `
-Department Head approves a pending syllabus version.
-- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
-- **Department Authorization**: Verifies syllabus belongs to reviewer's authorized department.
-- **Teaching Faculty Authorization**: Department Heads are also faculty members at USJ-R and are authorized to upload, create, review, and approve their own teaching syllabi for their department.
-- **Atomic Transaction**:
-  1. Sets version \`approvalStatus\` to \`APPROVED\`.
-  2. Updates syllabus \`currentVersionNumber\` to this version number.
-  3. Sets syllabus \`status\` to \`ACTIVE\` (now visible to enrolled students).
-  4. Records entry in \`syllabus_approval_logs\`.
-  5. Dispatches notification to faculty member.
-  6. Creates audit log entry.
+Official Department Head approval of a submitted syllabus version:
+- Sets version \`approvalStatus\` to \`APPROVED\`.
+- Updates syllabus master \`status\` to \`ACTIVE\` and advances \`currentVersionNumber\`.
+- Immediately publishes syllabus to enrolled students.
           `.trim(),
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus Version integer ID to approve',
+              schema: { type: 'integer', example: 1 },
+            },
           ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    comments: { type: 'string', example: 'Approved with commendations on clear learning outcomes.', description: 'Optional approval comments' },
+                  },
+                },
+              },
+            },
+          },
           responses: {
             200: {
-              description: 'Syllabus version approved; now official active version for enrolled students',
+              description: 'Syllabus version approved successfully',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean', example: true },
-                      message: { type: 'string', example: 'CPE101 Version 2 has been approved and activated as the official syllabus.' },
-                      version: { type: 'object' },
-                      syllabus: { type: 'object' },
+                      message: { type: 'string', example: 'Syllabus approved successfully. It is now the official active version.' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
                     },
                   },
                 },
               },
             },
-            400: { description: 'Version is not pending approval' },
-            401: { description: 'Unauthorized' },
+            400: { description: 'Version is not currently in PENDING_APPROVAL status' },
             403: { description: 'Forbidden: Department unauthorized' },
             404: { description: 'Approval request version not found' },
           },
@@ -943,23 +1875,23 @@ Department Head approves a pending syllabus version.
       },
       '/api/syllabus-approvals/{id}/reject': {
         post: {
-          tags: ['Syllabus Approval'],
+          tags: ['9. Syllabus Review & Approval Workflow', '3. Role: Department Head'],
           summary: 'Reject Syllabus Version (With Mandatory Feedback Reason)',
           description: `
-Department Head rejects a pending syllabus version with required feedback remarks.
-- **Allowed Roles**: \`DepartmentHead\`, \`Admin\`
-- **Mandatory Reason**: Requires \`rejectionReason\` (minimum 5 characters).
-- **Teaching Faculty Review**: Department Heads can also return revisions for courses in their department.
-- **Revision Rule**: Does NOT modify syllabus \`currentVersionNumber\`. Previously approved version remains visible to students.
-- **Atomic Transaction**:
-  1. Sets version \`approvalStatus\` to \`REJECTED\`.
-  2. Stores \`rejectionReason\`.
-  3. Records entry in \`syllabus_approval_logs\`.
-  4. Dispatches notification to faculty member with feedback.
-  5. Creates audit log entry.
+Department Head rejects a pending syllabus version with required feedback remarks:
+- **Mandatory Reason**: Requires actionable \`rejectionReason\`.
+- Reverts version status to \`REJECTED\`.
+- Dispatches feedback notification to faculty member for resubmission.
           `.trim(),
+          security: [{ cookieAuth: [] }],
           parameters: [
-            { name: 'id', in: 'path', required: true, description: 'Syllabus Version UUID', schema: { type: 'string' } },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'Syllabus Version integer ID to reject',
+              schema: { type: 'integer', example: 1 },
+            },
           ],
           requestBody: {
             required: true,
@@ -972,8 +1904,8 @@ Department Head rejects a pending syllabus version with required feedback remark
                     rejectionReason: {
                       type: 'string',
                       minLength: 5,
-                      example: 'Please review the grading system percentages. The total must equal 100%.',
-                      description: 'Mandatory explanation for syllabus rejection',
+                      example: 'Please adjust grading percentages so that quizzes and exams sum to 100%.',
+                      description: 'Mandatory actionable explanation for syllabus rejection',
                     },
                   },
                 },
@@ -982,24 +1914,183 @@ Department Head rejects a pending syllabus version with required feedback remark
           },
           responses: {
             200: {
-              description: 'Syllabus version rejected; comments returned to instructor for revision',
+              description: 'Syllabus version rejected; feedback returned to instructor',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean', example: true },
-                      message: { type: 'string', example: 'CPE101 Version 2 has been rejected and returned to faculty.' },
-                      version: { type: 'object' },
+                      message: { type: 'string', example: 'Syllabus has been rejected with feedback returned to instructor.' },
+                      version: { $ref: '#/components/schemas/SyllabusVersion' },
+                      syllabus: { $ref: '#/components/schemas/Syllabus' },
                     },
                   },
                 },
               },
             },
-            400: { description: 'Missing rejection reason or version is not pending approval' },
-            401: { description: 'Unauthorized' },
-            403: { description: 'Forbidden: Self-review prohibited OR department unauthorized' },
+            400: { description: 'Missing rejection reason or version is not in PENDING_APPROVAL status' },
+            403: { description: 'Forbidden: Department unauthorized' },
             404: { description: 'Approval request version not found' },
+          },
+        },
+      },
+
+      // =========================================================================
+      // 10. SYSTEM, NOTIFICATIONS & DATABASE HEALTH
+      // =========================================================================
+      '/api/notifications': {
+        get: {
+          tags: ['10. System & PostgreSQL Database Health'],
+          summary: 'Get Authenticated User Notifications',
+          description: 'Retrieves notification list and unread count for the active session user.',
+          security: [{ cookieAuth: [] }],
+          responses: {
+            200: {
+              description: 'Notifications list returned',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      notifications: { type: 'array', items: { type: 'object' } },
+                      unreadCount: { type: 'integer', example: 0 },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
+          },
+        },
+        patch: {
+          tags: ['10. System & PostgreSQL Database Health'],
+          summary: 'Mark Notifications as Read',
+          description: 'Marks specific or all notifications as read for the authenticated user.',
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'integer', example: 1, description: 'Optional specific notification ID to mark as read' },
+                    markAllAsRead: { type: 'boolean', example: true, description: 'Set to true to mark all user notifications as read' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: {
+              description: 'Notifications updated',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      message: { type: 'string', example: 'Notifications marked as read.' },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
+          },
+        },
+      },
+      '/api/dashboard/stats': {
+        get: {
+          tags: ['10. System & PostgreSQL Database Health'],
+          summary: 'Role-Adaptive Dashboard Key Performance Metrics',
+          description: 'Calculates dashboard statistics tailored to the caller role (Admin, DepartmentHead, Educator, Student).',
+          security: [{ cookieAuth: [] }],
+          responses: {
+            200: {
+              description: 'Dashboard metrics returned',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      role: { type: 'string', example: 'Admin' },
+                      stats: { type: 'object' },
+                      recentActivities: { type: 'array', items: { type: 'object' } },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: 'Unauthorized' },
+          },
+        },
+      },
+      '/api/system/db-status': {
+        get: {
+          tags: ['10. System & PostgreSQL Database Health'],
+          summary: 'PostgreSQL Database & Pooler Health Diagnostic',
+          description: 'Tests active live query connectivity to the Supabase PostgreSQL session pooler (Port 5432), returns round-trip latency in milliseconds, and audits live row counts across all 10 segregated database tables.',
+          responses: {
+            200: {
+              description: 'Database connection is healthy and responsive',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'healthy' },
+                      database: { type: 'string', example: 'PostgreSQL (Supabase Pooler)' },
+                      latencyMs: { type: 'string', example: '45ms' },
+                      timestamp: { type: 'string', format: 'date-time' },
+                      tables: {
+                        type: 'object',
+                        properties: {
+                          srvs_departments: { type: 'integer', example: 1 },
+                          srvs_subjects: { type: 'integer', example: 3 },
+                          srvs_users: { type: 'integer', example: 4 },
+                          srvs_admins: { type: 'integer', example: 1 },
+                          srvs_department_heads: { type: 'integer', example: 1 },
+                          srvs_faculties: { type: 'integer', example: 1 },
+                          srvs_students: { type: 'integer', example: 1 },
+                          srvs_syllabi: { type: 'integer', example: 2 },
+                          srvs_syllabus_versions: { type: 'integer', example: 2 },
+                          srvs_enrollments: { type: 'integer', example: 1 },
+                        },
+                      },
+                      seededAdmin: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'integer', example: 1 },
+                          idNumber: { type: 'string', example: '00000' },
+                          email: { type: 'string', example: 'admin@srvs.local' },
+                          fullName: { type: 'string', example: 'System Administrator' },
+                          role: { type: 'string', example: 'Admin' },
+                          accountStatus: { type: 'string', example: 'Active' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            500: {
+              description: 'Database connection failure or query timeout',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      status: { type: 'string', example: 'unhealthy' },
+                      database: { type: 'string', example: 'PostgreSQL' },
+                      latencyMs: { type: 'string', example: '1500ms' },
+                      error: { type: 'string', example: 'Connection refused' },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },

@@ -11,14 +11,36 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const queryDept = searchParams.get('department') || searchParams.get('departmentId');
+    const search = searchParams.get('search');
+
     let deptCode: string | undefined = undefined;
     if (user.role === 'DepartmentHead' && user.departmentId) {
       const d = await prisma.department.findUnique({ where: { id: Number(user.departmentId) } });
       if (d) deptCode = d.code;
+    } else if (queryDept) {
+      const parsed = Number(queryDept);
+      if (!isNaN(parsed)) {
+        const d = await prisma.department.findUnique({ where: { id: parsed } });
+        if (d) deptCode = d.code;
+      } else {
+        deptCode = queryDept.toUpperCase();
+      }
+    }
+
+    const where: any = {};
+    if (deptCode) where.department = deptCode;
+    if (search && search.trim()) {
+      where.OR = [
+        { fullName: { contains: search.trim(), mode: 'insensitive' } },
+        { email: { contains: search.trim(), mode: 'insensitive' } },
+        { studentIdNumber: { contains: search.trim(), mode: 'insensitive' } },
+      ];
     }
 
     const rawStudents = await prisma.student.findMany({
-      where: deptCode ? { department: deptCode } : {},
+      where,
       include: {
         departmentRel: {
           select: {
@@ -43,7 +65,10 @@ export async function GET(req: NextRequest) {
       yearLevel: s.yearLevel,
     }));
 
-    return NextResponse.json({ students });
+    return NextResponse.json({
+      students,
+      count: students.length,
+    });
   } catch (error: any) {
     console.error('Error fetching students:', error);
     return NextResponse.json({ error: 'Failed to fetch students.' }, { status: 500 });
