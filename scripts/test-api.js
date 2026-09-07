@@ -1,8 +1,11 @@
 const http = require('http');
 
-function get(url) {
+const PORT = process.env.PORT || 3001;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+function get(url, cookie) {
   return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
+    http.get(url, { headers: cookie ? { Cookie: cookie } : {} }, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
@@ -22,7 +25,7 @@ function post(url, body, cookie) {
     const parsedUrl = new URL(url);
     const req = http.request({
       hostname: parsedUrl.hostname,
-      port: parsedUrl.port,
+      port: parsedUrl.port || PORT,
       path: parsedUrl.pathname,
       method: 'POST',
       headers: {
@@ -48,13 +51,71 @@ function post(url, body, cookie) {
   });
 }
 
+function patch(url, body, cookie) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const parsedUrl = new URL(url);
+    const req = http.request({
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || PORT,
+      path: parsedUrl.pathname,
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...(cookie ? { 'Cookie': cookie } : {}),
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, data: JSON.parse(data) });
+        } catch {
+          resolve({ status: res.statusCode, data });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function del(url, cookie) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const req = http.request({
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || PORT,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'DELETE',
+      headers: cookie ? { 'Cookie': cookie } : {},
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve({ status: res.statusCode, data: JSON.parse(data) });
+        } catch {
+          resolve({ status: res.statusCode, data });
+        }
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function run() {
+  console.log(`Using base URL: ${BASE_URL}\n`);
+
   console.log('1. Testing /api/system/db-status...');
-  const dbStatus = await get('http://127.0.0.1:3000/api/system/db-status');
+  const dbStatus = await get(`${BASE_URL}/api/system/db-status`);
   console.log('DB Status:', dbStatus.status, dbStatus.data?.tables ? 'OK' : dbStatus.data);
 
   console.log('\n2. Logging in as Admin (00000)...');
-  const loginRes = await post('http://127.0.0.1:3000/api/auth/login', {
+  const loginRes = await post(`${BASE_URL}/api/auth/login`, {
     idNumber: '00000',
     password: 'Giangwapo123?',
   });
@@ -63,24 +124,12 @@ async function run() {
   const cookie = loginRes.cookie;
 
   console.log('\n3. Fetching /api/students as Admin...');
-  const studentsRes = await new Promise((resolve) => {
-    http.get('http://127.0.0.1:3000/api/students', { headers: { Cookie: cookie } }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
-    });
-  });
+  const studentsRes = await get(`${BASE_URL}/api/students`, cookie);
   console.log('Students Status:', studentsRes.status);
   console.table(studentsRes.data?.students || []);
 
   console.log('\n4. Fetching /api/users?role=Student as Admin...');
-  const usersRes = await new Promise((resolve) => {
-    http.get('http://127.0.0.1:3000/api/users?role=Student', { headers: { Cookie: cookie } }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
-    });
-  });
+  const usersRes = await get(`${BASE_URL}/api/users?role=Student`, cookie);
   console.log('Users Status:', usersRes.status);
   console.table(
     (usersRes.data?.users || []).map(u => ({
@@ -94,7 +143,7 @@ async function run() {
   );
 
   console.log('\n5. Testing user creation via POST /api/users...');
-  const createRes = await post('http://127.0.0.1:3000/api/users', {
+  const createRes = await post(`${BASE_URL}/api/users`, {
     fullName: 'Test User Account',
     username: '99999',
     email: 'testuser@srvs.local',
@@ -104,45 +153,22 @@ async function run() {
   }, cookie);
   console.log('Create User Status:', createRes.status, 'Created ID:', createRes.data?.user?.id);
 
-  console.log('\n6. Testing role change via PATCH /api/users...');
-  const patchRes = await new Promise((resolve) => {
-    const payload = JSON.stringify({ userId: createRes.data?.user?.id, action: 'ChangeRole', newRole: 'DepartmentHead' });
-    const req = http.request({
-      hostname: '127.0.0.1',
-      port: 3000,
-      path: '/api/users',
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        'Cookie': cookie,
-      },
-    }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
-    });
-    req.write(payload);
-    req.end();
-  });
-  console.log('Change Role Status:', patchRes.status, 'New Role:', patchRes.data?.user?.role);
+  const createdUserId = createRes.data?.user?.id;
 
-  console.log('\n7. Testing user deletion via DELETE /api/users...');
-  const deleteRes = await new Promise((resolve) => {
-    const req = http.request({
-      hostname: '127.0.0.1',
-      port: 3000,
-      path: `/api/users?userId=${createRes.data?.user?.id}`,
-      method: 'DELETE',
-      headers: { 'Cookie': cookie },
-    }, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(d) }));
-    });
-    req.end();
-  });
-  console.log('Delete User Status:', deleteRes.status, 'Message:', deleteRes.data?.message);
+  if (createdUserId) {
+    console.log('\n6. Testing role change via PATCH /api/users...');
+    const patchRes = await patch(`${BASE_URL}/api/users`, {
+      userId: createdUserId,
+      action: 'ChangeRole',
+      newRole: 'DepartmentHead',
+    }, cookie);
+    console.log('Change Role Status:', patchRes.status, 'New Role:', patchRes.data?.user?.role);
+
+    console.log('\n7. Testing user deletion via DELETE /api/users...');
+    const deleteRes = await del(`${BASE_URL}/api/users?userId=${createdUserId}`, cookie);
+    console.log('Delete User Status:', deleteRes.status, 'Message:', deleteRes.data?.message);
+  }
+
   console.log('\nAll API CRUD operations verified successfully! ✅');
 }
 
