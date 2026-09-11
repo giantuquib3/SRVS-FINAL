@@ -62,10 +62,28 @@ export async function GET(
       }, { status: 403 });
     }
 
-    // 2. Student: Must be Approved/Active AND actively enrolled in this subject
+    // 2. Student: Must be Approved/Active, belong to student's department, AND actively enrolled in this subject
     if (user.role === 'Student') {
       if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Students can only view approved syllabi.' }, { status: 403 });
+      }
+
+      let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!studentDeptId) {
+        const studentProfile = await prisma.student.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (studentProfile?.departmentRel?.id) {
+          studentDeptId = studentProfile.departmentRel.id;
+        }
+      }
+
+      // Strictly deny access if syllabus is from another department
+      if (!studentDeptId || syllabus.departmentId !== studentDeptId) {
+        return NextResponse.json({
+          error: 'Access denied: Students can only view syllabi belonging to their own academic department.',
+        }, { status: 403 });
       }
 
       const activeEnrollment = await prisma.enrollment.findFirst({
@@ -73,12 +91,15 @@ export async function GET(
           studentId: Number(user.id),
           subjectId: syllabus.subjectId,
           status: 'ENROLLED',
+          subject: {
+            departmentId: studentDeptId,
+          },
         },
       });
 
       if (!activeEnrollment) {
         return NextResponse.json({
-          error: 'Access restricted: You can only view syllabi for subjects you are actively enrolled in.',
+          error: 'Access restricted: You can only view syllabi for courses you are actively enrolled in.',
         }, { status: 403 });
       }
     }
@@ -140,10 +161,9 @@ export async function PATCH(
     const currentUserId = Number(user.id);
     const isAuthor = syllabus.instructorId === currentUserId;
     const isDeptHead = user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) === syllabus.departmentId;
-    const isAdmin = user.role === 'Admin';
 
-    if (!isAuthor && !isDeptHead && !isAdmin) {
-      return NextResponse.json({ error: 'Forbidden: You do not have permission to modify this syllabus.' }, { status: 403 });
+    if (!isAuthor && !isDeptHead) {
+      return NextResponse.json({ error: 'Forbidden: Only the assigned Faculty author and Department Head may revise this syllabus. System Administrators cannot author revisions.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -170,7 +190,7 @@ export async function PATCH(
     const latestVersion = syllabus.versions[0];
     const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
 
-    const canDirectApprove = (user.role === 'DepartmentHead' || user.role === 'Admin') && body.directApprove === true;
+    const canDirectApprove = user.role === 'DepartmentHead' && body.directApprove === true;
     const isDraft = !canDirectApprove && saveAsDraft === true && submitForApproval === false;
     const versionApprovalStatus = canDirectApprove ? 'APPROVED' : (isDraft ? 'DRAFT' : 'PENDING_APPROVAL');
     const now = new Date();

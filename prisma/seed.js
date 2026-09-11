@@ -39,7 +39,7 @@ async function main() {
   const usersToSeed = [
     {
       idNumber: '00000',
-      email: 'admin@srvs.local',
+      email: 'admin@usjr.edu.ph',
       passwordHash: adminPasswordHash,
       firstName: 'System',
       lastName: 'Administrator',
@@ -50,7 +50,7 @@ async function main() {
     },
     {
       idNumber: '10001',
-      email: 'depthead.cpe@srvs.local',
+      email: 'depthead.cpe@usjr.edu.ph',
       passwordHash: defaultPasswordHash,
       firstName: 'Engr. Roberto',
       lastName: 'Del Rosario',
@@ -61,7 +61,7 @@ async function main() {
     },
     {
       idNumber: '10002',
-      email: 'faculty.cpe@srvs.local',
+      email: 'faculty.cpe@usjr.edu.ph',
       passwordHash: defaultPasswordHash,
       firstName: 'Prof. Maria',
       lastName: 'Santos',
@@ -72,7 +72,7 @@ async function main() {
     },
     {
       idNumber: '10003',
-      email: 'faculty.ce@srvs.local',
+      email: 'faculty.ce@usjr.edu.ph',
       passwordHash: defaultPasswordHash,
       firstName: 'Engr. Manuel',
       lastName: 'Reyes',
@@ -83,7 +83,7 @@ async function main() {
     },
     {
       idNumber: '2022012708',
-      email: 'student.gian@srvs.local',
+      email: 'student.gian@usjr.edu.ph',
       passwordHash: defaultPasswordHash,
       firstName: 'Gian Carlo',
       lastName: 'Tuquib',
@@ -94,7 +94,7 @@ async function main() {
     },
     {
       idNumber: '2022012709',
-      email: 'student.cpe@srvs.local',
+      email: 'student.cpe@usjr.edu.ph',
       passwordHash: defaultPasswordHash,
       firstName: 'Bea',
       lastName: 'Alonzo',

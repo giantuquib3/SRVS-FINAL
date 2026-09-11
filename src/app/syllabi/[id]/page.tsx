@@ -20,7 +20,8 @@ import {
   GitBranch,
   Download,
   FileText,
-  XCircle
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
 
 export default function SyllabusViewerPage() {
@@ -94,7 +95,7 @@ export default function SyllabusViewerPage() {
   const isOwner = currentUser?.id === syllabus.instructorId;
   const isAdmin = currentUser?.role === 'Admin';
   const isDeptHead = currentUser?.role === 'DepartmentHead';
-  const canEdit = isOwner || isAdmin || (isDeptHead && syllabus.departmentId === currentUser?.departmentId);
+  const canEdit = isOwner || (isDeptHead && syllabus.departmentId === currentUser?.departmentId);
   const canViewHistory = currentUser && currentUser.role !== 'Student';
 
   const isDraftOrRejected =
@@ -266,33 +267,79 @@ export default function SyllabusViewerPage() {
           </div>
         </div>
 
-        {/* Uploaded File Download Card */}
+        {/* In-Browser PDF Document Viewer */}
         {currentVersion?.fileUrl && (
-          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-xl bg-white border border-sky-200 text-sky-700 shadow-sm">
-                <FileText className="w-5 h-5" />
+          <div className="space-y-4 rounded-3xl bg-slate-50 p-4 sm:p-6 border border-slate-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900 text-sm flex items-center space-x-2">
+                    <span>{currentVersion.fileName || 'Official Syllabus Document'}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                      {currentVersion.fileType || 'PDF'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Official syllabus approved by Department Head • Displayed directly in-browser
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="font-bold text-sky-950 flex items-center space-x-2">
-                  <span>Attached Syllabus File ({currentVersion.fileType || 'PDF'})</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-mono">
-                    {currentVersion.fileName}
-                  </span>
-                </div>
-                <div className="text-[11px] text-sky-700">
-                  Official syllabus document uploaded for this version
-                </div>
+
+              <div className="flex items-center space-x-2">
+                <a
+                  href={currentVersion.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open PDF in a new tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-[#005A36]" />
+                  <span>Open in Tab</span>
+                </a>
+                <a
+                  href={currentVersion.fileUrl}
+                  download={currentVersion.fileName || `${syllabus.course.code}_Syllabus.pdf`}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                  title="Download a copy of this syllabus PDF"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#FEF08A]" />
+                  <span>Download PDF</span>
+                </a>
               </div>
             </div>
-            <a
-              href={currentVersion.fileUrl}
-              download={currentVersion.fileName || 'syllabus.pdf'}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-sm flex items-center space-x-1.5 transition-colors self-start sm:self-auto"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download Syllabus File</span>
-            </a>
+
+            {/* Embedded In-Browser PDF Frame */}
+            <div className="w-full rounded-2xl overflow-hidden border border-slate-300 shadow-md bg-white">
+              <iframe
+                src={`${currentVersion.fileUrl}#toolbar=1&navpanes=0`}
+                title={`${syllabus.course.code} Syllabus PDF`}
+                className="w-full h-[750px] sm:h-[850px] border-none"
+              />
+            </div>
+            <div className="text-center">
+              <p className="text-[11px] text-slate-400">
+                Having trouble viewing the PDF directly in your browser?{' '}
+                <a
+                  href={currentVersion.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#005A36] font-bold underline"
+                >
+                  Click here to view it in full screen
+                </a>{' '}
+                or{' '}
+                <a
+                  href={currentVersion.fileUrl}
+                  download={currentVersion.fileName || `${syllabus.course.code}_Syllabus.pdf`}
+                  className="text-[#CA8A04] font-bold underline"
+                >
+                  download the file
+                </a>.
+              </p>
+            </div>
           </div>
         )}
 

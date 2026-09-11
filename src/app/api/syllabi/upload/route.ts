@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized to upload syllabus documents.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Faculty can upload syllabus documents. System Administrators cannot author or upload syllabi.' }, { status: 403 });
     }
 
     const formData = await req.formData();

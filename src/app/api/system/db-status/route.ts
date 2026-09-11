@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req?: NextRequest) {
   const startTime = Date.now();
+  const searchParams = req ? new URL(req.url).searchParams : null;
+  const detailed = searchParams ? searchParams.get('detailed') !== 'false' : true;
 
   try {
     const [

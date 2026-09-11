@@ -14,9 +14,74 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    if (user?.role === 'DepartmentHead') {
-      if (user.departmentId) {
-        where.departmentId = Number(user.departmentId);
+    let studentDeptId: number | null = null;
+    let enrolledSet = new Set<number>();
+
+    if (user?.role === 'Student') {
+      studentDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!studentDeptId) {
+        const studentProfile = await prisma.student.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (studentProfile?.departmentRel?.id) {
+          studentDeptId = studentProfile.departmentRel.id;
+        }
+      }
+
+      if (!studentDeptId) {
+        return NextResponse.json({ courses: [], subjects: [] });
+      }
+
+      where.departmentId = studentDeptId;
+
+      const studentEnrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId: Number(user.id),
+          status: 'ENROLLED',
+          subject: { departmentId: studentDeptId },
+        },
+        select: { subjectId: true },
+      });
+      enrolledSet = new Set(studentEnrollments.map((e) => e.subjectId));
+    } else if (user?.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+
+      if (!deptHeadDeptId) {
+        return NextResponse.json({ courses: [], subjects: [] });
+      }
+
+      // Strictly lock to Department Head's department only
+      where.departmentId = deptHeadDeptId;
+    } else if (user?.role === 'Educator') {
+      let educatorDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!educatorDeptId) {
+        const fac = await prisma.faculty.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (fac?.departmentRel?.id) {
+          educatorDeptId = fac.departmentRel.id;
+        } else if (fac?.department) {
+          const d = await prisma.department.findUnique({ where: { code: fac.department } });
+          if (d) educatorDeptId = d.id;
+        }
+      }
+
+      if (educatorDeptId) {
+        where.departmentId = educatorDeptId;
       }
     } else if (departmentId) {
       const parsedDeptId = Number(departmentId);
@@ -47,6 +112,8 @@ export async function GET(req: NextRequest) {
           },
         },
         syllabi: {
+          where: user?.role === 'Student' ? { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } } : undefined,
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
           select: {
             id: true,
             status: true,
@@ -64,7 +131,17 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ courses: subjects, subjects });
+    const formattedSubjects = subjects.map((s) => {
+      const isEnrolled = enrolledSet.has(s.id);
+      return {
+        ...s,
+        isEnrolled: user?.role === 'Student' ? isEnrolled : true,
+        // Students can only access the syllabus if they are actively enrolled in this subject
+        syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
+      };
+    });
+
+    return NextResponse.json({ courses: formattedSubjects, subjects: formattedSubjects });
   } catch (error: any) {
     console.error('Error fetching courses:', error);
     return NextResponse.json({ error: 'Failed to fetch courses.' }, { status: 500 });
@@ -74,8 +151,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Admin' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
+    if (!user || user.role !== 'DepartmentHead') {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads can add courses. System Administrators cannot add courses.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -92,27 +169,34 @@ export async function POST(req: NextRequest) {
       semester = '1st Semester',
     } = body;
 
-    if (!code || !title || !departmentId) {
-      return NextResponse.json({ error: 'Course code, title, and department are required.' }, { status: 400 });
+    if (!code || !title) {
+      return NextResponse.json({ error: 'Course code and title are required.' }, { status: 400 });
     }
 
     const upperCode = code.trim().toUpperCase();
 
-    // Resolve Department
+    // Automatically resolve Department from Department Head profile
     let targetDept = null;
-    const numericDeptId = Number(departmentId);
-    if (!isNaN(numericDeptId)) {
-      targetDept = await prisma.department.findUnique({ where: { id: numericDeptId } });
-    } else {
-      targetDept = await prisma.department.findUnique({ where: { code: String(departmentId).trim().toUpperCase() } });
+    let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+    if (!deptHeadDeptId) {
+      const dh = await prisma.departmentHead.findUnique({
+        where: { userId: Number(user.id) },
+        include: { departmentRel: true },
+      });
+      if (dh?.departmentRel?.id) {
+        deptHeadDeptId = dh.departmentRel.id;
+      } else if (dh?.department) {
+        const d = await prisma.department.findUnique({ where: { code: dh.department } });
+        if (d) deptHeadDeptId = d.id;
+      }
+    }
+
+    if (deptHeadDeptId) {
+      targetDept = await prisma.department.findUnique({ where: { id: deptHeadDeptId } });
     }
 
     if (!targetDept) {
-      return NextResponse.json({ error: 'Invalid department specified.' }, { status: 400 });
-    }
-
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== targetDept.id) {
-      return NextResponse.json({ error: 'Department Heads may only manage courses within their assigned department.' }, { status: 403 });
+      return NextResponse.json({ error: 'Your account is not assigned to a valid academic department.' }, { status: 403 });
     }
 
     const existing = await prisma.subject.findUnique({

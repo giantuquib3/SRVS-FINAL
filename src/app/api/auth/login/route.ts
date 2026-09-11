@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
       },
       include: {
         department: true,
+        studentProfile: {
+          include: {
+            departmentRel: true,
+          },
+        },
       },
     });
 
@@ -77,6 +82,10 @@ export async function POST(req: NextRequest) {
       data: { lastLoginAt: new Date() },
     });
 
+    const deptId = user.departmentId || user.studentProfile?.departmentRel?.id || null;
+    const deptCode = user.department?.code || user.studentProfile?.departmentRel?.code || user.studentProfile?.department || null;
+    const deptName = user.department?.name || user.studentProfile?.departmentRel?.name || null;
+
     // Create session token
     const token = await signToken({
       id: user.id,
@@ -85,9 +94,9 @@ export async function POST(req: NextRequest) {
       username: user.idNumber,
       fullName: user.fullName,
       role: user.role,
-      departmentId: user.departmentId,
-      departmentCode: user.department?.code,
-      departmentName: user.department?.name,
+      departmentId: deptId,
+      departmentCode: deptCode,
+      departmentName: deptName,
     });
 
     await logAuditEvent({

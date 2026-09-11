@@ -10,8 +10,8 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Admin' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
+    if (!user || user.role !== 'DepartmentHead') {
+      return NextResponse.json({ error: 'Unauthorized: Only the Department Head may approve or reject departmental syllabi.' }, { status: 403 });
     }
 
     const numericId = Number(params.id);
@@ -37,21 +37,69 @@ export async function POST(
       return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== syllabus.departmentId) {
-      return NextResponse.json({ error: 'Department Heads may only review departmental syllabi.' }, { status: 403 });
+    let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+    if (!deptHeadDeptId) {
+      const dh = await prisma.departmentHead.findUnique({
+        where: { userId: Number(user.id) },
+        include: { departmentRel: true },
+      });
+      if (dh?.departmentRel?.id) {
+        deptHeadDeptId = dh.departmentRel.id;
+      } else if (dh?.department) {
+        const d = await prisma.department.findUnique({ where: { code: dh.department } });
+        if (d) deptHeadDeptId = d.id;
+      }
+    }
+
+    if (!deptHeadDeptId || deptHeadDeptId !== syllabus.departmentId) {
+      return NextResponse.json({ error: 'Forbidden: Department Heads may only review syllabi for their own department.' }, { status: 403 });
     }
 
     const targetStatus = action === 'Approve' ? 'Approved' : 'Rejected';
+    const versionStatus = action === 'Approve' ? 'APPROVED' : 'REJECTED';
     const currentUserId = Number(user.id);
+    const now = new Date();
 
-    const updated = await prisma.syllabus.update({
-      where: { id: numericId },
-      data: {
-        status: targetStatus,
-        reviewerRemarks: remarks?.trim() || null,
-        reviewedAt: new Date(),
-        reviewedByUserId: currentUserId,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (action === 'Approve') {
+        // Archive any other active syllabi for the same subject
+        await tx.syllabus.updateMany({
+          where: {
+            subjectId: syllabus.subjectId,
+            id: { not: syllabus.id },
+            status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] },
+          },
+          data: { status: 'Archived' },
+        });
+      }
+
+      // Update latest version approvalStatus
+      const latestVersion = await tx.syllabusVersion.findFirst({
+        where: { syllabusId: syllabus.id },
+        orderBy: { versionNumber: 'desc' },
+      });
+
+      if (latestVersion) {
+        await tx.syllabusVersion.update({
+          where: { id: latestVersion.id },
+          data: {
+            approvalStatus: versionStatus,
+            reviewedById: currentUserId,
+            reviewedAt: now,
+            rejectionReason: action === 'Reject' ? (remarks?.trim() || null) : null,
+          },
+        });
+      }
+
+      return tx.syllabus.update({
+        where: { id: numericId },
+        data: {
+          status: targetStatus,
+          reviewerRemarks: remarks?.trim() || null,
+          reviewedAt: now,
+          reviewedByUserId: currentUserId,
+        },
+      });
     });
 
     await logAuditEvent({

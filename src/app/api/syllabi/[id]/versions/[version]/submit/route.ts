@@ -12,8 +12,8 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only faculty, department heads, or administrators may submit a syllabus.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
+      return NextResponse.json({ error: 'Unauthorized: Only faculty and department heads may submit a syllabus version.' }, { status: 403 });
     }
 
     const numericId = Number(params.id);
@@ -92,12 +92,21 @@ export async function POST(
       return { updatedVersion, updatedSyllabus };
     });
 
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      // Body is optional
+    }
+
+    const remarksSummary = body?.remarks ? ` - Remarks: "${body.remarks}"` : '';
+
     await logAuditEvent({
       userId: currentUserId,
       userDisplayName: user.fullName,
       actionType: 'SubmitSyllabusVersion',
       resultStatus: 'Success',
-      description: `Submitted syllabus [${syllabus.subject.code}] Version ${versionNum} for Department Head review`,
+      description: `Submitted syllabus [${syllabus.subject.code}] Version ${versionNum} for Department Head review${remarksSummary}`,
       entityType: 'SyllabusVersion',
       entityId: syllabusVersion.id,
       ipAddress: req.ip || '127.0.0.1',

@@ -16,8 +16,37 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    // Department Head can only view subjects in their department
-    if (user?.role === 'DepartmentHead') {
+    let studentDeptId: number | null = null;
+    let enrolledSet = new Set<number>();
+
+    if (user?.role === 'Student') {
+      studentDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!studentDeptId) {
+        const studentProfile = await prisma.student.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (studentProfile?.departmentRel?.id) {
+          studentDeptId = studentProfile.departmentRel.id;
+        }
+      }
+
+      if (!studentDeptId) {
+        return NextResponse.json({ subjects: [] });
+      }
+
+      where.departmentId = studentDeptId;
+
+      const studentEnrollments = await prisma.enrollment.findMany({
+        where: {
+          studentId: Number(user.id),
+          status: 'ENROLLED',
+          subject: { departmentId: studentDeptId },
+        },
+        select: { subjectId: true },
+      });
+      enrolledSet = new Set(studentEnrollments.map((e) => e.subjectId));
+    } else if (user?.role === 'DepartmentHead') {
       if (user.departmentId) {
         where.departmentId = Number(user.departmentId);
       }
@@ -26,7 +55,6 @@ export async function GET(req: NextRequest) {
       if (!isNaN(parsedDeptId)) {
         where.departmentId = parsedDeptId;
       } else {
-        // Maybe department code was passed (e.g. 'CPE')
         const dept = await prisma.department.findUnique({ where: { code: departmentId } });
         if (dept) where.departmentId = dept.id;
       }
@@ -75,7 +103,16 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ subjects });
+    const formattedSubjects = subjects.map((s) => {
+      const isEnrolled = enrolledSet.has(s.id);
+      return {
+        ...s,
+        isEnrolled: user?.role === 'Student' ? isEnrolled : true,
+        syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
+      };
+    });
+
+    return NextResponse.json({ subjects: formattedSubjects });
   } catch (error: any) {
     console.error('Error fetching subjects:', error);
     return NextResponse.json({ error: 'Failed to fetch subjects.' }, { status: 500 });
@@ -85,8 +122,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Admin' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
+    if (!user || user.role !== 'DepartmentHead') {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads can add courses or subjects. System Administrators cannot add courses.' }, { status: 403 });
     }
 
     const body = await req.json();

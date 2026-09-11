@@ -8,12 +8,25 @@ import {
   Calendar,
   Eye,
   RefreshCw,
-  Layers
+  Layers,
+  Download,
+  ExternalLink,
+  X,
+  FileText,
+  Compass
 } from 'lucide-react';
 
 export default function StudentDashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pdfPreviewModal, setPdfPreviewModal] = useState<{
+    isOpen: boolean;
+    fileUrl: string;
+    fileName: string;
+    courseCode: string;
+    courseTitle: string;
+    syllabusId: number;
+  } | null>(null);
 
   const fetchStudentData = async () => {
     setLoading(true);
@@ -44,6 +57,7 @@ export default function StudentDashboard() {
   }
 
   const stats = data?.stats || {};
+  const department = data?.department || {};
   const enrolledSubjects = data?.enrolledSubjects || [];
 
   return (
@@ -55,20 +69,34 @@ export default function StudentDashboard() {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               Student Academic Portal
             </span>
-            <span className="text-xs text-slate-500 font-medium">USJ-R Enrolled Courses</span>
+            {department?.code && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200">
+                Department: [{department.code}] {department.name || department.code}
+              </span>
+            )}
+            <span className="text-xs text-slate-500 font-medium">Enrolled Courses & Syllabi</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
             My Enrolled Subjects & Syllabi
           </h1>
         </div>
 
-        <button
-          onClick={fetchStudentData}
-          className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer self-start sm:self-auto shadow-sm"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-[#005A36] ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <Link
+            href="/courses"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-1.5"
+          >
+            <Compass className="w-3.5 h-3.5 text-[#FEF08A]" />
+            <span>Browse Courses</span>
+          </Link>
+          <button
+            onClick={fetchStudentData}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#005A36] ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Real Statistics Cards */}
@@ -111,14 +139,23 @@ export default function StudentDashboard() {
 
       {/* Dynamic Enrolled Subjects Cards */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h2 className="text-lg font-bold text-slate-800 flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-[#005A36]" />
             <span>MY ENROLLED SUBJECTS</span>
           </h2>
-          <span className="text-xs text-slate-500 font-medium">
-            Authorized courses linked to your student account
-          </span>
+          <div className="flex items-center space-x-3">
+            <span className="hidden md:inline text-xs text-slate-500 font-medium">
+              Authorized courses linked to your student account
+            </span>
+            <Link
+              href="/courses"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#005A36] bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 transition-colors flex items-center space-x-1.5 shadow-2xs"
+            >
+              <Compass className="w-3.5 h-3.5 text-[#005A36]" />
+              <span>Browse All Courses</span>
+            </Link>
+          </div>
         </div>
 
         {enrolledSubjects.length === 0 ? (
@@ -128,12 +165,23 @@ export default function StudentDashboard() {
             <p className="text-xs text-slate-500 max-w-md mx-auto">
               You are not currently enrolled in any subjects. When the Department Head or Administrator enrolls you, your course syllabi will appear here automatically.
             </p>
+            <div className="pt-3">
+              <Link
+                href="/courses"
+                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all"
+              >
+                <Compass className="w-4 h-4 text-[#FEF08A]" />
+                <span>Browse Course Catalog</span>
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {enrolledSubjects.map((item: any) => {
               const subject = item.subject || item.course || {};
               const activeSyllabus = item.subject?.syllabi?.[0] || item.course?.syllabi?.[0];
+              const latestVersion = activeSyllabus?.versions?.[0];
+              const pdfUrl = latestVersion?.fileUrl;
               return (
                 <div
                   key={item.id}
@@ -207,13 +255,39 @@ export default function StudentDashboard() {
                     </div>
 
                     {activeSyllabus ? (
-                      <Link
-                        href={`/syllabi/${activeSyllabus.id}`}
-                        className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-[#FEF08A]" />
-                        <span>View Syllabus</span>
-                      </Link>
+                      <div className="flex items-center space-x-2">
+                        {pdfUrl && (
+                          <a
+                            href={pdfUrl}
+                            download={latestVersion?.fileName || `${subject.code}_Syllabus.pdf`}
+                            className="p-2 rounded-xl text-slate-600 hover:text-[#005A36] bg-slate-100 hover:bg-emerald-50 border border-slate-200 shadow-sm transition-all"
+                            title="Download PDF copy directly"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (pdfUrl) {
+                              setPdfPreviewModal({
+                                isOpen: true,
+                                fileUrl: pdfUrl,
+                                fileName: latestVersion?.fileName || `${subject.code}_Syllabus.pdf`,
+                                courseCode: subject.code,
+                                courseTitle: subject.title,
+                                syllabusId: activeSyllabus.id,
+                              });
+                            } else {
+                              window.location.href = `/syllabi/${activeSyllabus.id}`;
+                            }
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#FEF08A]" />
+                          <span>View Syllabus</span>
+                        </button>
+                      </div>
                     ) : (
                       <button
                         disabled
@@ -229,6 +303,86 @@ export default function StudentDashboard() {
           </div>
         )}
       </div>
+
+      {/* In-Browser PDF Preview Modal for Students */}
+      {pdfPreviewModal?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-2xl bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-extrabold text-[#005A36] font-mono">
+                      {pdfPreviewModal.courseCode}
+                    </span>
+                    <span className="text-xs text-slate-400">•</span>
+                    <span className="text-xs font-bold text-slate-700">Official Syllabus Document</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                      PDF
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 line-clamp-1">
+                    {pdfPreviewModal.courseTitle}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 self-end sm:self-auto">
+                <a
+                  href={pdfPreviewModal.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open PDF in a new browser tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-[#005A36]" />
+                  <span className="hidden sm:inline">Open in Tab</span>
+                </a>
+
+                <a
+                  href={pdfPreviewModal.fileUrl}
+                  download={pdfPreviewModal.fileName}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                  title="Download a copy of this syllabus PDF"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#FEF08A]" />
+                  <span>Download PDF</span>
+                </a>
+
+                <Link
+                  href={`/syllabi/${pdfPreviewModal.syllabusId}`}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30 shadow-sm flex items-center space-x-1 transition-colors"
+                  title="View full syllabus details"
+                >
+                  <span>Details</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setPdfPreviewModal(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Close Preview"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Embedded PDF Frame */}
+            <div className="flex-1 w-full bg-slate-100 overflow-hidden relative">
+              <iframe
+                src={`${pdfPreviewModal.fileUrl}#toolbar=1&navpanes=0`}
+                title={`${pdfPreviewModal.courseCode} Syllabus PDF`}
+                className="w-full h-full border-none"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

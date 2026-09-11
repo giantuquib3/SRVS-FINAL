@@ -9,8 +9,8 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only educators or administrators can restore versions.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
+      return NextResponse.json({ error: 'Unauthorized: Only faculty or department heads can restore versions.' }, { status: 403 });
     }
 
     const numericId = Number(params.id);

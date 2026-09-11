@@ -10,8 +10,8 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
+      return NextResponse.json({ error: 'Unauthorized: Only faculty and department heads may submit a syllabus.' }, { status: 403 });
     }
 
     const numericId = Number(params.id);
@@ -37,6 +37,13 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      // Body is optional
+    }
+
     const updated = await prisma.syllabus.update({
       where: { id: numericId },
       data: {
@@ -45,12 +52,14 @@ export async function POST(
       },
     });
 
+    const notesSummary = body?.notes ? ` - Note: "${body.notes}"` : '';
+
     await logAuditEvent({
       userId: currentUserId,
       userDisplayName: user.fullName,
       actionType: 'SubmitSyllabus',
       resultStatus: 'Success',
-      description: `Submitted syllabus for [${syllabus.subject.code}] ${syllabus.subject.title} for administrative review`,
+      description: `Submitted syllabus for [${syllabus.subject.code}] ${syllabus.subject.title} for administrative review${notesSummary}`,
       entityType: 'Syllabus',
       entityId: syllabus.id,
       ipAddress: req.ip || '127.0.0.1',

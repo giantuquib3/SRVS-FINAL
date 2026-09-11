@@ -205,7 +205,58 @@ export default function NewSyllabusPage() {
     }
   };
 
-  const isDeptHeadOrAdmin = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
+  // Restrict access: Only Department Heads and Faculty (Educators) can create/upload syllabi
+  if (currentUser && currentUser.role === 'Admin') {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center space-y-5">
+        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-extrabold text-slate-900">Syllabus Authoring Restricted</h2>
+          <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+            In accordance with USJ-R academic governance standards, <strong>System Administrators</strong> are not authorized to create or upload course syllabi. Only <strong>Department Heads</strong> and <strong>Faculty</strong> members may author or upload syllabi for academic courses.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/admin/dashboard"
+            className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] text-white hover:bg-[#00472A] shadow-sm transition-all inline-flex items-center space-x-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Admin Dashboard</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser && currentUser.role === 'Student') {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center space-y-5">
+        <div className="w-16 h-16 rounded-2xl bg-sky-50 border border-sky-200 text-sky-600 flex items-center justify-center mx-auto shadow-sm">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-extrabold text-slate-900">Student Access Notice</h2>
+          <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+            Students cannot create or author syllabi. You may view approved syllabi for your enrolled courses through your student portal.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/student/dashboard"
+            className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] text-white hover:bg-[#00472A] shadow-sm transition-all inline-flex items-center space-x-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Student Dashboard</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const isDeptHead = currentUser?.role === 'DepartmentHead';
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -242,25 +293,26 @@ export default function NewSyllabusPage() {
             <Save className="w-3.5 h-3.5 text-[#005A36]" />
             <span>Save as Draft</span>
           </button>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() => handleSave(true, false)}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
-          >
-            <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
-            <span>Submit for Approval</span>
-          </button>
-          {isDeptHeadOrAdmin && (
+          {isDeptHead ? (
             <button
               type="button"
               disabled={submitting}
               onClick={() => handleSave(true, true)}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
               title="Publish immediately as active official syllabus"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Approve & Publish</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <span>Approve & Publish Syllabus</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleSave(true, false)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <span>Submit for Approval</span>
             </button>
           )}
         </div>
@@ -637,25 +689,26 @@ export default function NewSyllabusPage() {
                 <Save className="w-4 h-4 text-[#005A36]" />
                 <span>Save as Draft</span>
               </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => handleSave(true, false)}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
-              >
-                <Send className="w-4 h-4 text-[#FEF08A]" />
-                <span>Submit for Approval</span>
-              </button>
-              {isDeptHeadOrAdmin && (
+              {isDeptHead ? (
                 <button
                   type="button"
                   disabled={submitting}
                   onClick={() => handleSave(true, true)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
                   title="Publish immediately as active official syllabus"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Approve & Publish</span>
+                  <CheckCircle2 className="w-4 h-4 text-[#FEF08A]" />
+                  <span>Approve & Publish Syllabus</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleSave(true, false)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                >
+                  <Send className="w-4 h-4 text-[#FEF08A]" />
+                  <span>Submit for Approval</span>
                 </button>
               )}
             </div>

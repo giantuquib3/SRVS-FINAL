@@ -23,6 +23,7 @@ import {
 export default function SyllabusApprovalsPage() {
   const [approvals, setApprovals] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({ pending: 0, approved: 0, rejected: 0, total: 0 });
+  const [department, setDepartment] = useState<{ id: number; code: string; name: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING_APPROVAL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,6 +40,7 @@ export default function SyllabusApprovalsPage() {
       }
       setApprovals(data.approvals || []);
       if (data.stats) setStats(data.stats);
+      if (data.department) setDepartment(data.department);
     } catch (err: any) {
       setError('Connection error. Could not reach approval server.');
     } finally {
@@ -55,11 +57,16 @@ export default function SyllabusApprovalsPage() {
       {/* USJ-R Brand Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               Curriculum Quality Review
             </span>
-            <span className="text-xs text-slate-500 font-medium">Department Head Workflow</span>
+            {department?.code && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs">
+                Department: [{department.code}] {department.name || department.code}
+              </span>
+            )}
+            <span className="text-xs text-slate-500 font-medium">Quality Assurance & Approvals</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
             Pending Syllabus Approvals
@@ -245,7 +252,12 @@ export default function SyllabusApprovalsPage() {
 
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-800">{instructor?.fullName || item.editor?.fullName}</div>
-                        <div className="text-[10px] text-slate-400">{instructor?.email}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{instructor?.email || item.editor?.email}</div>
+                        {(item.syllabus?.department?.code || item.syllabus?.course?.department?.code) && (
+                          <span className="inline-block mt-1 px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-2xs">
+                            Dept: [{item.syllabus?.department?.code || item.syllabus?.course?.department?.code}]
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-slate-700 font-medium">

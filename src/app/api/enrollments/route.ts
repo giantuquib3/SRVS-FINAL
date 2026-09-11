@@ -22,9 +22,37 @@ export async function GET(req: NextRequest) {
 
     if (user.role === 'Student') {
       where.studentId = Number(user.id);
+      let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!studentDeptId) {
+        const studentProfile = await prisma.student.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (studentProfile?.departmentRel?.id) {
+          studentDeptId = studentProfile.departmentRel.id;
+        }
+      }
+      if (studentDeptId) {
+        where.subject = { departmentId: studentDeptId };
+      }
     } else if (user.role === 'DepartmentHead') {
-      if (user.departmentId) {
-        where.subject = { departmentId: Number(user.departmentId) };
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+      if (deptHeadDeptId) {
+        where.subject = { departmentId: deptHeadDeptId };
+      } else {
+        return NextResponse.json({ enrollments: [] });
       }
       if (studentParam) {
         const parsedStudentId = Number(studentParam);
@@ -57,6 +85,25 @@ export async function GET(req: NextRequest) {
             idNumber: true,
             fullName: true,
             email: true,
+            department: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            studentProfile: {
+              select: {
+                department: true,
+                departmentRel: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
         subject: {
@@ -81,11 +128,28 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const enrollments = rawEnrollments.map((e) => ({
-      ...e,
-      course: e.subject,
-      courseId: e.subjectId,
-    }));
+    const enrollments = rawEnrollments.map((e) => {
+      const studentDeptCode =
+        e.student.department?.code ||
+        e.student.studentProfile?.departmentRel?.code ||
+        e.student.studentProfile?.department ||
+        null;
+      const studentDeptName =
+        e.student.department?.name ||
+        e.student.studentProfile?.departmentRel?.name ||
+        (studentDeptCode ? `${studentDeptCode} Department` : null);
+
+      return {
+        ...e,
+        course: e.subject,
+        courseId: e.subjectId,
+        student: {
+          ...e.student,
+          departmentCode: studentDeptCode,
+          departmentName: studentDeptName,
+        },
+      };
+    });
 
     return NextResponse.json({ enrollments });
   } catch (error: any) {
@@ -142,10 +206,26 @@ export async function POST(req: NextRequest) {
     }
 
     // Department Head scoping
-    if (user.role === 'DepartmentHead' && user.departmentId && subject.departmentId !== Number(user.departmentId)) {
-      return NextResponse.json({
-        error: 'Department Heads may only manage student enrollments in subjects within their assigned department.',
-      }, { status: 403 });
+    if (user.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+
+      if (!deptHeadDeptId || subject.departmentId !== deptHeadDeptId) {
+        return NextResponse.json({
+          error: 'Department Heads may only manage student enrollments in subjects within their assigned department.',
+        }, { status: 403 });
+      }
     }
 
     // Check duplicate enrollment

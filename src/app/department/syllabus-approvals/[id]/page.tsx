@@ -145,7 +145,10 @@ export default function SyllabusReviewPage() {
     );
   }
 
-  if (error || !data?.version) {
+  const version = data?.version || data?.approval;
+  const syllabus = data?.syllabus || version?.syllabus;
+
+  if (error || !version || !syllabus) {
     return (
       <div className="max-w-xl mx-auto py-16 text-center space-y-4">
         <AlertTriangle className="w-12 h-12 text-[#CA8A04] mx-auto" />
@@ -164,9 +167,10 @@ export default function SyllabusReviewPage() {
     );
   }
 
-  const { version, syllabus, previousApprovedVersion, isSelfSubmission } = data;
-  const course = syllabus.course;
-  const instructor = syllabus.instructor;
+  const previousApprovedVersion = data?.previousApprovedVersion;
+  const isSelfSubmission = data?.isSelfSubmission;
+  const course = syllabus.course || syllabus.subject || {};
+  const instructor = syllabus.instructor || {};
   const content = version.content || {};
   const prevContent = previousApprovedVersion?.content || {};
 
@@ -268,6 +272,11 @@ export default function SyllabusReviewPage() {
           <span className="text-slate-400 font-semibold block">Faculty / Instructor</span>
           <span className="font-bold text-slate-800 text-sm mt-0.5 block">{instructor.fullName}</span>
           <span className="text-[11px] text-slate-500 font-mono">{instructor.email}</span>
+          {(syllabus.department?.code || syllabus.course?.department?.code) && (
+            <span className="inline-block mt-1 px-2 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-2xs">
+              Dept: [{syllabus.department?.code || syllabus.course?.department?.code}]
+            </span>
+          )}
         </div>
 
         <div>

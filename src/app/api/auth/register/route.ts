@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@usjr.edu.ph')) {
+      return NextResponse.json({
+        error: 'Institutional email is required. Email address must end with @usjr.edu.ph (e.g., yourname@usjr.edu.ph).',
+      }, { status: 400 });
+    }
 
     // Check unique email or ID number
     const existing = await prisma.user.findFirst({

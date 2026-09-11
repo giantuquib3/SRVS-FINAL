@@ -11,9 +11,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const limitParam = searchParams.get('limit');
+    const take = limitParam ? Math.min(Math.max(1, parseInt(limitParam, 10) || 50), 200) : 100;
+    const actionType = searchParams.get('actionType') || undefined;
+    const search = searchParams.get('search')?.toLowerCase() || undefined;
+
     const versions = await prisma.syllabusVersion.findMany({
+      where: {
+        ...(actionType ? { changeType: actionType } : {}),
+      },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take,
       include: {
         editor: {
           select: {
@@ -22,6 +31,29 @@ export async function GET(req: NextRequest) {
             email: true,
             fullName: true,
             role: true,
+            department: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            deptHeadProfile: {
+              select: {
+                department: true,
+                departmentRel: {
+                  select: { id: true, code: true, name: true },
+                },
+              },
+            },
+            facultyProfile: {
+              select: {
+                department: true,
+                departmentRel: {
+                  select: { id: true, code: true, name: true },
+                },
+              },
+            },
           },
         },
         syllabus: {
@@ -30,15 +62,34 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const logs = versions.map((v) => ({
-      id: v.id,
-      actionType: v.changeType,
-      resultStatus: 'Success',
-      description: `${v.changeSummary} (${v.syllabus?.subject?.code || 'Syllabus'} v${v.versionNumber})`,
-      userDisplayName: v.editor.fullName,
-      createdAt: v.createdAt,
-      user: v.editor,
-    }));
+    const logs = versions.map((v) => {
+      const deptCode =
+        v.editor.department?.code ||
+        v.editor.deptHeadProfile?.departmentRel?.code ||
+        v.editor.deptHeadProfile?.department ||
+        v.editor.facultyProfile?.departmentRel?.code ||
+        v.editor.facultyProfile?.department ||
+        null;
+      const deptName =
+        v.editor.department?.name ||
+        v.editor.deptHeadProfile?.departmentRel?.name ||
+        v.editor.facultyProfile?.departmentRel?.name ||
+        (deptCode ? `${deptCode} Department` : null);
+
+      return {
+        id: v.id,
+        actionType: v.changeType,
+        resultStatus: 'Success',
+        description: `${v.changeSummary} (${v.syllabus?.subject?.code || 'Syllabus'} v${v.versionNumber})`,
+        userDisplayName: v.editor.fullName,
+        createdAt: v.createdAt,
+        user: {
+          ...v.editor,
+          departmentCode: deptCode,
+          departmentName: deptName,
+        },
+      };
+    });
 
     return NextResponse.json({ logs });
   } catch (error: any) {

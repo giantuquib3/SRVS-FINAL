@@ -10,6 +10,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const unreadOnly = searchParams.get('unreadOnly') === 'true';
+    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50', 10)), 100);
+
     return NextResponse.json({ notifications: [], unreadCount: 0 });
   } catch (error: any) {
     console.error('Error fetching notifications:', error);

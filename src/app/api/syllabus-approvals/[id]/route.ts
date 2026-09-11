@@ -119,8 +119,23 @@ export async function GET(
       return NextResponse.json({ error: 'Syllabus approval request not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== version.syllabus.departmentId) {
-      return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals for this department.' }, { status: 403 });
+    if (user.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+      if (!deptHeadDeptId || deptHeadDeptId !== version.syllabus.departmentId) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals for this department.' }, { status: 403 });
+      }
     }
 
     const previousApprovedVersion = await prisma.syllabusVersion.findFirst({
@@ -147,6 +162,8 @@ export async function GET(
 
     return NextResponse.json({
       approval: formattedApproval,
+      version: formattedApproval,
+      syllabus: formattedApproval.syllabus,
       previousApprovedVersion,
       isSelfSubmission,
     });

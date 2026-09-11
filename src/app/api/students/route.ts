@@ -16,9 +16,26 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('search');
 
     let deptCode: string | undefined = undefined;
-    if (user.role === 'DepartmentHead' && user.departmentId) {
-      const d = await prisma.department.findUnique({ where: { id: Number(user.departmentId) } });
-      if (d) deptCode = d.code;
+    if (user.role === 'DepartmentHead') {
+      let deptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel) {
+          deptCode = dh.departmentRel.code;
+        } else if (dh?.department) {
+          deptCode = dh.department;
+        }
+      } else {
+        const d = await prisma.department.findUnique({ where: { id: deptId } });
+        if (d) deptCode = d.code;
+      }
+
+      if (!deptCode) {
+        return NextResponse.json({ students: [] });
+      }
     } else if (queryDept) {
       const parsed = Number(queryDept);
       if (!isNaN(parsed)) {

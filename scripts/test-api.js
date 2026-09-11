@@ -146,7 +146,7 @@ async function run() {
   const createRes = await post(`${BASE_URL}/api/users`, {
     fullName: 'Test User Account',
     username: '99999',
-    email: 'testuser@srvs.local',
+    email: 'testuser@usjr.edu.ph',
     password: 'Giangwapo123?',
     role: 'Educator',
     departmentId: 'CPE',

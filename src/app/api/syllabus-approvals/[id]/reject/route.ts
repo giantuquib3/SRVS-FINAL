@@ -29,7 +29,7 @@ export async function POST(
       }, { status: 400 });
     }
 
-    const version = await prisma.syllabusVersion.findUnique({
+    let version = await prisma.syllabusVersion.findUnique({
       where: { id: numericId },
       include: {
         syllabus: {
@@ -43,13 +43,45 @@ export async function POST(
     });
 
     if (!version) {
+      version = await prisma.syllabusVersion.findFirst({
+        where: { syllabusId: numericId },
+        orderBy: { versionNumber: 'desc' },
+        include: {
+          syllabus: {
+            include: {
+              subject: true,
+              instructor: true,
+              department: true,
+            },
+          },
+        },
+      });
+    }
+
+    if (!version) {
       return NextResponse.json({ error: 'Syllabus version not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== version.syllabus.departmentId) {
-      return NextResponse.json({
-        error: 'Forbidden: You may only review syllabi belonging to your authorized department.',
-      }, { status: 403 });
+    if (user.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+
+      if (!deptHeadDeptId || deptHeadDeptId !== version.syllabus.departmentId) {
+        return NextResponse.json({
+          error: 'Forbidden: You may only review syllabi belonging to your authorized department.',
+        }, { status: 403 });
+      }
     }
 
     if (version.approvalStatus !== 'PENDING_APPROVAL') {

@@ -105,6 +105,12 @@ export default function UsersManagementPage() {
       }
     }
 
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@usjr.edu.ph')) {
+      setCreateError('Institutional email is required. Email address must end with @usjr.edu.ph (e.g., user@usjr.edu.ph).');
+      return;
+    }
+
     setCreateLoading(true);
 
     try {
@@ -114,7 +120,8 @@ export default function UsersManagementPage() {
         body: JSON.stringify({
           fullName: newFullName.trim(),
           username: cleanUsername,
-          email: newEmail.trim(),
+          idNumber: cleanUsername,
+          email: cleanEmail,
           password: newPassword,
           role: newRole,
           departmentId: newDeptId || null,
@@ -336,6 +343,7 @@ export default function UsersManagementPage() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
+                <th className="py-2.5 px-3">ID Number</th>
                 <th className="py-2.5 px-3">Full Name & Email</th>
                 <th className="py-2.5 px-3">Role</th>
                 <th className="py-2.5 px-3">Department</th>
@@ -351,10 +359,13 @@ export default function UsersManagementPage() {
               {users.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-3">
+                    <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-[#005A36]">
+                      {u.idNumber || u.username || '—'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3">
                     <p className="font-bold text-slate-900">{u.fullName}</p>
-                    <div className="flex items-center space-x-1.5 text-[10px] text-slate-500 font-mono mt-0.5">
-                      <span className="font-bold text-[#005A36] bg-emerald-50 px-1 rounded border border-emerald-200">ID: {u.id || '—'}</span>
-                      <span>•</span>
+                    <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
                       <span>{u.email}</span>
                     </div>
                     {roleFilter !== 'Student' && u.role === 'Student' && u.enrolledSubjects && (
@@ -379,14 +390,24 @@ export default function UsersManagementPage() {
                       <Edit3 className="w-2.5 h-2.5 ml-1 text-slate-400" />
                     </button>
                   </td>
-                  <td className="py-3 px-3 text-slate-700 font-medium">
-                    <span className="font-bold text-slate-900">
-                      {u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department || u.department?.code || 'Unassigned'}
-                    </span>
-                    {u.department && (
-                      <span className="text-slate-500 text-[11px] block">
-                        {u.department.name}
+                  <td className="py-3 px-3">
+                    {u.role === 'Admin' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        All Departments (Admin)
                       </span>
+                    ) : (u.departmentCode || u.department?.code || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department) ? (
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-2xs">
+                            [{u.departmentCode || u.department?.code || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department}]
+                          </span>
+                        </div>
+                        <span className="text-slate-600 text-[11px] font-medium block">
+                          {u.departmentName || u.department?.name || `${u.departmentCode || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department} Department`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Unassigned</span>
                     )}
                   </td>
                   {roleFilter === 'Student' && (

@@ -13,6 +13,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const departmentId = searchParams.get('departmentId');
+    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20', 10)), 100);
+
     return NextResponse.json({ announcements: [] });
   } catch (error: any) {
     return NextResponse.json({ error: 'Failed to retrieve announcements.' }, { status: 500 });

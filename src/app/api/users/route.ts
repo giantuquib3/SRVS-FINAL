@@ -29,8 +29,43 @@ export async function GET(req: NextRequest) {
     }
 
     // Dept Head only sees their department users
-    if (user.role === 'DepartmentHead' && user.departmentId) {
-      where.departmentId = Number(user.departmentId);
+    let deptHeadDeptId: number | null = null;
+    let deptHeadDeptCode: string | null = null;
+    if (user.role === 'DepartmentHead') {
+      deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+          deptHeadDeptCode = dh.departmentRel.code;
+        } else if (dh?.department) {
+          deptHeadDeptCode = dh.department;
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      } else {
+        const d = await prisma.department.findUnique({ where: { id: deptHeadDeptId } });
+        if (d) deptHeadDeptCode = d.code;
+      }
+
+      if (deptHeadDeptId || deptHeadDeptCode) {
+        const deptConditions: any[] = [];
+        if (deptHeadDeptId) deptConditions.push({ departmentId: deptHeadDeptId });
+        if (deptHeadDeptCode) {
+          deptConditions.push({ facultyProfile: { department: deptHeadDeptCode } });
+          deptConditions.push({ studentProfile: { department: deptHeadDeptCode } });
+          deptConditions.push({ deptHeadProfile: { department: deptHeadDeptCode } });
+        }
+        where.AND = [
+          ...(where.AND || []),
+          { OR: deptConditions },
+        ];
+      } else {
+        return NextResponse.json({ users: [], counts: { total: 0, deptHeads: 0, educators: 0, students: 0, admins: 0 } });
+      }
     }
 
     const rawUsers = await prisma.user.findMany({
@@ -38,25 +73,71 @@ export async function GET(req: NextRequest) {
       include: {
         department: true,
         adminProfile: true,
-        deptHeadProfile: true,
-        facultyProfile: true,
-        studentProfile: true,
+        deptHeadProfile: {
+          include: {
+            departmentRel: true,
+          },
+        },
+        facultyProfile: {
+          include: {
+            departmentRel: true,
+          },
+        },
+        studentProfile: {
+          include: {
+            departmentRel: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    // Format output providing backward-compatible string username/id for UI
-    const users = rawUsers.map((u) => ({
-      ...u,
-      username: u.idNumber,
-      enrolledSubjects: u.studentProfile?.enrolledSubjects || '',
-    }));
+    // Format output providing backward-compatible string username/id and normalized department info for UI
+    const users = rawUsers.map((u) => {
+      const deptCode =
+        u.department?.code ||
+        u.deptHeadProfile?.departmentRel?.code ||
+        u.deptHeadProfile?.department ||
+        u.facultyProfile?.departmentRel?.code ||
+        u.facultyProfile?.department ||
+        u.studentProfile?.departmentRel?.code ||
+        u.studentProfile?.department ||
+        null;
+
+      const deptName =
+        u.department?.name ||
+        u.deptHeadProfile?.departmentRel?.name ||
+        u.facultyProfile?.departmentRel?.name ||
+        u.studentProfile?.departmentRel?.name ||
+        (deptCode ? `${deptCode} Department` : null);
+
+      return {
+        ...u,
+        username: u.idNumber,
+        departmentCode: deptCode,
+        departmentName: deptName,
+        department: u.department || (deptCode ? { code: deptCode, name: deptName } : null),
+        enrolledSubjects: u.studentProfile?.enrolledSubjects || '',
+      };
+    });
 
     const baseWhere: any = {};
-    if (user.role === 'DepartmentHead' && user.departmentId) {
-      baseWhere.departmentId = Number(user.departmentId);
+    if (user.role === 'DepartmentHead') {
+      if (deptHeadDeptId || deptHeadDeptCode) {
+        const deptConditions: any[] = [];
+        if (deptHeadDeptId) deptConditions.push({ departmentId: deptHeadDeptId });
+        if (deptHeadDeptCode) {
+          deptConditions.push({ facultyProfile: { department: deptHeadDeptCode } });
+          deptConditions.push({ studentProfile: { department: deptHeadDeptCode } });
+          deptConditions.push({ deptHeadProfile: { department: deptHeadDeptCode } });
+        }
+        baseWhere.AND = [
+          ...(baseWhere.AND || []),
+          { OR: deptConditions },
+        ];
+      }
     }
     if (status) baseWhere.accountStatus = status;
 
@@ -99,6 +180,11 @@ export async function POST(req: NextRequest) {
     }
 
     const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail.endsWith('@usjr.edu.ph')) {
+      return NextResponse.json({
+        error: 'Institutional email is required. Email address must end with @usjr.edu.ph (e.g., user@usjr.edu.ph).',
+      }, { status: 400 });
+    }
     const trimmedId = (idNumber || username || '').trim();
 
     if (!trimmedId) {
