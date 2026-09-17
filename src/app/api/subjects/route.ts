@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim();
     const departmentId = searchParams.get('departmentId');
+    const yearLevel = searchParams.get('yearLevel');
+    const semester = searchParams.get('semester');
 
     const where: any = {};
 
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
       }
 
       if (!studentDeptId) {
-        return NextResponse.json({ courses: [], subjects: [] });
+        return NextResponse.json({ subjects: [] });
       }
 
       where.departmentId = studentDeptId;
@@ -45,43 +47,8 @@ export async function GET(req: NextRequest) {
       });
       enrolledSet = new Set(studentEnrollments.map((e) => e.subjectId));
     } else if (user?.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
-
-      if (!deptHeadDeptId) {
-        return NextResponse.json({ courses: [], subjects: [] });
-      }
-
-      // Strictly lock to Department Head's department only
-      where.departmentId = deptHeadDeptId;
-    } else if (user?.role === 'Educator') {
-      let educatorDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!educatorDeptId) {
-        const fac = await prisma.faculty.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (fac?.departmentRel?.id) {
-          educatorDeptId = fac.departmentRel.id;
-        } else if (fac?.department) {
-          const d = await prisma.department.findUnique({ where: { code: fac.department } });
-          if (d) educatorDeptId = d.id;
-        }
-      }
-
-      if (educatorDeptId) {
-        where.departmentId = educatorDeptId;
+      if (user.departmentId) {
+        where.departmentId = Number(user.departmentId);
       }
     } else if (departmentId) {
       const parsedDeptId = Number(departmentId);
@@ -92,6 +59,9 @@ export async function GET(req: NextRequest) {
         if (dept) where.departmentId = dept.id;
       }
     }
+
+    if (yearLevel) where.yearLevel = yearLevel;
+    if (semester) where.semester = semester;
 
     if (search) {
       where.OR = [
@@ -112,14 +82,16 @@ export async function GET(req: NextRequest) {
           },
         },
         syllabi: {
-          where: user?.role === 'Student' ? { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } } : undefined,
-          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          where: {
+            status: { in: ['Approved', 'ACTIVE'] },
+          },
           select: {
             id: true,
             status: true,
             academicYear: true,
             semester: true,
             currentVersionNumber: true,
+            uploadedByUserId: true,
           },
         },
         _count: {
@@ -136,15 +108,14 @@ export async function GET(req: NextRequest) {
       return {
         ...s,
         isEnrolled: user?.role === 'Student' ? isEnrolled : true,
-        // Students can only access the syllabus if they are actively enrolled in this subject
         syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
       };
     });
 
-    return NextResponse.json({ courses: formattedSubjects, subjects: formattedSubjects });
+    return NextResponse.json({ subjects: formattedSubjects });
   } catch (error: any) {
-    console.error('Error fetching courses:', error);
-    return NextResponse.json({ error: 'Failed to fetch courses.' }, { status: 500 });
+    console.error('Error fetching subjects:', error);
+    return NextResponse.json({ error: 'Failed to fetch subjects.' }, { status: 500 });
   }
 }
 
@@ -152,7 +123,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
     if (!user || user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads can add courses. System Administrators cannot add courses.' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads can add courses or subjects. System Administrators cannot add courses.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -169,49 +140,46 @@ export async function POST(req: NextRequest) {
       semester = '1st Semester',
     } = body;
 
-    if (!code || !title) {
-      return NextResponse.json({ error: 'Course code and title are required.' }, { status: 400 });
+    // Validate required fields
+    if (!code || !title || !departmentId) {
+      return NextResponse.json({ error: 'Subject code, title, and department are required.' }, { status: 400 });
     }
 
     const upperCode = code.trim().toUpperCase();
 
-    // Automatically resolve Department from Department Head profile
+    // Resolve Department
     let targetDept = null;
-    let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-    if (!deptHeadDeptId) {
-      const dh = await prisma.departmentHead.findUnique({
-        where: { userId: Number(user.id) },
-        include: { departmentRel: true },
-      });
-      if (dh?.departmentRel?.id) {
-        deptHeadDeptId = dh.departmentRel.id;
-      } else if (dh?.department) {
-        const d = await prisma.department.findUnique({ where: { code: dh.department } });
-        if (d) deptHeadDeptId = d.id;
-      }
-    }
-
-    if (deptHeadDeptId) {
-      targetDept = await prisma.department.findUnique({ where: { id: deptHeadDeptId } });
+    const numericDeptId = Number(departmentId);
+    if (!isNaN(numericDeptId)) {
+      targetDept = await prisma.department.findUnique({ where: { id: numericDeptId } });
+    } else {
+      targetDept = await prisma.department.findUnique({ where: { code: String(departmentId).trim().toUpperCase() } });
     }
 
     if (!targetDept) {
-      return NextResponse.json({ error: 'Your account is not assigned to a valid academic department.' }, { status: 403 });
+      return NextResponse.json({ error: 'Invalid department specified.' }, { status: 400 });
     }
 
+    // Dept head scoping
+    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== targetDept.id) {
+      return NextResponse.json({ error: 'Department Heads may only manage subjects within their assigned department.' }, { status: 403 });
+    }
+
+    // Check duplicate
     const existing = await prisma.subject.findUnique({
       where: { code: upperCode },
     });
 
     if (existing) {
-      return NextResponse.json({ error: `Course with code "${upperCode}" already exists.` }, { status: 409 });
+      return NextResponse.json({ error: `A subject with code "${upperCode}" already exists.` }, { status: 409 });
     }
 
     const parsedUnits = Number(units) || 3;
     const parsedLecHours = Number(lecHours) || 3;
     const parsedLabHours = Number(labHours) || 0;
 
-    const course = await prisma.subject.create({
+    // Create subject record in srvs_subjects with auto-increment integer ID
+    const subject = await prisma.subject.create({
       data: {
         code: upperCode,
         title: title.trim(),
@@ -232,16 +200,16 @@ export async function POST(req: NextRequest) {
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
-      actionType: 'CreateCourse',
+      actionType: 'CreateSubject',
       resultStatus: 'Success',
-      description: `Created academic subject/course ${upperCode} - ${title.trim()} (${parsedUnits} Units)`,
+      description: `Created academic subject ${upperCode} - ${title.trim()} (${parsedUnits} Units, Lec: ${parsedLecHours}h, Lab: ${parsedLabHours}h)`,
       entityType: 'Subject',
-      entityId: course.id,
+      entityId: subject.id,
     });
 
-    return NextResponse.json({ success: true, course }, { status: 201 });
+    return NextResponse.json({ success: true, subject }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating course:', error);
-    return NextResponse.json({ error: 'Failed to create course: ' + error.message }, { status: 500 });
+    console.error('Error creating subject:', error);
+    return NextResponse.json({ error: 'Failed to create subject: ' + error.message }, { status: 500 });
   }
 }

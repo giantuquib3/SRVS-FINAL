@@ -13,7 +13,8 @@ import {
   GitCompare,
   RefreshCw,
   Eye,
-  History
+  History,
+  PlusCircle
 } from 'lucide-react';
 
 export default function DeptHeadDashboard() {
@@ -56,10 +57,15 @@ export default function DeptHeadDashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               Curriculum Oversight
             </span>
+            {data?.department?.code && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs">
+                Department: [{data.department.code}] {data.department.name || data.department.code}
+              </span>
+            )}
             <span className="text-xs text-slate-500 font-medium">Department Head Portal</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
@@ -67,7 +73,7 @@ export default function DeptHeadDashboard() {
           </h1>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={fetchDeptData}
             className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
@@ -83,8 +89,15 @@ export default function DeptHeadDashboard() {
             <span>Review Approvals {stats.pendingApprovals ? `(${stats.pendingApprovals})` : ''}</span>
           </Link>
           <Link
+            href="/syllabi/new"
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-1.5"
+          >
+            <PlusCircle className="w-4 h-4 text-[#FEF08A]" />
+            <span>Create / Upload Syllabus</span>
+          </Link>
+          <Link
             href="/courses"
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm transition-all flex items-center space-x-1.5"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-sm transition-all flex items-center space-x-1.5"
           >
             <BookOpen className="w-4 h-4 text-[#005A36]" />
             <span>Courses</span>

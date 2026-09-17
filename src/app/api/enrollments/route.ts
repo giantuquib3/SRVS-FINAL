@@ -13,46 +13,105 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get('studentId');
-    const courseId = searchParams.get('courseId');
+    const studentParam = searchParams.get('studentId');
+    const subjectParam = searchParams.get('subjectId') || searchParams.get('courseId');
     const academicYear = searchParams.get('academicYear');
     const semester = searchParams.get('semester');
 
     const where: any = {};
 
-    // Role scoping:
-    // - Student can only query own enrollments
-    // - Department Head can only query enrollments for courses within their own department
     if (user.role === 'Student') {
-      where.studentId = user.id;
+      where.studentId = Number(user.id);
+      let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!studentDeptId) {
+        const studentProfile = await prisma.student.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (studentProfile?.departmentRel?.id) {
+          studentDeptId = studentProfile.departmentRel.id;
+        }
+      }
+      if (studentDeptId) {
+        where.subject = { departmentId: studentDeptId };
+      }
     } else if (user.role === 'DepartmentHead') {
-      where.course = { departmentId: user.departmentId || '__NO_DEPT__' };
-      if (studentId) where.studentId = studentId;
-    } else if (studentId) {
-      where.studentId = studentId;
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+      if (deptHeadDeptId) {
+        where.subject = { departmentId: deptHeadDeptId };
+      } else {
+        return NextResponse.json({ enrollments: [] });
+      }
+      if (studentParam) {
+        const parsedStudentId = Number(studentParam);
+        if (!isNaN(parsedStudentId)) where.studentId = parsedStudentId;
+      }
+    } else if (studentParam) {
+      const parsedStudentId = Number(studentParam);
+      if (!isNaN(parsedStudentId)) where.studentId = parsedStudentId;
     }
 
-    if (courseId) where.courseId = courseId;
+    if (subjectParam) {
+      const parsedSubjId = Number(subjectParam);
+      if (!isNaN(parsedSubjId)) {
+        where.subjectId = parsedSubjId;
+      } else {
+        where.subject = { code: subjectParam.toUpperCase() };
+      }
+    }
+
     if (academicYear) where.academicYear = academicYear;
     if (semester) where.semester = semester;
 
-    const enrollments = await prisma.enrollment.findMany({
+    const rawEnrollments = await prisma.enrollment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
         student: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
+            department: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            studentProfile: {
+              select: {
+                department: true,
+                departmentRel: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
-        course: {
+        subject: {
           include: {
             department: true,
             syllabi: {
               where: {
-                status: 'Approved',
+                status: { in: ['Approved', 'ACTIVE'] },
               },
               select: {
                 id: true,
@@ -60,12 +119,36 @@ export async function GET(req: NextRequest) {
                 status: true,
                 academicYear: true,
                 semester: true,
+                uploadedByUserId: true,
               },
               take: 1,
             },
           },
         },
       },
+    });
+
+    const enrollments = rawEnrollments.map((e) => {
+      const studentDeptCode =
+        e.student.department?.code ||
+        e.student.studentProfile?.departmentRel?.code ||
+        e.student.studentProfile?.department ||
+        null;
+      const studentDeptName =
+        e.student.department?.name ||
+        e.student.studentProfile?.departmentRel?.name ||
+        (studentDeptCode ? `${studentDeptCode} Department` : null);
+
+      return {
+        ...e,
+        course: e.subject,
+        courseId: e.subjectId,
+        student: {
+          ...e.student,
+          departmentCode: studentDeptCode,
+          departmentName: studentDeptName,
+        },
+      };
     });
 
     return NextResponse.json({ enrollments });
@@ -82,44 +165,75 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Admin or Department Head access required.' }, { status: 403 });
     }
 
-    const { studentId, courseId, semester, academicYear, section, status } = await req.json();
+    const body = await req.json();
+    const { studentId, courseId, subjectId, semester, academicYear, section = 'A', status = 'ENROLLED' } = body;
+    const rawTarget = String(subjectId || courseId || '').trim();
 
-    if (!studentId || !courseId || !semester || !academicYear) {
-      return NextResponse.json({ error: 'Student, Course, Semester, and Academic Year are required.' }, { status: 400 });
+    if (!studentId || !rawTarget || !semester || !academicYear) {
+      return NextResponse.json({ error: 'Student, Subject, Semester, and Academic Year are required.' }, { status: 400 });
     }
 
-    // Verify student exists and is Active
-    const student = await prisma.user.findUnique({
-      where: { id: studentId },
+    // Lookup Student by integer ID or ID Number
+    const numericStudentId = Number(studentId);
+    const student = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { idNumber: String(studentId).trim() },
+          { id: isNaN(numericStudentId) ? -1 : numericStudentId },
+        ],
+        role: 'Student',
+      },
     });
 
-    if (!student || student.role !== 'Student') {
+    if (!student) {
       return NextResponse.json({ error: 'Invalid student selected.' }, { status: 400 });
     }
 
-    // Verify course exists
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
+    // Lookup Subject by ID or code
+    const numericSubjId = Number(rawTarget);
+    const subject = await prisma.subject.findFirst({
+      where: {
+        OR: [
+          { code: rawTarget.toUpperCase() },
+          { id: isNaN(numericSubjId) ? -1 : numericSubjId },
+        ],
+      },
       include: { department: true },
     });
 
-    if (!course) {
-      return NextResponse.json({ error: 'Invalid course selected.' }, { status: 400 });
+    if (!subject) {
+      return NextResponse.json({ error: 'Invalid subject selected.' }, { status: 400 });
     }
 
-    // Department Head can only enroll students in courses within their assigned department
-    if (user.role === 'DepartmentHead' && user.departmentId && course.departmentId !== user.departmentId) {
-      return NextResponse.json({
-        error: 'Department Heads may only manage student enrollments in courses within their assigned department.',
-      }, { status: 403 });
+    // Department Head scoping
+    if (user.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+
+      if (!deptHeadDeptId || subject.departmentId !== deptHeadDeptId) {
+        return NextResponse.json({
+          error: 'Department Heads may only manage student enrollments in subjects within their assigned department.',
+        }, { status: 403 });
+      }
     }
 
     // Check duplicate enrollment
     const existing = await prisma.enrollment.findUnique({
       where: {
-        studentId_courseId_semester_academicYear: {
-          studentId,
-          courseId,
+        studentId_subjectId_semester_academicYear: {
+          studentId: student.id,
+          subjectId: subject.id,
           semester,
           academicYear,
         },
@@ -128,28 +242,26 @@ export async function POST(req: NextRequest) {
 
     if (existing) {
       return NextResponse.json({
-        error: `Student is already enrolled in ${course.code} for ${semester}, AY ${academicYear}.`,
+        error: `Student is already enrolled in ${subject.code} for ${semester}, AY ${academicYear}.`,
       }, { status: 409 });
     }
 
     const enrollment = await prisma.enrollment.create({
       data: {
-        studentId,
-        courseId,
+        studentId: student.id,
+        subjectId: subject.id,
         semester,
         academicYear,
-        section: section?.trim() || 'A',
+        section: section || 'A',
         status: status || 'ENROLLED',
       },
       include: {
         student: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
+          select: { id: true, idNumber: true, fullName: true, email: true },
         },
-        course: true,
+        subject: {
+          include: { department: true },
+        },
       },
     });
 
@@ -158,15 +270,32 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'EnrollStudent',
       resultStatus: 'Success',
-      description: `Enrolled student ${student.fullName} (${student.email}) into [${course.code}] ${course.title} (Section ${enrollment.section}, ${semester}, AY ${academicYear})`,
+      description: `Enrolled student ${student.fullName} (${student.idNumber}) into ${subject.code} (${semester}, AY ${academicYear})`,
       entityType: 'Enrollment',
       entityId: enrollment.id,
-      ipAddress: req.ip || '127.0.0.1',
     });
 
-    return NextResponse.json({ success: true, enrollment }, { status: 201 });
+    // Synchronize Student enrolledSubjects with subject codes only
+    const allStudentEnrollments = await prisma.enrollment.findMany({
+      where: { studentId: student.id, status: 'ENROLLED' },
+      include: { subject: true },
+    });
+    const subjectCodes = Array.from(new Set(allStudentEnrollments.map((e) => e.subject.code))).join(', ');
+    await prisma.student.updateMany({
+      where: { userId: student.id },
+      data: { enrolledSubjects: subjectCodes },
+    });
+
+    return NextResponse.json({
+      success: true,
+      enrollment: {
+        ...enrollment,
+        course: enrollment.subject,
+        courseId: enrollment.subjectId,
+      },
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating enrollment:', error);
-    return NextResponse.json({ error: 'Failed to save enrollment.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to enroll student: ' + error.message }, { status: 500 });
   }
 }

@@ -8,12 +8,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'srvs-default-super-secret-key-2026
 const key = new TextEncoder().encode(JWT_SECRET);
 
 export interface SessionUser {
-  id: string;
+  id: number | string;
+  idNumber?: string;
   email: string;
   username?: string | null;
   fullName: string;
   role: string; // Admin, DepartmentHead, Educator, Student
-  departmentId?: string | null;
+  departmentId?: number | string | null;
   departmentCode?: string | null;
   departmentName?: string | null;
 }

@@ -15,19 +15,58 @@ export async function GET(req: NextRequest) {
     const statusParam = searchParams.get('status') || 'PENDING_APPROVAL';
     const departmentParam = searchParams.get('departmentId');
 
-    // Scoping rule: Department Head CANNOT bypass their assigned department!
-    const effectiveDeptId = user.role === 'DepartmentHead' ? user.departmentId : departmentParam;
-
     const where: any = {};
 
-    if (effectiveDeptId) {
-      where.syllabus = {
-        departmentId: effectiveDeptId,
-      };
+    let deptInfo: { id: number; code: string; name: string } | null = null;
+
+    if (user.role === 'DepartmentHead') {
+      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptHeadDeptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel?.id) {
+          deptHeadDeptId = dh.departmentRel.id;
+        } else if (dh?.department) {
+          const d = await prisma.department.findUnique({ where: { code: dh.department } });
+          if (d) deptHeadDeptId = d.id;
+        }
+      }
+
+      if (!deptHeadDeptId) {
+        return NextResponse.json({ approvals: [], stats: { pending: 0, approved: 0, rejected: 0, total: 0 } });
+      }
+
+      const d = await prisma.department.findUnique({
+        where: { id: deptHeadDeptId },
+        select: { id: true, code: true, name: true },
+      });
+      if (d) deptInfo = d;
+
+      where.syllabus = { departmentId: deptHeadDeptId };
+    } else if (departmentParam) {
+      const numericDeptId = Number(departmentParam);
+      if (!isNaN(numericDeptId)) {
+        where.syllabus = { departmentId: numericDeptId };
+        const d = await prisma.department.findUnique({
+          where: { id: numericDeptId },
+          select: { id: true, code: true, name: true },
+        });
+        if (d) deptInfo = d;
+      }
     }
 
     if (statusParam && statusParam !== 'ALL') {
-      where.approvalStatus = statusParam;
+      if (statusParam === 'APPROVED') {
+        where.approvalStatus = { in: ['APPROVED', 'Approved'] };
+      } else if (statusParam === 'REJECTED') {
+        where.approvalStatus = { in: ['REJECTED', 'Rejected'] };
+      } else if (statusParam === 'PENDING_APPROVAL') {
+        where.approvalStatus = { in: ['PENDING_APPROVAL', 'PendingApproval', 'Pending', 'submitted', 'Submitted'] };
+      } else {
+        where.approvalStatus = statusParam;
+      }
     }
 
     const pendingApprovals = await prisma.syllabusVersion.findMany({
@@ -36,7 +75,7 @@ export async function GET(req: NextRequest) {
       include: {
         syllabus: {
           include: {
-            course: {
+            subject: {
               include: {
                 department: true,
               },
@@ -44,6 +83,7 @@ export async function GET(req: NextRequest) {
             instructor: {
               select: {
                 id: true,
+                idNumber: true,
                 fullName: true,
                 email: true,
                 role: true,
@@ -55,6 +95,7 @@ export async function GET(req: NextRequest) {
         editor: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
           },
@@ -62,6 +103,7 @@ export async function GET(req: NextRequest) {
         submittedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
           },
@@ -69,26 +111,37 @@ export async function GET(req: NextRequest) {
         reviewedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
           },
         },
       },
     });
 
-    // Compute summary statistics for the Department Head
+    // Map course alias so existing UI continues working without issues
+    const formattedApprovals = pendingApprovals.map((v) => ({
+      ...v,
+      syllabus: {
+        ...v.syllabus,
+        course: v.syllabus.subject,
+        courseId: v.syllabus.subjectId,
+      },
+    }));
+
     const statsWhere: any = {};
-    if (effectiveDeptId) {
-      statsWhere.syllabus = { departmentId: effectiveDeptId };
+    if (where.syllabus) {
+      statsWhere.syllabus = where.syllabus;
     }
 
     const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: 'PENDING_APPROVAL' } }),
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: 'APPROVED' } }),
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: 'REJECTED' } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['PENDING_APPROVAL', 'PendingApproval', 'Pending', 'submitted', 'Submitted'] } } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['APPROVED', 'Approved'] } } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['REJECTED', 'Rejected'] } } }),
     ]);
 
     return NextResponse.json({
-      approvals: pendingApprovals,
+      department: deptInfo,
+      approvals: formattedApprovals,
       stats: {
         pending: pendingCount,
         approved: approvedCount,

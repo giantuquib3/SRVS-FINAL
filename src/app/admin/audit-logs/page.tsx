@@ -151,8 +151,16 @@ export default function AuditLogsPage() {
               {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-3 font-bold text-[#005A36]">{log.actionType}</td>
-                  <td className="py-3 px-3 font-semibold text-slate-800">
-                    {log.userDisplayName || 'System'}
+                  <td className="py-3 px-3">
+                    <p className="font-semibold text-slate-800">{log.userDisplayName || 'System'}</p>
+                    <div className="flex items-center space-x-1.5 mt-0.5">
+                      <span className="text-[10px] text-slate-500 font-mono">{log.user?.role || ''}</span>
+                      {log.user?.departmentCode && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-2xs">
+                          [{log.user.departmentCode}]
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-3 text-slate-600 max-w-md leading-relaxed">
                     {log.description}

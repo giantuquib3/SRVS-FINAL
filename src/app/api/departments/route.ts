@@ -5,14 +5,26 @@ import { logAuditEvent } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get('search');
+
+    const where: any = {};
+    if (search && search.trim()) {
+      where.OR = [
+        { code: { contains: search.trim(), mode: 'insensitive' } },
+        { name: { contains: search.trim(), mode: 'insensitive' } },
+      ];
+    }
+
     const departments = await prisma.department.findMany({
+      where,
       orderBy: { code: 'asc' },
       include: {
         _count: {
           select: {
-            courses: true,
+            subjects: true,
             users: true,
             syllabi: true,
           },
@@ -52,7 +64,6 @@ export async function POST(req: NextRequest) {
 
     const department = await prisma.department.create({
       data: {
-        id: upperCode, // Primary key is Department Code (CPE, CE, EE, etc.)
         code: upperCode,
         name: name.trim(),
         description: description?.trim() || null,

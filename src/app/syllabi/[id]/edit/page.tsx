@@ -216,8 +216,34 @@ export default function EditSyllabusPage() {
     );
   }
 
+  // Restrict access: Only Department Heads and Faculty (Educators) can revise syllabi
+  if (currentUser && currentUser.role === 'Admin') {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center space-y-5">
+        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-sm">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-extrabold text-slate-900">Syllabus Revision Restricted</h2>
+          <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+            In accordance with USJ-R academic governance standards, <strong>System Administrators</strong> cannot author syllabus revisions. Only <strong>Department Heads</strong> and assigned <strong>Faculty</strong> members may author or upload revisions.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/admin/dashboard"
+            className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] text-white hover:bg-[#00472A] shadow-sm transition-all inline-flex items-center space-x-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Admin Dashboard</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const nextVersionNumber = (syllabus?.currentVersionNumber || 1) + 1;
-  const isDeptHeadOrAdmin = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
+  const isDeptHead = currentUser?.role === 'DepartmentHead';
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4">
@@ -258,7 +284,7 @@ export default function EditSyllabusPage() {
             <Send className="w-3.5 h-3.5 text-[#FEF08A]" />
             <span>Submit Revision for Approval</span>
           </button>
-          {isDeptHeadOrAdmin && (
+          {isDeptHead && (
             <button
               type="button"
               disabled={submitting}
@@ -609,7 +635,7 @@ export default function EditSyllabusPage() {
                 <Send className="w-4 h-4 text-[#FEF08A]" />
                 <span>Submit Revision for Approval</span>
               </button>
-              {isDeptHeadOrAdmin && (
+              {isDeptHead && (
                 <button
                   type="button"
                   disabled={submitting}

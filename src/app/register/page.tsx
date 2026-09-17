@@ -61,6 +61,12 @@ export default function RegisterPage() {
       }
     }
 
+    const cleanEmail = formData.email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@usjr.edu.ph')) {
+      setError('Institutional email is required and must end with @usjr.edu.ph (e.g., yourname@usjr.edu.ph).');
+      return;
+    }
+
     if (!formData.departmentId) {
       setError('Please select your academic department.');
       return;

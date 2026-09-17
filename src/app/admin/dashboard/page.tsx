@@ -130,7 +130,7 @@ export default function AdminDashboard() {
             href="/courses"
             className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all"
           >
-            Manage Courses
+            Course Catalog
           </Link>
         </div>
       </div>
@@ -204,8 +204,13 @@ export default function AdminDashboard() {
                       <span className="text-[10px] px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 font-bold">
                         {u.role}
                       </span>
+                      {(u.departmentCode || u.department?.code) && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-2xs">
+                          [{u.departmentCode || u.department?.code}]
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-500 font-medium">
-                        {u.department?.name || 'Department'}
+                        {u.departmentName || u.department?.name || (u.departmentCode ? `${u.departmentCode} Department` : 'Unassigned')}
                       </span>
                     </div>
                   </div>

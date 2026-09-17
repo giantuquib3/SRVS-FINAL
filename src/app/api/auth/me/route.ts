@@ -11,9 +11,10 @@ export async function GET(req: NextRequest) {
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: session.id },
+    where: { id: Number(session.id) },
     select: {
       id: true,
+      idNumber: true,
       email: true,
       fullName: true,
       role: true,
@@ -26,6 +27,42 @@ export async function GET(req: NextRequest) {
           name: true,
         },
       },
+      studentProfile: {
+        select: {
+          department: true,
+          departmentRel: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+      deptHeadProfile: {
+        select: {
+          department: true,
+          departmentRel: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+      facultyProfile: {
+        select: {
+          department: true,
+          departmentRel: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -33,16 +70,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
+  const isAdmin = user.role === 'Admin';
+
+  const deptId = isAdmin
+    ? null
+    : user.departmentId ||
+      user.studentProfile?.departmentRel?.id ||
+      user.deptHeadProfile?.departmentRel?.id ||
+      user.facultyProfile?.departmentRel?.id ||
+      null;
+
+  const deptCode = isAdmin
+    ? null
+    : user.department?.code ||
+      user.studentProfile?.departmentRel?.code ||
+      user.studentProfile?.department ||
+      user.deptHeadProfile?.departmentRel?.code ||
+      user.deptHeadProfile?.department ||
+      user.facultyProfile?.departmentRel?.code ||
+      user.facultyProfile?.department ||
+      null;
+
+  const deptName = isAdmin
+    ? 'All Departments (Administration)'
+    : user.department?.name ||
+      user.studentProfile?.departmentRel?.name ||
+      user.deptHeadProfile?.departmentRel?.name ||
+      user.facultyProfile?.departmentRel?.name ||
+      (deptCode ? `${deptCode} Department` : null);
+
   return NextResponse.json({
     user: {
       id: user.id,
+      idNumber: user.idNumber,
       email: user.email,
-      username: user.id,
+      username: user.idNumber,
       fullName: user.fullName,
       role: user.role,
-      departmentId: user.departmentId,
-      departmentCode: user.department?.code,
-      departmentName: user.department?.name,
+      departmentId: deptId,
+      departmentCode: deptCode,
+      departmentName: deptName,
     },
   });
 }

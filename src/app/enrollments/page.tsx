@@ -166,14 +166,33 @@ export default function EnrollmentsPage() {
                     <tr key={en.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3">
                         <p className="font-bold text-slate-900">{en.student?.fullName}</p>
-                        <p className="text-[10px] text-slate-500">{en.student?.email}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{en.student?.email}</p>
+                        {en.student?.departmentCode && (
+                          <div className="mt-1 flex items-center space-x-1">
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-2xs">
+                              [{en.student.departmentCode}]
+                            </span>
+                            <span className="text-[10px] text-slate-500 truncate max-w-[120px]" title={en.student.departmentName}>
+                              {en.student.departmentName}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3">
                         <span className="font-bold text-[#005A36] mr-2">{en.course?.code}</span>
                         <span className="text-slate-800">{en.course?.title}</span>
                       </td>
                       <td className="py-3 px-3 text-slate-600">
-                        {en.course?.department?.name}
+                        <div className="space-y-0.5">
+                          {en.course?.department?.code && (
+                            <span className="inline-block px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-bold font-mono border border-slate-200">
+                              {en.course.department.code}
+                            </span>
+                          )}
+                          <span className="block text-slate-700 text-xs font-medium">
+                            {en.course?.department?.name || '—'}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-slate-600">
                         {en.semester}, {en.academicYear}
@@ -240,7 +259,7 @@ export default function EnrollmentsPage() {
                   <option value="">-- Select Student --</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.fullName} ({s.email})
+                      {s.fullName} ({s.email}) {s.departmentCode || s.studentProfile?.department ? `[${s.departmentCode || s.studentProfile?.department}]` : ''}
                     </option>
                   ))}
                 </select>

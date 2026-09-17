@@ -11,18 +11,57 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const students = await prisma.user.findMany({
-      where: {
-        role: 'Student',
-        accountStatus: 'Active',
-        ...(user.role === 'DepartmentHead' && user.departmentId ? { departmentId: user.departmentId } : {}),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        department: {
+    const { searchParams } = new URL(req.url);
+    const queryDept = searchParams.get('department') || searchParams.get('departmentId');
+    const search = searchParams.get('search');
+
+    let deptCode: string | undefined = undefined;
+    if (user.role === 'DepartmentHead') {
+      let deptId = user.departmentId ? Number(user.departmentId) : null;
+      if (!deptId) {
+        const dh = await prisma.departmentHead.findUnique({
+          where: { userId: Number(user.id) },
+          include: { departmentRel: true },
+        });
+        if (dh?.departmentRel) {
+          deptCode = dh.departmentRel.code;
+        } else if (dh?.department) {
+          deptCode = dh.department;
+        }
+      } else {
+        const d = await prisma.department.findUnique({ where: { id: deptId } });
+        if (d) deptCode = d.code;
+      }
+
+      if (!deptCode) {
+        return NextResponse.json({ students: [] });
+      }
+    } else if (queryDept) {
+      const parsed = Number(queryDept);
+      if (!isNaN(parsed)) {
+        const d = await prisma.department.findUnique({ where: { id: parsed } });
+        if (d) deptCode = d.code;
+      } else {
+        deptCode = queryDept.toUpperCase();
+      }
+    }
+
+    const where: any = {};
+    if (deptCode) where.department = deptCode;
+    if (search && search.trim()) {
+      where.OR = [
+        { fullName: { contains: search.trim(), mode: 'insensitive' } },
+        { email: { contains: search.trim(), mode: 'insensitive' } },
+        { studentIdNumber: { contains: search.trim(), mode: 'insensitive' } },
+      ];
+    }
+
+    const rawStudents = await prisma.student.findMany({
+      where,
+      include: {
+        departmentRel: {
           select: {
+            id: true,
             code: true,
             name: true,
           },
@@ -31,7 +70,22 @@ export async function GET(req: NextRequest) {
       orderBy: { fullName: 'asc' },
     });
 
-    return NextResponse.json({ students });
+    const students = rawStudents.map((s) => ({
+      id: s.userId,
+      studentTableId: s.id,
+      idNumber: s.studentIdNumber,
+      fullName: s.fullName,
+      email: s.email,
+      department: s.department, // "CPE", "CE", etc. (Not an ID or number)
+      departmentDetails: s.departmentRel,
+      enrolledSubjects: s.enrolledSubjects || 'None', // Codes only (e.g. "CPE101, CPE201")
+      yearLevel: s.yearLevel,
+    }));
+
+    return NextResponse.json({
+      students,
+      count: students.length,
+    });
   } catch (error: any) {
     console.error('Error fetching students:', error);
     return NextResponse.json({ error: 'Failed to fetch students.' }, { status: 500 });

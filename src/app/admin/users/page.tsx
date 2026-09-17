@@ -25,6 +25,13 @@ export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [counts, setCounts] = useState<{
+    total: number;
+    deptHeads: number;
+    educators: number;
+    students: number;
+    admins: number;
+  }>({ total: 0, deptHeads: 0, educators: 0, students: 0, admins: 0 });
 
   // Create User Modal State
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -57,6 +64,7 @@ export default function UsersManagementPage() {
       ]);
 
       setUsers(uListRes.users || []);
+      if (uListRes.counts) setCounts(uListRes.counts);
       setDepartments(dRes.departments || []);
       if (meRes?.user) setCurrentUser(meRes.user);
     } catch (err) {
@@ -97,6 +105,12 @@ export default function UsersManagementPage() {
       }
     }
 
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@usjr.edu.ph')) {
+      setCreateError('Institutional email is required. Email address must end with @usjr.edu.ph (e.g., user@usjr.edu.ph).');
+      return;
+    }
+
     setCreateLoading(true);
 
     try {
@@ -106,7 +120,8 @@ export default function UsersManagementPage() {
         body: JSON.stringify({
           fullName: newFullName.trim(),
           username: cleanUsername,
-          email: newEmail.trim(),
+          idNumber: cleanUsername,
+          email: cleanEmail,
           password: newPassword,
           role: newRole,
           departmentId: newDeptId || null,
@@ -231,6 +246,39 @@ export default function UsersManagementPage() {
         </div>
       )}
 
+      {/* Role Segregation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        {[
+          { id: '', label: 'All Users', count: counts.total },
+          { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
+          { id: 'Educator', label: 'Faculty / Educators', count: counts.educators },
+          { id: 'Student', label: 'Students', count: counts.students },
+          { id: 'Admin', label: 'Administrators', count: counts.admins },
+        ].map((tab) => {
+          const active = roleFilter === tab.id;
+          return (
+            <button
+              key={tab.id || 'all'}
+              onClick={() => setRoleFilter(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                active
+                  ? 'bg-[#005A36] text-white shadow-md'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <form onSubmit={handleSearchSubmit} className="flex-1 min-w-[260px] relative">
@@ -295,9 +343,13 @@ export default function UsersManagementPage() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
+                <th className="py-2.5 px-3">ID Number</th>
                 <th className="py-2.5 px-3">Full Name & Email</th>
                 <th className="py-2.5 px-3">Role</th>
                 <th className="py-2.5 px-3">Department</th>
+                {roleFilter === 'Student' && (
+                  <th className="py-2.5 px-3">Enrolled Subjects (Codes)</th>
+                )}
                 <th className="py-2.5 px-3">Account Status</th>
                 <th className="py-2.5 px-3">Registered Date</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
@@ -307,12 +359,23 @@ export default function UsersManagementPage() {
               {users.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-3">
+                    <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-[#005A36]">
+                      {u.idNumber || u.username || '—'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3">
                     <p className="font-bold text-slate-900">{u.fullName}</p>
-                    <div className="flex items-center space-x-1.5 text-[10px] text-slate-500 font-mono mt-0.5">
-                      <span className="font-bold text-[#005A36] bg-emerald-50 px-1 rounded border border-emerald-200">ID: {u.id || '—'}</span>
-                      <span>•</span>
+                    <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
                       <span>{u.email}</span>
                     </div>
+                    {roleFilter !== 'Student' && u.role === 'Student' && u.enrolledSubjects && (
+                      <div className="mt-1 flex items-center space-x-1 text-[10px]">
+                        <span className="text-slate-500 font-semibold">Enrolled:</span>
+                        <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {u.enrolledSubjects}
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-3">
                     <button
@@ -327,9 +390,44 @@ export default function UsersManagementPage() {
                       <Edit3 className="w-2.5 h-2.5 ml-1 text-slate-400" />
                     </button>
                   </td>
-                  <td className="py-3 px-3 text-slate-700 font-medium">
-                    {u.department ? `[${u.department.code}] ${u.department.name}` : 'Unassigned'}
+                  <td className="py-3 px-3">
+                    {u.role === 'Admin' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        All Departments (Admin)
+                      </span>
+                    ) : (u.departmentCode || u.department?.code || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department) ? (
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-2xs">
+                            [{u.departmentCode || u.department?.code || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department}]
+                          </span>
+                        </div>
+                        <span className="text-slate-600 text-[11px] font-medium block">
+                          {u.departmentName || u.department?.name || `${u.departmentCode || u.studentProfile?.department || u.deptHeadProfile?.department || u.facultyProfile?.department} Department`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">Unassigned</span>
+                    )}
                   </td>
+                  {roleFilter === 'Student' && (
+                    <td className="py-3 px-3">
+                      {u.enrolledSubjects ? (
+                        <div className="flex flex-wrap gap-1">
+                          {u.enrolledSubjects.split(',').map((code: string) => (
+                            <span
+                              key={code.trim()}
+                              className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs"
+                            >
+                              {code.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">No enrolled subjects</span>
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 px-3">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${

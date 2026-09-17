@@ -12,12 +12,15 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    const { id } = params;
+    const numericId = Number(params.id);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
+    }
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id },
+      where: { id: numericId },
       include: {
-        course: true,
+        subject: true,
       },
     });
 
@@ -30,17 +33,18 @@ export async function GET(
       return NextResponse.json({ error: 'Students cannot view version history.' }, { status: 403 });
     }
 
-    if (user.role === 'DepartmentHead' && user.departmentId !== syllabus.departmentId) {
+    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== syllabus.departmentId) {
       return NextResponse.json({ error: 'Access restricted to assigned department syllabi.' }, { status: 403 });
     }
 
     const versions = await prisma.syllabusVersion.findMany({
-      where: { syllabusId: id },
+      where: { syllabusId: numericId },
       orderBy: { versionNumber: 'desc' },
       include: {
         editor: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
             role: true,
@@ -49,6 +53,7 @@ export async function GET(
         submittedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
           },
@@ -56,25 +61,21 @@ export async function GET(
         reviewedBy: {
           select: {
             id: true,
+            idNumber: true,
             fullName: true,
             email: true,
-          },
-        },
-        approvalLogs: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            reviewer: {
-              select: {
-                id: true,
-                fullName: true,
-              },
-            },
           },
         },
       },
     });
 
-    return NextResponse.json({ syllabus, versions });
+    const formattedSyllabus = {
+      ...syllabus,
+      course: syllabus.subject,
+      courseId: syllabus.subjectId,
+    };
+
+    return NextResponse.json({ syllabus: formattedSyllabus, versions });
   } catch (error: any) {
     console.error('Error fetching version history:', error);
     return NextResponse.json({ error: 'Failed to retrieve version history.' }, { status: 500 });
