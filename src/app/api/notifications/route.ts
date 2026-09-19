@@ -10,13 +10,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const unreadOnly = searchParams.get('unreadOnly') === 'true';
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50', 10)), 100);
-
     return NextResponse.json({ notifications: [], unreadCount: 0 });
   } catch (error: any) {
-    console.error('Error fetching notifications:', error);
     return NextResponse.json({ error: 'Failed to retrieve notifications.' }, { status: 500 });
   }
 }
@@ -30,7 +25,6 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: 'Notifications marked as read.' });
   } catch (error: any) {
-    console.error('Error updating notifications:', error);
     return NextResponse.json({ error: 'Failed to update notifications.' }, { status: 500 });
   }
 }

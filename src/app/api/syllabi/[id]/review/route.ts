@@ -10,14 +10,12 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Unauthorized: Only the Department Head may approve or reject departmental syllabi.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only the Department Head or Administrator may approve or reject syllabi.' }, { status: 403 });
     }
 
-    const numericId = Number(params.id);
-    if (isNaN(numericId)) {
-      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
-    }
+    const syllabusId = parseInt(params.id, 10);
+    if (isNaN(syllabusId)) return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
 
     const { action, remarks } = await req.json();
 
@@ -26,54 +24,29 @@ export async function POST(
     }
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id: numericId },
-      include: {
-        subject: true,
-        instructor: true,
-      },
+      where: { id: syllabusId },
+      include: { course: true, instructor: true },
     });
 
-    if (!syllabus) {
-      return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
-    }
+    if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
 
-    let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-    if (!deptHeadDeptId) {
-      const dh = await prisma.departmentHead.findUnique({
-        where: { userId: Number(user.id) },
-        include: { departmentRel: true },
-      });
-      if (dh?.departmentRel?.id) {
-        deptHeadDeptId = dh.departmentRel.id;
-      } else if (dh?.department) {
-        const d = await prisma.department.findUnique({ where: { code: dh.department } });
-        if (d) deptHeadDeptId = d.id;
-      }
-    }
-
-    if (!deptHeadDeptId || deptHeadDeptId !== syllabus.departmentId) {
+    if (user.role !== 'Admin' && (!user.departmentId || String(user.departmentId).toUpperCase() !== syllabus.departmentId.toUpperCase())) {
       return NextResponse.json({ error: 'Forbidden: Department Heads may only review syllabi for their own department.' }, { status: 403 });
     }
 
     const targetStatus = action === 'Approve' ? 'Approved' : 'Rejected';
     const versionStatus = action === 'Approve' ? 'APPROVED' : 'REJECTED';
-    const currentUserId = Number(user.id);
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
     const now = new Date();
 
     const updated = await prisma.$transaction(async (tx) => {
       if (action === 'Approve') {
-        // Archive any other active syllabi for the same subject
         await tx.syllabus.updateMany({
-          where: {
-            subjectId: syllabus.subjectId,
-            id: { not: syllabus.id },
-            status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] },
-          },
+          where: { courseId: syllabus.courseId, id: { not: syllabus.id }, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
           data: { status: 'Archived' },
         });
       }
 
-      // Update latest version approvalStatus
       const latestVersion = await tx.syllabusVersion.findFirst({
         where: { syllabusId: syllabus.id },
         orderBy: { versionNumber: 'desc' },
@@ -82,51 +55,36 @@ export async function POST(
       if (latestVersion) {
         await tx.syllabusVersion.update({
           where: { id: latestVersion.id },
-          data: {
-            approvalStatus: versionStatus,
-            reviewedById: currentUserId,
-            reviewedAt: now,
-            rejectionReason: action === 'Reject' ? (remarks?.trim() || null) : null,
-          },
+          data: { approvalStatus: versionStatus, reviewedById: currentUserIdInt, reviewedAt: now, rejectionReason: action === 'Reject' ? (remarks?.trim() || null) : null },
         });
       }
 
       return tx.syllabus.update({
-        where: { id: numericId },
-        data: {
-          status: targetStatus,
-          reviewerRemarks: remarks?.trim() || null,
-          reviewedAt: now,
-          reviewedByUserId: currentUserId,
-        },
+        where: { id: syllabusId },
+        data: { status: targetStatus, reviewerRemarks: remarks?.trim() || null, reviewedAt: now, reviewedByUserId: currentUserIdInt },
       });
     });
 
     await logAuditEvent({
-      userId: currentUserId,
+      userId: currentUserIdInt,
       userDisplayName: user.fullName,
       actionType: action === 'Approve' ? 'ApproveSyllabus' : 'RejectSyllabus',
       resultStatus: 'Success',
-      description: `${action}d syllabus for [${syllabus.subject.code}] ${syllabus.subject.title}${remarks ? ` with feedback: "${remarks}"` : ''}`,
+      description: `${action}d syllabus for [${syllabus.course.code}] ${syllabus.course.title}${remarks ? ` – "${remarks}"` : ''}`,
       entityType: 'Syllabus',
-      entityId: syllabus.id,
-      ipAddress: req.ip || '127.0.0.1',
+      entityId: String(syllabus.id),
     });
 
     await createNotification(
-      syllabus.instructorId,
-      `Syllabus ${targetStatus}: ${syllabus.subject.code}`,
+      String(syllabus.instructorId),
+      `Syllabus ${targetStatus}: ${syllabus.course.code}`,
       action === 'Approve'
-        ? `Your syllabus for ${syllabus.subject.code} has been approved and published to students.`
-        : `Your syllabus for ${syllabus.subject.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
+        ? `Your syllabus for ${syllabus.course.code} has been approved and published to students.`
+        : `Your syllabus for ${syllabus.course.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
       `/syllabi/${syllabus.id}`
     );
 
-    return NextResponse.json({
-      success: true,
-      message: `Syllabus successfully ${targetStatus.toLowerCase()}.`,
-      syllabus: updated,
-    });
+    return NextResponse.json({ success: true, message: `Syllabus successfully ${targetStatus.toLowerCase()}.`, syllabus: updated });
   } catch (error: any) {
     console.error('Error reviewing syllabus:', error);
     return NextResponse.json({ error: 'Failed to process syllabus review.' }, { status: 500 });

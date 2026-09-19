@@ -37,8 +37,8 @@ export default function LoginPage() {
     setError('');
 
     const cleanUsername = username.trim();
-    if (!/^\d{5}$/.test(cleanUsername) && !/^\d{10}$/.test(cleanUsername)) {
-      setError('Please enter a valid Username (ID number): 10 digits for Students (e.g. 2022012708) or 5 digits for Faculty/Staff/Admin (e.g. 00000).');
+    if (!cleanUsername) {
+      setError('Please enter your Username, ID number, or Email.');
       return;
     }
 
@@ -153,21 +153,18 @@ export default function LoginPage() {
                 Username (ID Number)
               </label>
               <span className="text-[10px] text-slate-500 font-semibold">
-                Student: 10 digits • Faculty/Admin: 5 digits
+                ID Number, Email, or Username
               </span>
             </div>
             <div className="relative">
               <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={10}
                 value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/\D/g, ''))}
-                placeholder="Enter Username / ID number (e.g. 00000 or 2022012708)"
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter ID number (e.g. 00000), admin, or email"
                 required
-                className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36] transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36] transition-colors"
               />
             </div>
           </div>

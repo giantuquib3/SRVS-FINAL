@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSessionFromRequest } from '@/lib/auth';
+import { getSessionFromRequest, hashPassword } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,150 +16,110 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const role = searchParams.get('role');
-    const search = searchParams.get('search');
+    const search = searchParams.get('search')?.trim().toLowerCase();
+    const deptParam = searchParams.get('departmentId')?.toUpperCase();
 
     const where: any = {};
-    if (status) where.accountStatus = status;
+
+    // Dept Heads can only see their own department's users
+    if (user.role === 'DepartmentHead') {
+      const deptCode = String(user.departmentId || '').toUpperCase();
+      if (!deptCode) return NextResponse.json({ users: [], total: 0 });
+      where.departmentId = deptCode;
+      // DeptHeads can only see Educators and Students, not Admins
+      where.role = { in: ['Educator', 'Student'] };
+    }
+
     if (role) where.role = role;
-    if (search && search.trim()) {
+    if (status) where.accountStatus = status;
+    if (deptParam && user.role === 'Admin') where.departmentId = deptParam;
+
+    if (search) {
+      const searchNum = parseInt(search, 10);
       where.OR = [
-        { fullName: { contains: search.trim(), mode: 'insensitive' } },
-        { email: { contains: search.trim(), mode: 'insensitive' } },
-        { idNumber: { contains: search.trim(), mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        ...(!isNaN(searchNum) ? [{ id: searchNum }] : []),
       ];
     }
 
-    // Dept Head only sees their department users
-    let deptHeadDeptId: number | null = null;
-    let deptHeadDeptCode: string | null = null;
-    if (user.role === 'DepartmentHead') {
-      deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-          deptHeadDeptCode = dh.departmentRel.code;
-        } else if (dh?.department) {
-          deptHeadDeptCode = dh.department;
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      } else {
-        const d = await prisma.department.findUnique({ where: { id: deptHeadDeptId } });
-        if (d) deptHeadDeptCode = d.code;
-      }
+    const isDeptHead = user.role === 'DepartmentHead';
+    const deptHeadDept = isDeptHead && user.departmentId ? String(user.departmentId).toUpperCase() : null;
 
-      if (deptHeadDeptId || deptHeadDeptCode) {
-        const deptConditions: any[] = [];
-        if (deptHeadDeptId) deptConditions.push({ departmentId: deptHeadDeptId });
-        if (deptHeadDeptCode) {
-          deptConditions.push({ facultyProfile: { department: deptHeadDeptCode } });
-          deptConditions.push({ studentProfile: { department: deptHeadDeptCode } });
-          deptConditions.push({ deptHeadProfile: { department: deptHeadDeptCode } });
-        }
-        where.AND = [
-          ...(where.AND || []),
-          { OR: deptConditions },
-        ];
-      } else {
-        return NextResponse.json({ users: [], counts: { total: 0, deptHeads: 0, educators: 0, students: 0, admins: 0 } });
+    const [users, allEnrollments, totalCount, deptHeadsCount, educatorsCount, studentsCount, adminsCount] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          departmentId: true,
+          accountStatus: true,
+          academicRank: true,
+          yearLevel: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.enrollment.findMany({
+        where: { status: 'ENROLLED' },
+        select: {
+          studentId: true,
+          course: { select: { code: true } },
+        },
+      }),
+      prisma.user.count({
+        where: isDeptHead ? { departmentId: deptHeadDept, role: { in: ['Educator', 'Student'] } } : undefined,
+      }),
+      prisma.user.count({
+        where: { role: 'DepartmentHead', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
+      }),
+      prisma.user.count({
+        where: { role: 'Educator', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
+      }),
+      prisma.user.count({
+        where: { role: 'Student', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
+      }),
+      prisma.user.count({
+        where: { role: 'Admin' },
+      }),
+    ]);
+
+    const enrollmentMap = new Map<number, string[]>();
+    for (const enr of allEnrollments) {
+      if (!enrollmentMap.has(enr.studentId)) {
+        enrollmentMap.set(enr.studentId, []);
+      }
+      if (enr.course?.code) {
+        enrollmentMap.get(enr.studentId)!.push(enr.course.code);
       }
     }
 
-    const rawUsers = await prisma.user.findMany({
-      where,
-      include: {
-        department: true,
-        adminProfile: true,
-        deptHeadProfile: {
-          include: {
-            departmentRel: true,
-          },
-        },
-        facultyProfile: {
-          include: {
-            departmentRel: true,
-          },
-        },
-        studentProfile: {
-          include: {
-            departmentRel: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const counts = {
+      total: totalCount,
+      deptHeads: deptHeadsCount,
+      educators: educatorsCount,
+      students: studentsCount,
+      admins: isDeptHead ? 0 : adminsCount,
+    };
 
-    // Format output providing backward-compatible string username/id and normalized department info for UI
-    const users = rawUsers.map((u) => {
-      const deptCode =
-        u.department?.code ||
-        u.deptHeadProfile?.departmentRel?.code ||
-        u.deptHeadProfile?.department ||
-        u.facultyProfile?.departmentRel?.code ||
-        u.facultyProfile?.department ||
-        u.studentProfile?.departmentRel?.code ||
-        u.studentProfile?.department ||
-        null;
-
-      const deptName =
-        u.department?.name ||
-        u.deptHeadProfile?.departmentRel?.name ||
-        u.facultyProfile?.departmentRel?.name ||
-        u.studentProfile?.departmentRel?.name ||
-        (deptCode ? `${deptCode} Department` : null);
+    const formatted = users.map((u) => {
+      const studentIntId = typeof u.id === 'number' ? u.id : parseInt(String(u.id), 10);
+      const studentCourses = !isNaN(studentIntId) ? enrollmentMap.get(studentIntId) || [] : [];
 
       return {
         ...u,
-        username: u.idNumber,
-        departmentCode: deptCode,
-        departmentName: deptName,
-        department: u.department || (deptCode ? { code: deptCode, name: deptName } : null),
-        enrolledSubjects: u.studentProfile?.enrolledSubjects || '',
+        idNumber: String(u.id),
+        username: String(u.id),
+        departmentCode: u.departmentId,
+        departmentName: getDepartmentName(u.departmentId),
+        enrolledSubjects: studentCourses.join(', '),
       };
     });
 
-    const baseWhere: any = {};
-    if (user.role === 'DepartmentHead') {
-      if (deptHeadDeptId || deptHeadDeptCode) {
-        const deptConditions: any[] = [];
-        if (deptHeadDeptId) deptConditions.push({ departmentId: deptHeadDeptId });
-        if (deptHeadDeptCode) {
-          deptConditions.push({ facultyProfile: { department: deptHeadDeptCode } });
-          deptConditions.push({ studentProfile: { department: deptHeadDeptCode } });
-          deptConditions.push({ deptHeadProfile: { department: deptHeadDeptCode } });
-        }
-        baseWhere.AND = [
-          ...(baseWhere.AND || []),
-          { OR: deptConditions },
-        ];
-      }
-    }
-    if (status) baseWhere.accountStatus = status;
-
-    const [total, deptHeads, educators, students, admins] = await Promise.all([
-      prisma.user.count({ where: baseWhere }),
-      prisma.user.count({ where: { ...baseWhere, role: 'DepartmentHead' } }),
-      prisma.user.count({ where: { ...baseWhere, role: 'Educator' } }),
-      prisma.user.count({ where: { ...baseWhere, role: 'Student' } }),
-      prisma.user.count({ where: { ...baseWhere, role: 'Admin' } }),
-    ]);
-
-    return NextResponse.json({
-      users,
-      counts: {
-        total,
-        deptHeads,
-        educators,
-        students,
-        admins,
-      },
-    });
+    return NextResponse.json({ users: formatted, total: formatted.length, counts });
   } catch (error: any) {
     console.error('Error fetching users:', error);
     return NextResponse.json({ error: 'Failed to fetch users.' }, { status: 500 });
@@ -167,294 +128,143 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'Admin') {
+    const sessionUser = await getSessionFromRequest(req);
+    if (!sessionUser || sessionUser.role !== 'Admin') {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { fullName, email, username, idNumber, password, role, departmentId, accountStatus } = body;
+    const { idNumber, email, fullName, role, departmentId, password, accountStatus, academicRank, yearLevel } = await req.json();
 
-    if (!fullName || !email || !password || !role) {
-      return NextResponse.json({ error: 'Full name, email, password, and role are required.' }, { status: 400 });
+    const cleanId = (idNumber || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanId || !cleanEmail || !fullName || !role || !password) {
+      return NextResponse.json({ error: 'ID, email, full name, role, and password are required.' }, { status: 400 });
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail.endsWith('@usjr.edu.ph')) {
-      return NextResponse.json({
-        error: 'Institutional email is required. Email address must end with @usjr.edu.ph (e.g., user@usjr.edu.ph).',
-      }, { status: 400 });
-    }
-    const trimmedId = (idNumber || username || '').trim();
-
-    if (!trimmedId) {
-      return NextResponse.json({ error: 'University ID Number is required.' }, { status: 400 });
+    const numericId = parseInt(cleanId, 10);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'User ID must be a numeric integer.' }, { status: 400 });
     }
 
-    if (role === 'Student') {
-      if (!/^\d{10}$/.test(trimmedId)) {
-        return NextResponse.json({
-          error: 'Student ID number must be exactly 10 digits (e.g. 2022012708).',
-        }, { status: 400 });
-      }
-    } else {
-      if (!/^\d{5}$/.test(trimmedId)) {
-        return NextResponse.json({
-          error: 'Admin, Faculty, and Department Head ID numbers must be exactly 5 digits (e.g. 00000 or 10001).',
-        }, { status: 400 });
-      }
-    }
-
-    // Check duplicate
     const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: trimmedEmail },
-          { idNumber: trimmedId },
-        ],
-      },
+      where: { OR: [{ id: numericId }, { email: cleanEmail }] },
     });
-
     if (existing) {
-      if (existing.idNumber === trimmedId) {
-        return NextResponse.json({ error: `An account with ID Number ${trimmedId} already exists.` }, { status: 400 });
-      }
-      return NextResponse.json({ error: 'A user with this email address already exists.' }, { status: 400 });
+      return NextResponse.json({ error: 'A user with this ID or email already exists.' }, { status: 409 });
     }
 
-    // Resolve Department ID and Code if specified
-    let targetDeptId: number | null = null;
-    let targetDeptCode: string = 'CPE';
-    if (departmentId) {
-      const parsed = Number(departmentId);
-      if (!isNaN(parsed)) {
-        targetDeptId = parsed;
-        const d = await prisma.department.findUnique({ where: { id: parsed } });
-        if (d) targetDeptCode = d.code;
-      } else {
-        const d = await prisma.department.findUnique({ where: { code: String(departmentId).toUpperCase() } });
-        if (d) {
-          targetDeptId = d.id;
-          targetDeptCode = d.code;
-        }
-      }
+    const deptCode = departmentId ? String(departmentId).toUpperCase() : null;
+    if (deptCode && !isValidDepartmentCode(deptCode)) {
+      return NextResponse.json({ error: 'Invalid department code.' }, { status: 400 });
     }
 
-    const bcrypt = await import('bcryptjs');
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await hashPassword(password);
 
-    const nameParts = fullName.trim().split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
-
-    // Create user and segregated role profile in atomic transaction
-    const newUser = await prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
-        data: {
-          idNumber: trimmedId,
-          fullName: fullName.trim(),
-          firstName,
-          lastName,
-          email: trimmedEmail,
-          passwordHash,
-          role,
-          departmentId: targetDeptId,
-          accountStatus: accountStatus || 'Active',
-        },
-        include: {
-          department: true,
-        },
-      });
-
-      if (role === 'Admin') {
-        await tx.admin.create({
-          data: {
-            userId: createdUser.id,
-            adminNumber: trimmedId,
-            fullName: createdUser.fullName,
-            email: createdUser.email,
-          },
-        });
-      } else if (role === 'DepartmentHead') {
-        await tx.departmentHead.create({
-          data: {
-            userId: createdUser.id,
-            employeeId: trimmedId,
-            fullName: createdUser.fullName,
-            email: createdUser.email,
-            department: targetDeptCode,
-          },
-        });
-      } else if (role === 'Educator') {
-        await tx.faculty.create({
-          data: {
-            userId: createdUser.id,
-            employeeId: trimmedId,
-            fullName: createdUser.fullName,
-            email: createdUser.email,
-            department: targetDeptCode,
-          },
-        });
-      } else if (role === 'Student') {
-        await tx.student.create({
-          data: {
-            userId: createdUser.id,
-            studentIdNumber: trimmedId,
-            fullName: createdUser.fullName,
-            email: createdUser.email,
-            department: targetDeptCode,
-            enrolledSubjects: '',
-          },
-        });
-      }
-
-      return createdUser;
+    const newUser = await prisma.user.create({
+      data: {
+        id: numericId,
+        email: cleanEmail,
+        fullName: fullName.trim(),
+        role,
+        departmentId: deptCode,
+        passwordHash,
+        accountStatus: accountStatus || 'Active',
+        academicRank: academicRank || null,
+        yearLevel: yearLevel || null,
+      },
     });
 
     await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
+      userId: sessionUser.id,
+      userDisplayName: sessionUser.fullName || 'Admin',
       actionType: 'CreateUser',
       resultStatus: 'Success',
-      description: `Created user account for ${newUser.fullName} (${newUser.email}) with role ${newUser.role} [ID Number: ${trimmedId}]`,
+      description: `Admin created new [${role}] account: ${fullName} (ID: ${cleanId})`,
       entityType: 'User',
-      entityId: newUser.id,
-      ipAddress: req.ip || '127.0.0.1',
+      entityId: String(numericId),
     });
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        ...newUser,
-        username: newUser.idNumber,
-      },
-    }, { status: 201 });
+    return NextResponse.json({ success: true, user: { ...newUser, idNumber: String(newUser.id) } }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating user:', error);
-    return NextResponse.json({ error: error.message || 'Failed to create user account.' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to create user.' }, { status: 500 });
   }
 }
 
 export async function PATCH(req: NextRequest) {
   try {
-    const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Admin' && user.role !== 'DepartmentHead')) {
+    const sessionUser = await getSessionFromRequest(req);
+    if (!sessionUser || (sessionUser.role !== 'Admin' && sessionUser.role !== 'DepartmentHead')) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const { userId, action, newRole } = await req.json();
+    const body = await req.json();
+    const { userId, action, role, newRole, departmentId, accountStatus, fullName, academicRank, yearLevel } = body;
 
-    const numericUserId = Number(userId);
-    const targetUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { idNumber: String(userId) },
-          { id: isNaN(numericUserId) ? -1 : numericUserId },
-        ],
-      },
-      include: { department: true },
-    });
+    const targetIdStr = String(userId || '').trim();
+    const targetId = parseInt(targetIdStr, 10);
+    if (isNaN(targetId)) {
+      return NextResponse.json({ error: 'Valid integer userId is required.' }, { status: 400 });
+    }
 
+    const targetUser = await prisma.user.findUnique({ where: { id: targetId } });
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
 
-    if (user.role === 'DepartmentHead' && targetUser.departmentId !== Number(user.departmentId)) {
-      return NextResponse.json({ error: 'Department Heads may only manage users in their assigned department.' }, { status: 403 });
-    }
-
-    let updatedStatus = targetUser.accountStatus;
-    let updatedRole = targetUser.role;
+    let updateData: any = {};
+    let actionType = 'UpdateUser';
+    let description = '';
 
     if (action === 'Approve') {
-      updatedStatus = 'Active';
+      updateData.accountStatus = 'Active';
+      actionType = 'ApproveUser';
+      description = `Approved account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'Reject') {
-      updatedStatus = 'Rejected';
+      updateData.accountStatus = 'Rejected';
+      actionType = 'RejectUser';
+      description = `Rejected account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'Deactivate') {
-      updatedStatus = 'Deactivated';
+      updateData.accountStatus = 'Deactivated';
+      actionType = 'DeactivateUser';
+      description = `Deactivated account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'Activate') {
-      updatedStatus = 'Active';
+      updateData.accountStatus = 'Active';
+      actionType = 'ActivateUser';
+      description = `Reactivated account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'ChangeRole') {
-      if (user.role !== 'Admin') {
-        return NextResponse.json({ error: 'Only administrators may change user roles.' }, { status: 403 });
-      }
-      if (newRole && newRole !== targetUser.role) {
-        updatedRole = newRole;
-
-        // Synchronize segregated role tables
-        await prisma.$transaction(async (tx) => {
-          // Remove old role profile
-          if (targetUser.role === 'Admin') await tx.admin.deleteMany({ where: { userId: targetUser.id } });
-          if (targetUser.role === 'DepartmentHead') await tx.departmentHead.deleteMany({ where: { userId: targetUser.id } });
-          if (targetUser.role === 'Educator') await tx.faculty.deleteMany({ where: { userId: targetUser.id } });
-          if (targetUser.role === 'Student') await tx.student.deleteMany({ where: { userId: targetUser.id } });
-
-          // Create new role profile
-          const deptCode = targetUser.department?.code || 'CPE';
-          if (newRole === 'Admin') {
-            await tx.admin.create({
-              data: {
-                userId: targetUser.id,
-                adminNumber: targetUser.idNumber,
-                fullName: targetUser.fullName,
-                email: targetUser.email,
-              },
-            });
-          } else if (newRole === 'DepartmentHead') {
-            await tx.departmentHead.create({
-              data: {
-                userId: targetUser.id,
-                employeeId: targetUser.idNumber,
-                fullName: targetUser.fullName,
-                email: targetUser.email,
-                department: deptCode,
-              },
-            });
-          } else if (newRole === 'Educator') {
-            await tx.faculty.create({
-              data: {
-                userId: targetUser.id,
-                employeeId: targetUser.idNumber,
-                fullName: targetUser.fullName,
-                email: targetUser.email,
-                department: deptCode,
-              },
-            });
-          } else if (newRole === 'Student') {
-            await tx.student.create({
-              data: {
-                userId: targetUser.id,
-                studentIdNumber: targetUser.idNumber,
-                fullName: targetUser.fullName,
-                email: targetUser.email,
-                department: deptCode,
-                enrolledSubjects: '',
-              },
-            });
-          }
-        });
-      }
+      const assignedRole = newRole || role;
+      if (assignedRole) updateData.role = assignedRole;
+      actionType = 'ChangeUserRole';
+      description = `Changed role of ${targetUser.fullName} (${targetId}) from ${targetUser.role} to ${assignedRole}`;
+    } else {
+      // General update
+      if (role || newRole) updateData.role = newRole || role;
+      if (departmentId) updateData.departmentId = String(departmentId).toUpperCase();
+      if (accountStatus) updateData.accountStatus = accountStatus;
+      if (fullName) updateData.fullName = fullName.trim();
+      if (academicRank !== undefined) updateData.academicRank = academicRank;
+      if (yearLevel !== undefined) updateData.yearLevel = yearLevel;
+      description = `Updated user profile for ${targetUser.fullName} (${targetId})`;
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: targetUser.id },
-      data: {
-        accountStatus: updatedStatus,
-        role: updatedRole,
-      },
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: updateData,
     });
 
     await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
-      actionType: `User_${action}`,
+      userId: sessionUser.id,
+      userDisplayName: sessionUser.fullName || sessionUser.id,
+      actionType,
       resultStatus: 'Success',
-      description: `Performed [${action}] on user ${targetUser.fullName} (Status: ${updatedStatus}, Role: ${updatedRole})`,
+      description,
       entityType: 'User',
-      entityId: targetUser.id,
+      entityId: String(targetId),
     });
 
-    return NextResponse.json({ success: true, user: updatedUser });
+    return NextResponse.json({ success: true, user: { ...updated, idNumber: String(updated.id) } });
   } catch (error: any) {
     console.error('Error updating user:', error);
     return NextResponse.json({ error: error.message || 'Failed to update user.' }, { status: 500 });
@@ -463,54 +273,58 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'Admin') {
+    const sessionUser = await getSessionFromRequest(req);
+    if (!sessionUser || sessionUser.role !== 'Admin') {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
-    const userIdParam = searchParams.get('userId');
-    if (!userIdParam) {
-      return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
+    const targetIdStr = (searchParams.get('userId') || searchParams.get('id') || '').trim();
+    const targetId = parseInt(targetIdStr, 10);
+    if (isNaN(targetId)) {
+      return NextResponse.json({ error: 'Valid integer userId is required.' }, { status: 400 });
     }
 
-    const numericId = Number(userIdParam);
-    const targetUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { idNumber: userIdParam },
-          { id: isNaN(numericId) ? -1 : numericId },
-        ],
-      },
-    });
+    if (String(targetId) === String(sessionUser.id)) {
+      return NextResponse.json({ error: 'Administrators cannot delete their own account.' }, { status: 400 });
+    }
 
+    const targetUser = await prisma.user.findUnique({ where: { id: targetId } });
     if (!targetUser) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
 
-    if (targetUser.id === Number(user.id)) {
-      return NextResponse.json({ error: 'Cannot delete your own administrator account.' }, { status: 400 });
+    let isHardDeleted = false;
+    try {
+      // First clean up cascade-safe child records
+      await prisma.enrollment.deleteMany({ where: { studentId: targetId } });
+      await prisma.user.delete({ where: { id: targetId } });
+      isHardDeleted = true;
+    } catch (delError: any) {
+      // If tied to audit trail or critical records, soft-delete by deactivating
+      await prisma.user.update({
+        where: { id: targetId },
+        data: { accountStatus: 'Deactivated' },
+      });
     }
 
-    // Delete user (cascades to segregated role profiles and enrollments)
-    await prisma.user.delete({
-      where: { id: targetUser.id },
-    });
-
     await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
-      actionType: 'DeleteUser',
+      userId: sessionUser.id,
+      userDisplayName: sessionUser.fullName || 'Admin',
+      actionType: isHardDeleted ? 'DeleteUser' : 'DeactivateUser',
       resultStatus: 'Success',
-      description: `Deleted user account ${targetUser.fullName} (${targetUser.email}, ID: ${targetUser.idNumber})`,
+      description: isHardDeleted
+        ? `Permanently deleted [${targetUser.role}] user account: ${targetUser.fullName} (ID: ${targetId})`
+        : `Deactivated [${targetUser.role}] user account: ${targetUser.fullName} (ID: ${targetId}) due to existing audit references`,
       entityType: 'User',
-      entityId: targetUser.id,
-      ipAddress: req.ip || '127.0.0.1',
+      entityId: String(targetId),
     });
 
     return NextResponse.json({
       success: true,
-      message: `Account for ${targetUser.fullName} deleted successfully.`,
+      message: isHardDeleted
+        ? `User account ${targetId} permanently deleted.`
+        : `User account ${targetId} has audit references, deactivated successfully.`,
     });
   } catch (error: any) {
     console.error('Error deleting user:', error);

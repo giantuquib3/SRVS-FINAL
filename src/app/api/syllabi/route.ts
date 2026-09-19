@@ -2,8 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
+
+function applyStatusFilter(where: any, status: string | null) {
+  if (!status) return;
+  const s = status.toLowerCase();
+  if (s === 'submitted' || s === 'pending_approval') {
+    where.status = { in: ['Submitted', 'PENDING_APPROVAL'] };
+  } else if (s === 'approved' || s === 'active') {
+    where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
+  } else if (s === 'draft') {
+    where.status = { in: ['Draft', 'DRAFT'] };
+  } else if (s === 'rejected') {
+    where.status = { in: ['Rejected', 'REJECTED'] };
+  } else {
+    where.status = status;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,100 +31,52 @@ export async function GET(req: NextRequest) {
     const semester = searchParams.get('semester');
     const academicYear = searchParams.get('academicYear');
     const search = searchParams.get('search')?.trim();
+    const mySyllabi = searchParams.get('mySyllabi') === 'true';
 
     const where: any = {};
 
     if (user?.role === 'Student') {
       where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
+      const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!studentDept) return NextResponse.json({ syllabi: [] });
+      where.departmentId = studentDept;
 
-      let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!studentDeptId) {
-        const studentProfile = await prisma.student.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (studentProfile?.departmentRel?.id) {
-          studentDeptId = studentProfile.departmentRel.id;
-        }
-      }
+      // Show only syllabi for courses the student is enrolled in
+      const studentIntId = parseInt(user.id, 10);
+      const enrollments = !isNaN(studentIntId)
+        ? await prisma.enrollment.findMany({
+            where: { studentId: studentIntId, status: 'ENROLLED' },
+            select: { courseId: true },
+          })
+        : [];
+      const enrolledCourseIds = enrollments.map((e) => e.courseId);
+      if (enrolledCourseIds.length === 0) return NextResponse.json({ syllabi: [] });
+      where.courseId = { in: enrolledCourseIds };
 
-      if (!studentDeptId) {
-        return NextResponse.json({ syllabi: [] });
-      }
-
-      // Strictly restrict to student's assigned department
-      where.departmentId = studentDeptId;
-
-      // Strictly restrict to subjects the student is actively enrolled in within their department
-      const studentEnrollments = await prisma.enrollment.findMany({
-        where: {
-          studentId: Number(user.id),
-          status: 'ENROLLED',
-          subject: {
-            departmentId: studentDeptId,
-          },
-        },
-        select: { subjectId: true },
-      });
-      const enrolledSubjectIds = studentEnrollments.map((e) => e.subjectId);
-      where.subjectId = { in: enrolledSubjectIds };
     } else if (user?.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (deptCode) where.departmentId = deptCode;
+      applyStatusFilter(where, status);
 
-      if (deptHeadDeptId) {
-        where.departmentId = deptHeadDeptId;
-      }
-      if (status) where.status = status;
     } else if (user?.role === 'Educator') {
-      let educatorDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!educatorDeptId) {
-        const fac = await prisma.faculty.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (fac?.departmentRel?.id) {
-          educatorDeptId = fac.departmentRel.id;
-        } else if (fac?.department) {
-          const d = await prisma.department.findUnique({ where: { code: fac.department } });
-          if (d) educatorDeptId = d.id;
-        }
-      }
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (deptCode) where.departmentId = deptCode;
+      applyStatusFilter(where, status);
+      if (mySyllabi) where.instructorId = parseInt(user.id, 10) || 0;
 
-      if (educatorDeptId) {
-        where.departmentId = educatorDeptId;
-      }
-      if (status) where.status = status;
-      if (searchParams.get('mySyllabi') === 'true') {
-        where.instructorId = Number(user.id);
-      }
     } else if (user?.role === 'Admin') {
-      if (status) where.status = status;
-      if (departmentId) where.departmentId = Number(departmentId);
+      applyStatusFilter(where, status);
+      if (departmentId) where.departmentId = String(departmentId).trim().toUpperCase();
+
     } else {
       where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
     }
 
-    if (user?.role === 'Admin' && departmentId) {
-      const parsedDeptId = Number(departmentId);
-      if (!isNaN(parsedDeptId)) where.departmentId = parsedDeptId;
-    }
     if (semester) where.semester = semester;
     if (academicYear) where.academicYear = academicYear;
 
     if (search) {
-      where.subject = {
+      where.course = {
         OR: [
           { code: { contains: search, mode: 'insensitive' } },
           { title: { contains: search, mode: 'insensitive' } },
@@ -119,20 +88,10 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { updatedAt: 'desc' },
       include: {
-        subject: {
-          include: {
-            department: true,
-          },
-        },
+        course: true,
         instructor: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
+          select: { id: true, fullName: true, email: true, academicRank: true },
         },
-        department: true,
         versions: {
           orderBy: { versionNumber: 'desc' },
           take: 1,
@@ -147,37 +106,38 @@ export async function GET(req: NextRequest) {
             fileUrl: true,
             fileType: true,
             fileSize: true,
-            uploadedByUserId: true,
+            editorId: true,
+            submittedById: true,
+            reviewedById: true,
             createdAt: true,
             submittedAt: true,
             reviewedAt: true,
-            editor: {
-              select: {
-                id: true,
-                idNumber: true,
-                fullName: true,
-              },
-            },
-            submittedBy: {
-              select: {
-                id: true,
-                idNumber: true,
-                fullName: true,
-              },
-            },
           },
         },
       },
     });
 
-    // Format output ensuring course compatibility for legacy consumers
-    const formattedSyllabi = syllabi.map((s) => ({
-      ...s,
-      course: s.subject, // Map subject to course so legacy consumers work seamlessly
-      courseId: s.subjectId,
-    }));
+    const formatted = syllabi.map((s) => {
+      const deptCode = s.departmentId;
+      return {
+        ...s,
+        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        course: {
+          ...s.course,
+          department: {
+            id: s.course.departmentId,
+            code: s.course.departmentId,
+            name: getDepartmentName(s.course.departmentId),
+          },
+        },
+        // Back-compat aliases
+        subject: s.course,
+        subjectId: s.courseId,
+        courseId: s.courseId,
+      };
+    });
 
-    return NextResponse.json({ syllabi: formattedSyllabi });
+    return NextResponse.json({ syllabi: formatted });
   } catch (error: any) {
     console.error('Error fetching syllabi:', error);
     return NextResponse.json({ error: 'Failed to fetch syllabi.' }, { status: 500 });
@@ -188,92 +148,58 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
     if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Faculty can create a syllabus. Administrators cannot author syllabi.' }, { status: 403 });
+      return NextResponse.json({
+        error: 'Unauthorized: Only Department Heads and Educators can create a syllabus.',
+      }, { status: 403 });
     }
 
     const body = await req.json();
     const {
-      courseId,
-      subjectId,
-      semester,
-      academicYear,
-      courseDescription,
-      learningOutcomes,
-      topics,
-      references,
-      gradingSystem,
-      schedule,
+      courseId, subjectId,
+      semester, academicYear,
+      courseDescription, learningOutcomes, topics, references, gradingSystem, schedule,
       section = 'A',
       directApprove = false,
       saveAsDraft = true,
-      fileName,
-      fileUrl,
-      fileType,
-      fileSize,
+      fileName, fileUrl, fileType, fileSize,
     } = body;
 
-    const rawTarget = String(subjectId || courseId || '').trim();
-
+    const rawTarget = String(subjectId || courseId || '').trim().toUpperCase();
     if (!rawTarget || !semester || !academicYear) {
       return NextResponse.json({ error: 'Subject/Course, Semester, and Academic Year are required.' }, { status: 400 });
     }
 
-    // Lookup Subject by ID or code
-    const numericTarget = Number(rawTarget);
-    const subject = await prisma.subject.findFirst({
+    const parsedCourseTarget = !isNaN(parseInt(rawTarget, 10)) ? parseInt(rawTarget, 10) : null;
+    const course = await prisma.course.findFirst({
       where: {
         OR: [
-          { code: rawTarget.toUpperCase() },
-          { id: isNaN(numericTarget) ? -1 : numericTarget },
+          ...(parsedCourseTarget !== null ? [{ id: parsedCourseTarget }] : []),
+          { code: rawTarget },
         ],
       },
-      include: { department: true },
     });
-
-    if (!subject) {
-      return NextResponse.json({ error: 'Selected subject/course was not found.' }, { status: 404 });
+    if (!course) {
+      return NextResponse.json({ error: 'Selected course/subject was not found.' }, { status: 404 });
     }
 
-    // Enforce that Department Heads and Educators may only author/upload syllabi for subjects in their department
-    if (user.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
-      if (deptHeadDeptId && subject.departmentId !== deptHeadDeptId) {
-        return NextResponse.json({ error: 'Department Heads may only create syllabi for courses within their assigned department.' }, { status: 403 });
-      }
-    } else if (user.role === 'Educator') {
-      let educatorDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!educatorDeptId) {
-        const fac = await prisma.faculty.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (fac?.departmentRel?.id) {
-          educatorDeptId = fac.departmentRel.id;
-        } else if (fac?.department) {
-          const d = await prisma.department.findUnique({ where: { code: fac.department } });
-          if (d) educatorDeptId = d.id;
-        }
-      }
-      if (educatorDeptId && subject.departmentId !== educatorDeptId) {
-        return NextResponse.json({ error: 'Faculty may only create syllabi for courses within their assigned department.' }, { status: 403 });
-      }
+    const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+    if (userDeptCode && course.departmentId !== userDeptCode) {
+      return NextResponse.json({
+        error: `You may only create syllabi for courses within your assigned department (${userDeptCode}).`,
+      }, { status: 403 });
     }
 
     if (!fileUrl && (!courseDescription || !courseDescription.trim())) {
-      return NextResponse.json({ error: 'Please provide either a course description or an uploaded syllabus document (PDF/DOCX).' }, { status: 400 });
+      return NextResponse.json({
+        error: 'Please provide either a course description or an uploaded syllabus document (PDF/DOCX).',
+      }, { status: 400 });
     }
+
+    const canDirectApprove = user.role === 'DepartmentHead' && (directApprove === true || !saveAsDraft);
+    const initialStatus = canDirectApprove ? 'ACTIVE' : (saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL');
+    const versionApprovalStatus = canDirectApprove ? 'APPROVED' : initialStatus;
+    const now = new Date();
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
 
     const contentSnapshot = {
       courseDescription: courseDescription?.trim() || '',
@@ -284,33 +210,33 @@ export async function POST(req: NextRequest) {
       schedule: schedule?.trim() || '',
     };
 
-    const canDirectApprove = user.role === 'DepartmentHead' && (directApprove === true || !saveAsDraft);
-    const initialStatus = canDirectApprove ? 'ACTIVE' : (saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL');
-    const versionApprovalStatus = canDirectApprove ? 'APPROVED' : initialStatus;
-    const now = new Date();
-    const uIdNumber = String(user.idNumber || user.username || user.id);
-    const currentUserId = Number(user.id);
+    // In the unified architecture, instructorId references admin.id directly.
+    // Department Heads can directly author/upload syllabi or optionally assign an educator.
+    let instructorIdInt = currentUserIdInt;
+    if (user.role === 'DepartmentHead' && body.instructorId) {
+      const parsedInstructorId = parseInt(String(body.instructorId), 10);
+      if (!isNaN(parsedInstructorId)) {
+        const assignedUser = await prisma.user.findUnique({ where: { id: parsedInstructorId } });
+        if (assignedUser) instructorIdInt = parsedInstructorId;
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       if (canDirectApprove) {
-        // Archive previous active syllabi for this subject to avoid duplicate active records
         await tx.syllabus.updateMany({
           where: {
-            subjectId: subject.id,
+            courseId: course.id,
             status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
           },
           data: { status: 'ARCHIVED' },
         });
       }
 
-      // 1. Create syllabus master record
       const syllabus = await tx.syllabus.create({
         data: {
-          subjectId: subject.id,
-          instructorId: currentUserId,
-          createdById: currentUserId,
-          uploadedByUserId: uIdNumber,
-          departmentId: subject.departmentId,
+          courseId: course.id,
+          instructorId: instructorIdInt,
+          departmentId: course.departmentId,
           academicYear,
           semester,
           section: section || 'A',
@@ -318,20 +244,27 @@ export async function POST(req: NextRequest) {
           currentVersionNumber: 1,
           submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
           reviewedAt: canDirectApprove ? now : null,
-          reviewedByUserId: canDirectApprove ? currentUserId : null,
+          reviewedByUserId: canDirectApprove ? currentUserIdInt : null,
           reviewerRemarks: canDirectApprove ? 'Approved on initial creation by Department Head' : null,
         },
       });
 
-      // 2. Create Syllabus Version 1
+      const courseFacultyId = user.role === 'Educator' ? currentUserIdInt : instructorIdInt;
+      await tx.course.update({
+        where: { id: course.id },
+        data: {
+          facultyName: user.role === 'Educator' ? user.fullName : (course.facultyName || user.fullName),
+          facultyId: courseFacultyId,
+        },
+      });
+
       const version = await tx.syllabusVersion.create({
         data: {
           syllabusId: syllabus.id,
           versionNumber: 1,
-          editorId: currentUserId,
-          uploadedByUserId: uIdNumber,
+          editorId: currentUserIdInt,
           changeSummary: fileUrl
-            ? `Initial syllabus creation with uploaded document (${fileName})`
+            ? `Initial creation with uploaded document (${fileName})`
             : 'Initial syllabus creation (Version 1)',
           changeType: 'Create',
           statusAtSave: versionApprovalStatus,
@@ -341,9 +274,9 @@ export async function POST(req: NextRequest) {
           fileUrl: fileUrl || null,
           fileType: fileType || null,
           fileSize: fileSize || null,
-          submittedById: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? currentUserId : null,
+          submittedById: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? currentUserIdInt : null,
           submittedAt: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? now : null,
-          reviewedById: canDirectApprove ? currentUserId : null,
+          reviewedById: canDirectApprove ? currentUserIdInt : null,
           reviewedAt: canDirectApprove ? now : null,
         },
       });
@@ -352,13 +285,15 @@ export async function POST(req: NextRequest) {
     });
 
     await logAuditEvent({
-      userId: currentUserId,
+      userId: currentUserIdInt,
       userDisplayName: user.fullName,
-      actionType: canDirectApprove ? 'UploadAndApproveSyllabus' : (saveAsDraft ? 'DraftSyllabus' : 'SubmitSyllabus'),
+      actionType: canDirectApprove
+        ? 'UploadAndApproveSyllabus'
+        : saveAsDraft ? 'DraftSyllabus' : 'SubmitSyllabus',
       resultStatus: 'Success',
-      description: `Created syllabus for ${subject.code} (${semester}, AY ${academicYear}) - Status: ${initialStatus} [Uploaded by ID: ${uIdNumber}]`,
+      description: `Created syllabus for ${course.code} (${semester}, AY ${academicYear}) – Status: ${initialStatus}`,
       entityType: 'Syllabus',
-      entityId: result.syllabus.id,
+      entityId: String(result.syllabus.id),
     });
 
     return NextResponse.json({
@@ -366,10 +301,8 @@ export async function POST(req: NextRequest) {
       syllabus: result.syllabus,
       version: result.version,
       message: canDirectApprove
-        ? `${subject.code} syllabus has been created, approved, and activated.`
-        : (saveAsDraft
-          ? 'Syllabus draft saved successfully.'
-          : 'Syllabus submitted for Department Head review.'),
+        ? `${course.code} syllabus created, approved, and activated.`
+        : saveAsDraft ? 'Syllabus draft saved.' : 'Syllabus submitted for review.',
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating syllabus:', error);

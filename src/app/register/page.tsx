@@ -56,7 +56,7 @@ export default function RegisterPage() {
       }
     } else {
       if (!/^\d{5}$/.test(cleanId)) {
-        setError('Faculty ID number must be exactly 5 digits (e.g., 10001 or 00000).');
+        setError(`${formData.role === 'Admin' ? 'Admin' : formData.role === 'DepartmentHead' ? 'Department Head' : 'Faculty'} ID number must be exactly 5 digits (e.g., 10001 or 00000).`);
         return;
       }
     }
@@ -145,6 +145,8 @@ export default function RegisterPage() {
               >
                 <option value="Student">Student (10-digit ID)</option>
                 <option value="Educator">Educator / Faculty (5-digit ID)</option>
+                <option value="DepartmentHead">Department Head (5-digit ID)</option>
+                <option value="Admin">Administrator (5-digit ID)</option>
               </select>
             </div>
 
@@ -170,7 +172,7 @@ export default function RegisterPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                {isStudent ? 'Username (Student ID - 10 digits) *' : 'Username (Faculty ID - 5 digits) *'}
+                {isStudent ? 'Username (Student ID - 10 digits) *' : `Username (${formData.role} ID - 5 digits) *`}
               </label>
               <span className="text-[10px] text-slate-500 font-semibold">
                 {isStudent ? 'Username is your 10-digit ID' : 'Username is your 5-digit ID'}

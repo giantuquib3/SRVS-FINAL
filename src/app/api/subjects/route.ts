@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
+// /api/subjects is an alias for /api/courses using the Course model
 export async function GET(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
@@ -16,48 +18,14 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    let studentDeptId: number | null = null;
-    let enrolledSet = new Set<number>();
-
     if (user?.role === 'Student') {
-      studentDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!studentDeptId) {
-        const studentProfile = await prisma.student.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (studentProfile?.departmentRel?.id) {
-          studentDeptId = studentProfile.departmentRel.id;
-        }
-      }
-
-      if (!studentDeptId) {
-        return NextResponse.json({ subjects: [] });
-      }
-
-      where.departmentId = studentDeptId;
-
-      const studentEnrollments = await prisma.enrollment.findMany({
-        where: {
-          studentId: Number(user.id),
-          status: 'ENROLLED',
-          subject: { departmentId: studentDeptId },
-        },
-        select: { subjectId: true },
-      });
-      enrolledSet = new Set(studentEnrollments.map((e) => e.subjectId));
+      const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!studentDept) return NextResponse.json({ subjects: [] });
+      where.departmentId = studentDept;
     } else if (user?.role === 'DepartmentHead') {
-      if (user.departmentId) {
-        where.departmentId = Number(user.departmentId);
-      }
+      if (user.departmentId) where.departmentId = String(user.departmentId).trim().toUpperCase();
     } else if (departmentId) {
-      const parsedDeptId = Number(departmentId);
-      if (!isNaN(parsedDeptId)) {
-        where.departmentId = parsedDeptId;
-      } else {
-        const dept = await prisma.department.findUnique({ where: { code: departmentId } });
-        if (dept) where.departmentId = dept.id;
-      }
+      where.departmentId = String(departmentId).trim().toUpperCase();
     }
 
     if (yearLevel) where.yearLevel = yearLevel;
@@ -70,51 +38,44 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const subjects = await prisma.subject.findMany({
+    const courses = await prisma.course.findMany({
       where,
       orderBy: { code: 'asc' },
       include: {
-        department: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-          },
-        },
         syllabi: {
-          where: {
-            status: { in: ['Approved', 'ACTIVE'] },
-          },
-          select: {
-            id: true,
-            status: true,
-            academicYear: true,
-            semester: true,
-            currentVersionNumber: true,
-            uploadedByUserId: true,
-          },
-        },
-        _count: {
-          select: {
-            enrollments: true,
-            syllabi: true,
-          },
+          where: { status: { in: ['Approved', 'APPROVED'] } },
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, academicYear: true, semester: true, currentVersionNumber: true },
         },
       },
     });
 
-    const formattedSubjects = subjects.map((s) => {
-      const isEnrolled = enrolledSet.has(s.id);
+    // Get enrolled course codes for students
+    let enrolledCodes: string[] = [];
+    if (user?.role === 'Student') {
+      const studentIntId = parseInt(user.id, 10);
+      if (!isNaN(studentIntId)) {
+        const enrollments = await prisma.enrollment.findMany({
+          where: { studentId: studentIntId, status: 'ENROLLED' },
+          include: { course: { select: { code: true } } },
+        });
+        enrolledCodes = enrollments.map((e) => (e.course?.code || e.courseId).toUpperCase());
+      }
+    }
+
+    const formatted = courses.map((c) => {
+      const deptCode = String(c.departmentId || '');
       return {
-        ...s,
-        isEnrolled: user?.role === 'Student' ? isEnrolled : true,
-        syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
+        ...c,
+        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        isEnrolled: user?.role === 'Student' ? enrolledCodes.includes(c.code.toUpperCase()) : true,
       };
     });
 
-    return NextResponse.json({ subjects: formattedSubjects });
+    return NextResponse.json({ subjects: formatted, courses: formatted });
   } catch (error: any) {
-    console.error('Error fetching subjects:', error);
+    console.error('Error fetching subjects/courses:', error);
     return NextResponse.json({ error: 'Failed to fetch subjects.' }, { status: 500 });
   }
 }
@@ -122,94 +83,67 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads can add courses or subjects. System Administrators cannot add courses.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators can add courses.' }, { status: 403 });
     }
 
     const body = await req.json();
     const {
-      code,
-      title,
+      code, title, description,
+      units = 3, lecHours = 3, labHours = 0,
+      prerequisite = 'None', yearLevel = '1st Year', semester = '1st Semester',
       departmentId,
-      description,
-      units = 3,
-      lecHours = 3,
-      labHours = 0,
-      prerequisite = 'None',
-      yearLevel = '1st Year',
-      semester = '1st Semester',
     } = body;
 
-    // Validate required fields
-    if (!code || !title || !departmentId) {
-      return NextResponse.json({ error: 'Subject code, title, and department are required.' }, { status: 400 });
+    if (!code || !title) {
+      return NextResponse.json({ error: 'Course code and title are required.' }, { status: 400 });
     }
 
     const upperCode = code.trim().toUpperCase();
+    const deptCode = departmentId
+      ? String(departmentId).trim().toUpperCase()
+      : user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
 
-    // Resolve Department
-    let targetDept = null;
-    const numericDeptId = Number(departmentId);
-    if (!isNaN(numericDeptId)) {
-      targetDept = await prisma.department.findUnique({ where: { id: numericDeptId } });
-    } else {
-      targetDept = await prisma.department.findUnique({ where: { code: String(departmentId).trim().toUpperCase() } });
+    if (!deptCode || !isValidDepartmentCode(deptCode)) {
+      return NextResponse.json({ error: 'A valid department is required.' }, { status: 400 });
     }
 
-    if (!targetDept) {
-      return NextResponse.json({ error: 'Invalid department specified.' }, { status: 400 });
-    }
-
-    // Dept head scoping
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== targetDept.id) {
-      return NextResponse.json({ error: 'Department Heads may only manage subjects within their assigned department.' }, { status: 403 });
-    }
-
-    // Check duplicate
-    const existing = await prisma.subject.findUnique({
-      where: { code: upperCode },
-    });
-
+    const existing = await prisma.course.findUnique({ where: { code: upperCode } });
     if (existing) {
-      return NextResponse.json({ error: `A subject with code "${upperCode}" already exists.` }, { status: 409 });
+      return NextResponse.json({ error: `Course with code "${upperCode}" already exists.` }, { status: 409 });
     }
 
-    const parsedUnits = Number(units) || 3;
-    const parsedLecHours = Number(lecHours) || 3;
-    const parsedLabHours = Number(labHours) || 0;
-
-    // Create subject record in srvs_subjects with auto-increment integer ID
-    const subject = await prisma.subject.create({
+    const course = await prisma.course.create({
       data: {
         code: upperCode,
         title: title.trim(),
         description: description?.trim() || null,
-        units: parsedUnits,
-        lecHours: parsedLecHours,
-        labHours: parsedLabHours,
+        units: Number(units) || 3,
+        lecHours: Number(lecHours) || 3,
+        labHours: Number(labHours) || 0,
         prerequisite: prerequisite?.trim() || 'None',
         yearLevel: yearLevel || '1st Year',
         semester: semester || '1st Semester',
-        departmentId: targetDept.id,
-      },
-      include: {
-        department: true,
+        departmentId: deptCode,
       },
     });
 
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
-      actionType: 'CreateSubject',
+      actionType: 'CreateCourse',
       resultStatus: 'Success',
-      description: `Created academic subject ${upperCode} - ${title.trim()} (${parsedUnits} Units, Lec: ${parsedLecHours}h, Lab: ${parsedLabHours}h)`,
-      entityType: 'Subject',
-      entityId: subject.id,
+      description: `Created course [${upperCode}] ${title.trim()} (Dept: ${deptCode})`,
+      entityType: 'Course',
+      entityId: String(course.id),
     });
 
-    return NextResponse.json({ success: true, subject }, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      subject: { ...course, department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) } },
+    }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating subject:', error);
+    console.error('Error creating subject/course:', error);
     return NextResponse.json({ error: 'Failed to create subject: ' + error.message }, { status: 500 });
   }
 }

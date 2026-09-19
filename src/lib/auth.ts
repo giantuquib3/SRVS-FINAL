@@ -8,13 +8,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'srvs-default-super-secret-key-2026
 const key = new TextEncoder().encode(JWT_SECRET);
 
 export interface SessionUser {
-  id: number | string;
+  id: string;
   idNumber?: string;
   email: string;
   username?: string | null;
   fullName: string;
   role: string; // Admin, DepartmentHead, Educator, Student
-  departmentId?: number | string | null;
+  departmentId?: string | null;
   departmentCode?: string | null;
   departmentName?: string | null;
 }
@@ -56,7 +56,9 @@ export function verifyPassword(password: string, hashedPassword: string): boolea
   // 1. Try standard bcrypt
   if (hashedPassword.startsWith('$2a$') || hashedPassword.startsWith('$2b$') || hashedPassword.startsWith('$2y$')) {
     try {
-      return bcrypt.compareSync(password, hashedPassword);
+      if (bcrypt.compareSync(password, hashedPassword)) {
+        return true;
+      }
     } catch {
       // ignore
     }

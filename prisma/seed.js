@@ -1,503 +1,174 @@
+/**
+ * SRVS Full Database Seed Script
+ * Seeds: Admin, DepartmentHeads, Educators, Students, Courses, Enrollments
+ * All users go into the unified `users` table with a `role` field.
+ */
+
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
-
 const prisma = new PrismaClient();
 
+// Helper: upsert a user by id (primary key), also handling email conflicts
+async function upsertUser(data) {
+  // Remove any existing user with conflicting email OR id
+  await prisma.user.deleteMany({
+    where: { OR: [{ id: data.id }, { email: data.email }] },
+  });
+  return prisma.user.create({ data });
+}
+
 async function main() {
-  console.log('🌱 Starting SRVS database seeding with Integer IDs, Segregated Role Tables, and Subjects...');
+  console.log('🌱 Starting SRVS database seeding...\n');
 
-  // 1. Seed Engineering Departments
-  const departmentsData = [
-    { code: 'CE', name: 'Civil Engineering', description: 'Department of Civil Engineering' },
-    { code: 'CPE', name: 'Computer Engineering', description: 'Department of Computer Engineering' },
-    { code: 'ECE', name: 'Electronics Engineering', description: 'Department of Electronics Engineering' },
-    { code: 'IE', name: 'Industrial Engineering', description: 'Department of Industrial Engineering' },
-    { code: 'ME', name: 'Mechanical Engineering', description: 'Department of Mechanical Engineering' },
-    { code: 'EE', name: 'Electrical Engineering', description: 'Department of Electrical Engineering' },
+  const defaultHash = await bcrypt.hash('admin123', 10);
+
+  // ─── 1. ADMIN ────────────────────────────────────────────────────────────────
+  console.log('1. Seeding Admin...');
+  await upsertUser({
+    id: '00000',
+    email: 'admin@usjr.edu.ph',
+    fullName: 'System Administrator',
+    passwordHash: defaultHash,
+    role: 'Admin',
+    departmentId: null,
+    accountStatus: 'Active',
+  });
+  console.log('   ✓ Admin: admin@usjr.edu.ph (ID: 00000, pw: admin123)');
+
+  // ─── 2. DEPARTMENT HEADS ─────────────────────────────────────────────────────
+  console.log('\n2. Seeding Department Heads...');
+  const deptHeads = [
+    { id: '10001', email: 'depthead.cpe@usjr.edu.ph', fullName: 'Dr. Alan Turing', departmentId: 'CPE', academicRank: 'Department Chairperson' },
+    { id: '10003', email: 'depthead.ee@usjr.edu.ph',  fullName: 'Dr. Nikola Tesla', departmentId: 'EE',  academicRank: 'Department Chairperson' },
+    { id: '10005', email: 'depthead.ce@usjr.edu.ph',  fullName: 'Dr. Isambard Brunel', departmentId: 'CE', academicRank: 'Department Chairperson' },
+    { id: '10007', email: 'depthead.ece@usjr.edu.ph', fullName: 'Dr. James Watt',   departmentId: 'ECE', academicRank: 'Department Chairperson' },
+  ];
+  for (const u of deptHeads) {
+    await upsertUser({ ...u, passwordHash: defaultHash, role: 'DepartmentHead', accountStatus: 'Active' });
+    console.log(`   ✓ DeptHead: ${u.fullName} [${u.departmentId}] (ID: ${u.id})`);
+  }
+
+  // ─── 3. EDUCATORS (FACULTY) ──────────────────────────────────────────────────
+  console.log('\n3. Seeding Educators...');
+  const educators = [
+    { id: '10002', email: 'faculty.cpe@usjr.edu.ph',   fullName: 'Engr. Ada Lovelace',   departmentId: 'CPE', academicRank: 'Assistant Professor' },
+    { id: '10004', email: 'faculty2.cpe@usjr.edu.ph',  fullName: 'Engr. Grace Hopper',   departmentId: 'CPE', academicRank: 'Instructor' },
+    { id: '10006', email: 'faculty.ee@usjr.edu.ph',    fullName: 'Engr. Michael Faraday', departmentId: 'EE',  academicRank: 'Associate Professor' },
+    { id: '10008', email: 'faculty.ce@usjr.edu.ph',    fullName: 'Engr. Marie Curie',    departmentId: 'CE',  academicRank: 'Assistant Professor' },
+    { id: '10010', email: 'faculty.ece@usjr.edu.ph',   fullName: 'Engr. Heinrich Hertz', departmentId: 'ECE', academicRank: 'Instructor' },
+  ];
+  for (const u of educators) {
+    await upsertUser({ ...u, passwordHash: defaultHash, role: 'Educator', accountStatus: 'Active' });
+    console.log(`   ✓ Educator: ${u.fullName} [${u.departmentId}] (ID: ${u.id})`);
+  }
+
+  // ─── 4. STUDENTS ─────────────────────────────────────────────────────────────
+  console.log('\n4. Seeding Students...');
+  const students = [
+    { id: '2022012708', email: 'gian.tuquib@usjr.edu.ph',     fullName: 'Gian Carlo Tuquib',    departmentId: 'CPE', yearLevel: '3rd Year' },
+    { id: '2023010001', email: 'student.cpe@usjr.edu.ph',     fullName: 'Jane Doe',             departmentId: 'CPE', yearLevel: '1st Year' },
+    { id: '2023010002', email: 'student2.cpe@usjr.edu.ph',    fullName: 'John Smith',           departmentId: 'CPE', yearLevel: '2nd Year' },
+    { id: '2023020001', email: 'student.ee@usjr.edu.ph',      fullName: 'Maria Santos',         departmentId: 'EE',  yearLevel: '1st Year' },
+    { id: '2023030001', email: 'student.ce@usjr.edu.ph',      fullName: 'Carlos Reyes',         departmentId: 'CE',  yearLevel: '2nd Year' },
+    { id: '2022010099', email: 'student.pending@usjr.edu.ph', fullName: 'Pending Approval User',departmentId: 'CPE', yearLevel: '1st Year', accountStatus: 'PendingApproval' },
+  ];
+  for (const u of students) {
+    await upsertUser({ ...u, passwordHash: defaultHash, role: 'Student', accountStatus: u.accountStatus || 'Active' });
+    console.log(`   ✓ Student: ${u.fullName} [${u.departmentId}] (ID: ${u.id}) - Status: ${u.accountStatus || 'Active'}`);
+  }
+
+  // ─── 5. COURSES ──────────────────────────────────────────────────────────────
+  console.log('\n5. Seeding Courses...');
+  const courses = [
+    // CPE
+    { id: 'CPE101', code: 'CPE101', title: 'Computer Programming 1', units: 3, lecHours: 2, labHours: 3, departmentId: 'CPE', yearLevel: '1st Year', semester: '1st Semester', prerequisite: 'None' },
+    { id: 'CPE201', code: 'CPE201', title: 'Data Structures and Algorithms', units: 3, lecHours: 2, labHours: 3, departmentId: 'CPE', yearLevel: '2nd Year', semester: '1st Semester', prerequisite: 'CPE101' },
+    { id: 'CPE301', code: 'CPE301', title: 'Computer Architecture and Organization', units: 3, lecHours: 3, labHours: 0, departmentId: 'CPE', yearLevel: '3rd Year', semester: '1st Semester', prerequisite: 'CPE201' },
+    { id: 'CPE401', code: 'CPE401', title: 'Operating Systems', units: 3, lecHours: 3, labHours: 0, departmentId: 'CPE', yearLevel: '4th Year', semester: '1st Semester', prerequisite: 'CPE301' },
+    { id: 'CPE102', code: 'CPE102', title: 'Computer Programming 2', units: 3, lecHours: 2, labHours: 3, departmentId: 'CPE', yearLevel: '1st Year', semester: '2nd Semester', prerequisite: 'CPE101' },
+    { id: 'CPE202', code: 'CPE202', title: 'Object-Oriented Programming', units: 3, lecHours: 2, labHours: 3, departmentId: 'CPE', yearLevel: '2nd Year', semester: '2nd Semester', prerequisite: 'CPE102' },
+    // EE
+    { id: 'EE101',  code: 'EE101',  title: 'Basic Electrical Engineering', units: 3, lecHours: 3, labHours: 0, departmentId: 'EE',  yearLevel: '1st Year', semester: '1st Semester', prerequisite: 'None' },
+    { id: 'EE201',  code: 'EE201',  title: 'Electric Circuit Analysis', units: 3, lecHours: 3, labHours: 0, departmentId: 'EE',  yearLevel: '2nd Year', semester: '1st Semester', prerequisite: 'EE101' },
+    { id: 'EE301',  code: 'EE301',  title: 'Power Systems Engineering', units: 3, lecHours: 3, labHours: 0, departmentId: 'EE',  yearLevel: '3rd Year', semester: '1st Semester', prerequisite: 'EE201' },
+    // CE
+    { id: 'CE101',  code: 'CE101',  title: 'Engineering Drawing', units: 2, lecHours: 1, labHours: 3, departmentId: 'CE',  yearLevel: '1st Year', semester: '1st Semester', prerequisite: 'None' },
+    { id: 'CE201',  code: 'CE201',  title: 'Structural Analysis', units: 3, lecHours: 3, labHours: 0, departmentId: 'CE',  yearLevel: '2nd Year', semester: '1st Semester', prerequisite: 'CE101' },
+    // ECE
+    { id: 'ECE101', code: 'ECE101', title: 'Electronics Engineering Fundamentals', units: 3, lecHours: 3, labHours: 0, departmentId: 'ECE', yearLevel: '1st Year', semester: '1st Semester', prerequisite: 'None' },
+    { id: 'ECE201', code: 'ECE201', title: 'Electronic Circuits and Devices', units: 3, lecHours: 2, labHours: 3, departmentId: 'ECE', yearLevel: '2nd Year', semester: '1st Semester', prerequisite: 'ECE101' },
   ];
 
-  const deptMap = {};
-  for (const dept of departmentsData) {
-    const record = await prisma.department.upsert({
-      where: { code: dept.code },
-      update: { name: dept.name, description: dept.description },
-      create: dept,
+  for (const c of courses) {
+    await prisma.course.upsert({
+      where: { code: c.code },
+      update: { title: c.title, units: c.units, lecHours: c.lecHours, labHours: c.labHours },
+      create: c,
     });
-    deptMap[dept.code] = record;
-    console.log(`✓ Seeded Department: [${record.code}] ${record.name} (PK ID: ${record.id})`);
+    console.log(`   ✓ Course: [${c.code}] ${c.title} (${c.departmentId})`);
   }
 
-  // 2. Hash default passwords
-  const defaultPasswordHash = await bcrypt.hash('Giangwapo123?', 10);
-  const adminPasswordHash = await bcrypt.hash('Giangwapo123?', 10);
-
-  // 3. Seed Users and Segregated Role Records
-  // Admin: 00000 (5 digits)
-  // Dept Head: 10001 (5 digits)
-  // Faculty / Educator: 10002, 10003 (5 digits)
-  // Student: 2022012708, 2022012709 (10 digits)
-  const usersToSeed = [
-    {
-      idNumber: '00000',
-      email: 'admin@usjr.edu.ph',
-      passwordHash: adminPasswordHash,
-      firstName: 'System',
-      lastName: 'Administrator',
-      fullName: 'System Administrator',
-      role: 'Admin',
-      deptCode: 'CPE',
-      accountStatus: 'Active',
-    },
-    {
-      idNumber: '10001',
-      email: 'depthead.cpe@usjr.edu.ph',
-      passwordHash: defaultPasswordHash,
-      firstName: 'Engr. Roberto',
-      lastName: 'Del Rosario',
-      fullName: 'Engr. Roberto Del Rosario',
-      role: 'DepartmentHead',
-      deptCode: 'CPE',
-      accountStatus: 'Active',
-    },
-    {
-      idNumber: '10002',
-      email: 'faculty.cpe@usjr.edu.ph',
-      passwordHash: defaultPasswordHash,
-      firstName: 'Prof. Maria',
-      lastName: 'Santos',
-      fullName: 'Prof. Maria Santos',
-      role: 'Educator',
-      deptCode: 'CPE',
-      accountStatus: 'Active',
-    },
-    {
-      idNumber: '10003',
-      email: 'faculty.ce@usjr.edu.ph',
-      passwordHash: defaultPasswordHash,
-      firstName: 'Engr. Manuel',
-      lastName: 'Reyes',
-      fullName: 'Engr. Manuel Reyes',
-      role: 'Educator',
-      deptCode: 'CE',
-      accountStatus: 'Active',
-    },
-    {
-      idNumber: '2022012708',
-      email: 'student.gian@usjr.edu.ph',
-      passwordHash: defaultPasswordHash,
-      firstName: 'Gian Carlo',
-      lastName: 'Tuquib',
-      fullName: 'Gian Carlo Tuquib',
-      role: 'Student',
-      deptCode: 'CPE',
-      accountStatus: 'Active',
-    },
-    {
-      idNumber: '2022012709',
-      email: 'student.cpe@usjr.edu.ph',
-      passwordHash: defaultPasswordHash,
-      firstName: 'Bea',
-      lastName: 'Alonzo',
-      fullName: 'Bea Alonzo',
-      role: 'Student',
-      deptCode: 'CPE',
-      accountStatus: 'Active',
-    },
+  // ─── 6. ENROLLMENTS ──────────────────────────────────────────────────────────
+  console.log('\n6. Seeding Enrollments...');
+  const enrollments = [
+    { studentId: '2022012708', courseId: 'CPE301', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2022012708', courseId: 'CPE401', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2023010001', courseId: 'CPE101', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2023010001', courseId: 'CPE102', semester: '2nd Semester', academicYear: '2026-2027' },
+    { studentId: '2023010002', courseId: 'CPE201', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2023010002', courseId: 'CPE202', semester: '2nd Semester', academicYear: '2026-2027' },
+    { studentId: '2023020001', courseId: 'EE101',  semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2023030001', courseId: 'CE101',  semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: '2023030001', courseId: 'CE201',  semester: '1st Semester', academicYear: '2026-2027' },
   ];
 
-  const userMap = {};
-  for (const u of usersToSeed) {
-    const deptId = u.deptCode && deptMap[u.deptCode] ? deptMap[u.deptCode].id : null;
-    const user = await prisma.user.upsert({
-      where: { email: u.email },
-      update: {
-        idNumber: u.idNumber,
-        fullName: u.fullName,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        role: u.role,
-        departmentId: deptId,
-        accountStatus: u.accountStatus,
-        passwordHash: u.passwordHash,
-      },
-      create: {
-        idNumber: u.idNumber,
-        email: u.email,
-        passwordHash: u.passwordHash,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        fullName: u.fullName,
-        role: u.role,
-        departmentId: deptId,
-        accountStatus: u.accountStatus,
-      },
-    });
-
-    userMap[u.idNumber] = user;
-    console.log(`✓ Seeded User: [ID: ${user.id} | ID Number: ${user.idNumber}] ${user.fullName} (${user.role})`);
-
-    // Segregate into role tables
-    if (user.role === 'Admin') {
-      await prisma.admin.upsert({
-        where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, adminNumber: user.idNumber },
-        create: {
-          userId: user.id,
-          adminNumber: user.idNumber,
-          fullName: user.fullName,
-          email: user.email,
-        },
-      });
-      console.log(`  └─ Created srvs_admins profile for Admin ${user.idNumber}`);
-    } else if (user.role === 'DepartmentHead') {
-      await prisma.departmentHead.upsert({
-        where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, department: u.deptCode || 'CPE' },
-        create: {
-          userId: user.id,
-          employeeId: user.idNumber,
-          fullName: user.fullName,
-          email: user.email,
-          department: u.deptCode || 'CPE',
-          title: 'Department Chairperson',
-          officeLocation: 'Engineering Complex Room 302',
-        },
-      });
-      console.log(`  └─ Created srvs_department_heads profile for Dept Head ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
-    } else if (user.role === 'Educator') {
-      await prisma.faculty.upsert({
-        where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, employeeId: user.idNumber, department: u.deptCode || 'CPE' },
-        create: {
-          userId: user.id,
-          employeeId: user.idNumber,
-          fullName: user.fullName,
-          email: user.email,
-          department: u.deptCode || 'CPE',
-          academicRank: 'Assistant Professor',
-        },
-      });
-      console.log(`  └─ Created srvs_faculties profile for Faculty ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
-    } else if (user.role === 'Student') {
-      await prisma.student.upsert({
-        where: { userId: user.id },
-        update: { fullName: user.fullName, email: user.email, studentIdNumber: user.idNumber, department: u.deptCode || 'CPE' },
-        create: {
-          userId: user.id,
-          studentIdNumber: user.idNumber,
-          fullName: user.fullName,
-          email: user.email,
-          department: u.deptCode || 'CPE',
-          enrolledSubjects: '',
-          yearLevel: user.idNumber === '2022012708' ? '3rd Year' : '1st Year',
-        },
-      });
-      console.log(`  └─ Created srvs_students profile for Student ${user.idNumber} [Dept: ${u.deptCode || 'CPE'}]`);
-    }
-  }
-
-  // 4. Seed Academic Curriculum Subjects
-  const subjectsData = [
-    {
-      code: 'CPE101',
-      title: 'Introduction to Computer Engineering',
-      deptCode: 'CPE',
-      units: 3,
-      lecHours: 3,
-      labHours: 0,
-      prerequisite: 'None',
-      yearLevel: '1st Year',
-      semester: '1st Semester',
-      description: 'Foundations of computer engineering, digital logic, ethics, and computing paradigms.',
-    },
-    {
-      code: 'CPE102',
-      title: 'Computer Programming 1',
-      deptCode: 'CPE',
-      units: 3,
-      lecHours: 2,
-      labHours: 3,
-      prerequisite: 'None',
-      yearLevel: '1st Year',
-      semester: '1st Semester',
-      description: 'Fundamental concepts of programming, algorithms, structured code, and problem solving.',
-    },
-    {
-      code: 'CPE201',
-      title: 'Data Structures and Algorithms',
-      deptCode: 'CPE',
-      units: 3,
-      lecHours: 2,
-      labHours: 3,
-      prerequisite: 'CPE102',
-      yearLevel: '2nd Year',
-      semester: '1st Semester',
-      description: 'Design, analysis, and implementation of fundamental data structures and algorithmic efficiency.',
-    },
-    {
-      code: 'CE101',
-      title: 'Fundamentals of Surveying',
-      deptCode: 'CE',
-      units: 3,
-      lecHours: 2,
-      labHours: 3,
-      prerequisite: 'None',
-      yearLevel: '1st Year',
-      semester: '1st Semester',
-      description: 'Theory and practice of measurement of distances, elevations, directions, and topographic mapping.',
-    },
-    {
-      code: 'ECE101',
-      title: 'Electronic Devices and Circuits',
-      deptCode: 'ECE',
-      units: 4,
-      lecHours: 3,
-      labHours: 3,
-      prerequisite: 'None',
-      yearLevel: '2nd Year',
-      semester: '1st Semester',
-      description: 'Solid state electronic physics, semiconductor diodes, BJT and FET characteristics, and power circuits.',
-    },
-    {
-      code: 'IE101',
-      title: 'Engineering Economics',
-      deptCode: 'IE',
-      units: 3,
-      lecHours: 3,
-      labHours: 0,
-      prerequisite: 'None',
-      yearLevel: '2nd Year',
-      semester: '1st Semester',
-      description: 'Concepts of economic equivalence, time value of money, capital financing, and depreciation models.',
-    },
-    {
-      code: 'ME101',
-      title: 'Thermodynamics 1',
-      deptCode: 'ME',
-      units: 3,
-      lecHours: 3,
-      labHours: 0,
-      prerequisite: 'None',
-      yearLevel: '2nd Year',
-      semester: '1st Semester',
-      description: 'First and second laws of thermodynamics, ideal gas processes, and heat engine cycles.',
-    },
-    {
-      code: 'EE101',
-      title: 'Electric Circuit Theory 1',
-      deptCode: 'EE',
-      units: 4,
-      lecHours: 3,
-      labHours: 3,
-      prerequisite: 'None',
-      yearLevel: '2nd Year',
-      semester: '1st Semester',
-      description: 'DC circuit analysis, Kirchhoff laws, node and mesh methods, Thevenin and Norton theorems.',
-    },
-  ];
-
-  const subjectMap = {};
-  for (const s of subjectsData) {
-    const departmentId = deptMap[s.deptCode].id;
-    const subject = await prisma.subject.upsert({
-      where: { code: s.code },
-      update: {
-        title: s.title,
-        description: s.description,
-        units: s.units,
-        lecHours: s.lecHours,
-        labHours: s.labHours,
-        prerequisite: s.prerequisite,
-        yearLevel: s.yearLevel,
-        semester: s.semester,
-        departmentId,
-      },
-      create: {
-        code: s.code,
-        title: s.title,
-        description: s.description,
-        units: s.units,
-        lecHours: s.lecHours,
-        labHours: s.labHours,
-        prerequisite: s.prerequisite,
-        yearLevel: s.yearLevel,
-        semester: s.semester,
-        departmentId,
-      },
-    });
-
-    subjectMap[s.code] = subject;
-    console.log(`✓ Seeded Subject: [PK ID: ${subject.id} | ${subject.code}] ${subject.title} (${subject.units} Units)`);
-  }
-
-  // 5. Seed Student Enrolled Subjects
-  const studentGian = userMap['2022012708'];
-  const studentMaria = userMap['2022012709'];
-
-  const enrollmentsToSeed = [];
-  if (studentGian && subjectMap['CPE101'] && subjectMap['CPE201']) {
-    enrollmentsToSeed.push(
-      {
-        studentId: studentGian.id,
-        subjectId: subjectMap['CPE101'].id,
-        semester: '1st Semester',
-        academicYear: '2026-2027',
-        section: 'A',
-        status: 'ENROLLED',
-      },
-      {
-        studentId: studentGian.id,
-        subjectId: subjectMap['CPE201'].id,
-        semester: '1st Semester',
-        academicYear: '2026-2027',
-        section: 'A',
-        status: 'ENROLLED',
-      }
-    );
-  }
-
-  if (studentMaria && subjectMap['CPE101']) {
-    enrollmentsToSeed.push({
-      studentId: studentMaria.id,
-      subjectId: subjectMap['CPE101'].id,
-      semester: '1st Semester',
-      academicYear: '2026-2027',
-      section: 'B',
-      status: 'ENROLLED',
-    });
-  }
-
-  for (const enr of enrollmentsToSeed) {
+  for (const e of enrollments) {
     await prisma.enrollment.upsert({
       where: {
-        studentId_subjectId_semester_academicYear: {
-          studentId: enr.studentId,
-          subjectId: enr.subjectId,
-          semester: enr.semester,
-          academicYear: enr.academicYear,
+        studentId_courseId_semester_academicYear: {
+          studentId: e.studentId,
+          courseId: e.courseId,
+          semester: e.semester,
+          academicYear: e.academicYear,
         },
       },
-      update: { section: enr.section, status: enr.status },
-      create: enr,
+      update: { status: 'ENROLLED' },
+      create: { ...e, status: 'ENROLLED', section: 'A' },
     });
+    console.log(`   ✓ Enrollment: Student ${e.studentId} → ${e.courseId}`);
   }
-  console.log(`✓ Seeded student subject enrollments`);
 
-  // Synchronize enrolled subjects code-only list in srvs_students
-  const allStudents = await prisma.student.findMany({
-    include: {
-      user: {
-        include: {
-          enrollments: {
-            where: { status: 'ENROLLED' },
-            include: { subject: true },
-          },
-        },
-      },
+  // ─── 7. AUDIT LOG ENTRY ──────────────────────────────────────────────────────
+  console.log('\n7. Adding seed audit log...');
+  await prisma.auditLog.create({
+    data: {
+      userId: '00000',
+      userDisplayName: 'System Administrator',
+      actionType: 'SystemSeed',
+      resultStatus: 'Success',
+      description: 'Database seeded successfully with initial system data.',
+      entityType: 'System',
     },
   });
+  console.log('   ✓ Audit log entry created');
 
-  for (const s of allStudents) {
-    const codes = Array.from(new Set(s.user.enrollments.map((e) => e.subject.code))).join(', ');
-    await prisma.student.update({
-      where: { id: s.id },
-      data: { enrolledSubjects: codes },
-    });
-    console.log(`✓ Synchronized Student ${s.studentIdNumber} enrolled subjects codes: [${codes || 'None'}]`);
-  }
+  // ─── SUMMARY ─────────────────────────────────────────────────────────────────
+  console.log('\n\n========= SEED COMPLETE =========');
+  const userCount      = await prisma.user.count();
+  const courseCount    = await prisma.course.count();
+  const enrollCount    = await prisma.enrollment.count();
+  const auditCount     = await prisma.auditLog.count();
 
-  // 6. Seed Official Active Syllabus for CPE101
-  const deptHeadUser = userMap['10001'];
-  const cpe101 = subjectMap['CPE101'];
-
-  if (deptHeadUser && cpe101) {
-    const existingSyllabus = await prisma.syllabus.findFirst({
-      where: { subjectId: cpe101.id },
-    });
-
-    let syllabus = existingSyllabus;
-    if (!syllabus) {
-      syllabus = await prisma.syllabus.create({
-        data: {
-          subjectId: cpe101.id,
-          instructorId: deptHeadUser.id,
-          createdById: deptHeadUser.id,
-          uploadedByUserId: '10001', // Stored by University ID Number, NOT name
-          departmentId: deptMap['CPE'].id,
-          academicYear: '2026-2027',
-          semester: '1st Semester',
-          section: 'A',
-          status: 'ACTIVE',
-          currentVersionNumber: 1,
-          reviewedAt: new Date(),
-          reviewerRemarks: 'Approved official syllabus version for 1st Semester 2026-2027',
-        },
-      });
-      console.log(`✓ Created Active Syllabus (PK ID: ${syllabus.id}) for CPE101 (Uploaded by User ID: 10001)`);
-    }
-
-    const existingVersion = await prisma.syllabusVersion.findFirst({
-      where: { syllabusId: syllabus.id, versionNumber: 1 },
-    });
-
-    if (!existingVersion) {
-      await prisma.syllabusVersion.create({
-        data: {
-          syllabusId: syllabus.id,
-          versionNumber: 1,
-          editorId: deptHeadUser.id,
-          uploadedByUserId: '10001',
-          changeSummary: 'Initial curriculum-approved syllabus release for academic year 2026-2027',
-          changeType: 'Create',
-          statusAtSave: 'APPROVED',
-          approvalStatus: 'APPROVED',
-          content: {
-            courseDescription: cpe101.description,
-            learningOutcomes: [
-              'Understand computer engineering principles and hardware architecture fundamentals.',
-              'Analyze basic digital logic circuits, number representations, and memory units.',
-              'Adhere to professional and ethical standards in computer engineering practice.',
-            ],
-            topics: [
-              'Week 1: Orientation, USJ-R Vision/Mission, and Introduction to Computer Engineering',
-              'Week 2-4: Fundamentals of Number Systems, Boolean Algebra, and Logic Gates',
-              'Week 5-7: Combinational Logic Circuits and Adders',
-              'Week 8-9: Midterm Examinations and System Architecture Overviews',
-              'Week 10-14: Sequential Logic, Latches, Flip-Flops, and Memory Registers',
-              'Week 15-17: Ethical Paradigms, Microprocessors, and Emerging Technologies',
-              'Week 18: Final Course Project Presentation and Evaluation',
-            ],
-            references: [
-              'Patterson, D. A., & Hennessy, J. L. Computer Organization and Design (6th ed.).',
-              'Mano, M. M., & Ciletti, M. D. Digital Design: With an Introduction to the Verilog HDL (6th ed.).',
-              'USJ-R Department of Computer Engineering Syllabus Guidelines (2026).',
-            ],
-            gradingSystem: [
-              'Major Examinations: 40%',
-              'Laboratory / Technical Projects: 30%',
-              'Quizzes & Homework: 20%',
-              'Class Participation & Ethics: 10%',
-            ],
-            schedule: 'MWF 09:00 AM - 10:00 AM / Engineering Lab 201',
-          },
-          submittedById: deptHeadUser.id,
-          submittedAt: new Date(),
-          reviewedById: deptHeadUser.id,
-          reviewedAt: new Date(),
-        },
-      });
-      console.log(`✓ Created Approved Syllabus Version 1 for Syllabus ID: ${syllabus.id}`);
-    }
-  }
-
-  console.log('\n🎉 Database seeding completed successfully with all Integer PK IDs and Segregated Tables!');
+  const byRole = await prisma.user.groupBy({ by: ['role'], _count: { _all: true } });
+  console.log(`Users      : ${userCount}`);
+  byRole.forEach(r => console.log(`  [${r.role}] → ${r._count._all}`));
+  console.log(`Courses    : ${courseCount}`);
+  console.log(`Enrollments: ${enrollCount}`);
+  console.log(`Audit Logs : ${auditCount}`);
+  console.log('=================================\n');
+  console.log('Default credentials for all users: password = admin123');
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Error during seeding:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch((e) => { console.error('Seed failed:', e); process.exit(1); })
+  .finally(() => prisma.$disconnect());

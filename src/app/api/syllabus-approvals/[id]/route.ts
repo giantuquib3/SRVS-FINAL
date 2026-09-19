@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
+import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,162 +12,78 @@ export async function GET(
   try {
     const user = await getSessionFromRequest(req);
     if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only authorized Department Heads and Administrators may review syllabi.' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may review syllabi.' }, { status: 403 });
     }
 
-    const numericId = Number(params.id);
-    if (isNaN(numericId)) {
-      return NextResponse.json({ error: 'Invalid approval request ID.' }, { status: 400 });
+    const versionOrSyllabusId = parseInt(params.id, 10);
+    if (isNaN(versionOrSyllabusId)) {
+      return NextResponse.json({ error: 'Invalid ID.' }, { status: 400 });
     }
 
     let version = await prisma.syllabusVersion.findUnique({
-      where: { id: numericId },
+      where: { id: versionOrSyllabusId },
       include: {
         syllabus: {
           include: {
-            subject: {
-              include: { department: true },
-            },
-            instructor: {
-              select: {
-                id: true,
-                idNumber: true,
-                fullName: true,
-                email: true,
-                role: true,
-              },
-            },
-            department: true,
-          },
-        },
-        editor: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        submittedBy: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        reviewedBy: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
+            course: true,
+            instructor: { select: { id: true, fullName: true, email: true } },
           },
         },
       },
     });
 
     if (!version) {
-      // Check if it was syllabusId
       version = await prisma.syllabusVersion.findFirst({
-        where: { syllabusId: numericId },
+        where: { syllabusId: versionOrSyllabusId },
         orderBy: { versionNumber: 'desc' },
         include: {
           syllabus: {
             include: {
-              subject: {
-                include: { department: true },
-              },
-              instructor: {
-                select: {
-                  id: true,
-                  idNumber: true,
-                  fullName: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              department: true,
-            },
-          },
-          editor: {
-            select: {
-              id: true,
-              idNumber: true,
-              fullName: true,
-              email: true,
-            },
-          },
-          submittedBy: {
-            select: {
-              id: true,
-              idNumber: true,
-              fullName: true,
-              email: true,
-            },
-          },
-          reviewedBy: {
-            select: {
-              id: true,
-              idNumber: true,
-              fullName: true,
+              course: true,
+              instructor: { select: { id: true, fullName: true, email: true } },
             },
           },
         },
       });
     }
 
-    if (!version) {
-      return NextResponse.json({ error: 'Syllabus approval request not found.' }, { status: 404 });
-    }
+    if (!version) return NextResponse.json({ error: 'Syllabus approval request not found.' }, { status: 404 });
 
     if (user.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
-      if (!deptHeadDeptId || deptHeadDeptId !== version.syllabus.departmentId) {
-        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals for this department.' }, { status: 403 });
+      if (!user.departmentId || String(user.departmentId).toUpperCase() !== version.syllabus.departmentId.toUpperCase()) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission to view this approval.' }, { status: 403 });
       }
     }
 
     const previousApprovedVersion = await prisma.syllabusVersion.findFirst({
-      where: {
-        syllabusId: version.syllabusId,
-        approvalStatus: 'APPROVED',
-        versionNumber: { lt: version.versionNumber },
-      },
+      where: { syllabusId: version.syllabusId, approvalStatus: 'APPROVED', versionNumber: { lt: version.versionNumber } },
       orderBy: { versionNumber: 'desc' },
     });
 
-    const isSelfSubmission =
-      Number(user.id) === version.submittedById ||
-      Number(user.id) === version.syllabus.instructorId;
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
+    const isSelfSubmission = currentUserIdInt === version.submittedById || currentUserIdInt === version.syllabus.instructorId;
+    const sDept = version.syllabus.departmentId;
 
-    const formattedApproval = {
+    const formatted = {
       ...version,
       syllabus: {
         ...version.syllabus,
-        course: version.syllabus.subject,
-        courseId: version.syllabus.subjectId,
+        course: {
+          ...version.syllabus.course,
+          department: {
+            id: version.syllabus.course.departmentId,
+            code: version.syllabus.course.departmentId,
+            name: getDepartmentName(version.syllabus.course.departmentId),
+          },
+        },
+        subject: version.syllabus.course,
+        courseId: version.syllabus.courseId,
+        subjectId: version.syllabus.courseId,
+        department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
       },
     };
 
-    return NextResponse.json({
-      approval: formattedApproval,
-      version: formattedApproval,
-      syllabus: formattedApproval.syllabus,
-      previousApprovedVersion,
-      isSelfSubmission,
-    });
+    return NextResponse.json({ approval: formatted, version: formatted, syllabus: formatted.syllabus, previousApprovedVersion, isSelfSubmission });
   } catch (error: any) {
     console.error('Error fetching approval detail:', error);
     return NextResponse.json({ error: 'Failed to retrieve approval detail: ' + error.message }, { status: 500 });

@@ -16,141 +16,84 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may approve syllabi.' }, { status: 403 });
     }
 
-    const numericId = Number(params.id);
-    if (isNaN(numericId)) {
-      return NextResponse.json({ error: 'Invalid syllabus approval request ID.' }, { status: 400 });
+    const versionOrSyllabusId = parseInt(params.id, 10);
+    if (isNaN(versionOrSyllabusId)) {
+      return NextResponse.json({ error: 'Invalid ID.' }, { status: 400 });
     }
 
     let comments = '';
-    try {
-      const body = await req.json();
-      comments = body?.comments || '';
-    } catch {
-      // Body is optional on approve
-    }
+    try { const body = await req.json(); comments = body?.comments || ''; } catch { /* optional */ }
 
+    // Try to find as SyllabusVersion id first, then as Syllabus id
     let version = await prisma.syllabusVersion.findUnique({
-      where: { id: numericId },
-      include: {
-        syllabus: {
-          include: {
-            subject: true,
-            instructor: true,
-            department: true,
-          },
-        },
-      },
+      where: { id: versionOrSyllabusId },
+      include: { syllabus: { include: { course: true, instructor: true } } },
     });
 
     if (!version) {
       version = await prisma.syllabusVersion.findFirst({
-        where: { syllabusId: numericId },
+        where: { syllabusId: versionOrSyllabusId },
         orderBy: { versionNumber: 'desc' },
-        include: {
-          syllabus: {
-            include: {
-              subject: true,
-              instructor: true,
-              department: true,
-            },
-          },
-        },
+        include: { syllabus: { include: { course: true, instructor: true } } },
       });
     }
 
-    if (!version) {
-      return NextResponse.json({ error: 'Syllabus version not found.' }, { status: 404 });
-    }
+    if (!version) return NextResponse.json({ error: 'Syllabus version not found.' }, { status: 404 });
 
     if (user.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
-
-      if (!deptHeadDeptId || deptHeadDeptId !== version.syllabus.departmentId) {
-        return NextResponse.json({
-          error: 'Forbidden: You may only approve syllabi belonging to your authorized department.',
-        }, { status: 403 });
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!deptCode || deptCode !== version.syllabus.departmentId.toUpperCase()) {
+        return NextResponse.json({ error: 'Forbidden: You may only approve syllabi in your department.' }, { status: 403 });
       }
     }
 
     if (version.approvalStatus !== 'PENDING_APPROVAL') {
-      return NextResponse.json({
-        error: `Cannot approve: Version is currently in '${version.approvalStatus}' status, not 'PENDING_APPROVAL'.`,
-      }, { status: 400 });
+      return NextResponse.json({ error: `Cannot approve: Version is in '${version.approvalStatus}' status.` }, { status: 400 });
     }
 
     const now = new Date();
     const syllabus = version.syllabus;
-    const currentUserId = Number(user.id);
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Archive other active syllabi for the same subject
       await tx.syllabus.updateMany({
-        where: {
-          subjectId: syllabus.subjectId,
-          id: { not: syllabus.id },
-          status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
-        },
+        where: { courseId: syllabus.courseId, id: { not: syllabus.id }, status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] } },
         data: { status: 'ARCHIVED' },
       });
 
       const approvedVersion = await tx.syllabusVersion.update({
         where: { id: version.id },
-        data: {
-          approvalStatus: 'APPROVED',
-          statusAtSave: 'APPROVED',
-          reviewedById: currentUserId,
-          reviewedAt: now,
-          rejectionReason: null,
-        },
+        data: { approvalStatus: 'APPROVED', statusAtSave: 'APPROVED', reviewedById: currentUserIdInt, reviewedAt: now, rejectionReason: null },
       });
 
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabus.id },
-        data: {
-          currentVersionNumber: version.versionNumber,
-          status: 'ACTIVE',
-          reviewedAt: now,
-          reviewedByUserId: currentUserId,
-          reviewerRemarks: comments.trim() || 'Approved',
-        },
+        data: { currentVersionNumber: version.versionNumber, status: 'ACTIVE', reviewedAt: now, reviewedByUserId: currentUserIdInt, reviewerRemarks: comments.trim() || 'Approved' },
       });
 
       return { approvedVersion, updatedSyllabus };
     });
 
     await logAuditEvent({
-      userId: currentUserId,
+      userId: currentUserIdInt,
       userDisplayName: user.fullName,
       actionType: 'ApproveSyllabusVersion',
       resultStatus: 'Success',
-      description: `Approved [${syllabus.subject.code}] Version ${version.versionNumber} as official syllabus for ${syllabus.semester}, AY ${syllabus.academicYear}`,
+      description: `Approved [${syllabus.course.code}] v${version.versionNumber} for ${syllabus.semester}, AY ${syllabus.academicYear}`,
       entityType: 'SyllabusVersion',
-      entityId: version.id,
-      ipAddress: req.ip || '127.0.0.1',
+      entityId: String(version.id),
     });
 
     await createNotification(
-      syllabus.instructorId,
-      `Syllabus Approved: ${syllabus.subject.code}`,
-      `Your ${syllabus.subject.code} syllabus Version ${version.versionNumber} has been approved by ${user.fullName}. It is now active and available to enrolled students.`,
+      String(syllabus.instructorId),
+      `Syllabus Approved: ${syllabus.course.code}`,
+      `Your ${syllabus.course.code} syllabus v${version.versionNumber} has been approved by ${user.fullName}. It is now active.`,
       `/syllabi/${syllabus.id}`
     );
 
     return NextResponse.json({
       success: true,
-      message: `Syllabus for ${syllabus.subject.code} Version ${version.versionNumber} approved successfully. It is now the official active version.`,
+      message: `Syllabus for ${syllabus.course.code} v${version.versionNumber} approved and is now the active version.`,
       version: result.approvedVersion,
       syllabus: result.updatedSyllabus,
     });

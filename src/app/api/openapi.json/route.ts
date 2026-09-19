@@ -21,7 +21,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
   - **Faculty / Educators, Department Heads, System Administrators**: Exactly 5 digits (e.g., \`00000\`, \`10001\`)
 - **Role Hierarchy**:
   1. **Admin**: System-wide administrative permissions, user role management, account approvals/deactivations, audit inspection.
-  2. **DepartmentHead**: Department-scoped course and curriculum management, enrollment assignments, syllabus approval/rejection with mandatory feedback.
+  2. **DepartmentHead**: Department-scoped course catalog management (can add courses), direct syllabus uploading and authoring, enrollment assignments, syllabus approval/rejection with revision feedback.
   3. **Educator**: Syllabus drafting, document uploads (PDF/DOCX), sequential version creation, revision tracking, version rollback.
   4. **Student**: Access to active approved syllabi for actively enrolled subjects, departmental notifications.
       `.trim(),
@@ -45,7 +45,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
       },
       {
         name: '3. Role: Department Head',
-        description: 'Manage departmental subjects, approve student enrollments, review faculty syllabi submissions, and broadcast departmental announcements.',
+        description: 'Manage departmental subjects, add new courses, upload and author course syllabi, approve student enrollments, and review syllabi submissions.',
       },
       {
         name: '4. Role: Educator (Faculty)',
@@ -57,11 +57,11 @@ This interactive OpenAPI documentation provides complete, executable specificati
       },
       {
         name: '6. Academic Curriculum & Subjects',
-        description: 'Catalog management for institutional subjects and courses, course units, lecture/laboratory hours, prerequisites, and year levels.',
+        description: 'Catalog management for institutional subjects and courses, course units, lecture/laboratory hours, prerequisites, and assigned faculty.',
       },
       {
         name: '7. Student Enrollments',
-        description: 'Assign and inspect student enrollments by semester and academic year with automatic subject code synchronization.',
+        description: 'Assign and inspect student enrollments by semester and academic year with numeric student IDs and automatic course synchronization.',
       },
       {
         name: '8. Syllabus Management & Revisions',
@@ -73,7 +73,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
       },
       {
         name: '10. System & PostgreSQL Database Health',
-        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all segregated entities.',
+        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all 6 core unified entities (admin, courses, enrollments, syllabi, syllabus_versions, audit_logs).',
       },
     ],
     components: {
@@ -95,20 +95,22 @@ This interactive OpenAPI documentation provides complete, executable specificati
         User: {
           type: 'object',
           properties: {
-            id: { type: 'integer', example: 1 },
-            idNumber: { type: 'string', example: '2022012708' },
-            email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph' },
-            fullName: { type: 'string', example: 'Gian Carlo' },
-            role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'Student' },
+            id: { type: 'integer', example: 10001 },
+            idNumber: { type: 'string', example: '10001' },
+            email: { type: 'string', format: 'email', example: 'depthead.cpe@usjr.edu.ph' },
+            fullName: { type: 'string', example: 'Dr. Alan Turing' },
+            role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'DepartmentHead' },
             accountStatus: { type: 'string', enum: ['PendingApproval', 'Active', 'Rejected', 'Deactivated'], example: 'Active' },
-            departmentId: { type: 'integer', nullable: true, example: 1 },
+            departmentId: { type: 'string', example: 'CPE' },
+            academicRank: { type: 'string', nullable: true, example: 'Department Chairperson' },
+            yearLevel: { type: 'string', nullable: true, example: null },
             createdAt: { type: 'string', format: 'date-time' },
           },
         },
         Department: {
           type: 'object',
           properties: {
-            id: { type: 'integer', example: 1 },
+            id: { type: 'string', example: 'CPE' },
             code: { type: 'string', example: 'CPE' },
             name: { type: 'string', example: 'Computer Engineering Department' },
             description: { type: 'string', nullable: true, example: 'College of Engineering' },
@@ -119,26 +121,28 @@ This interactive OpenAPI documentation provides complete, executable specificati
           type: 'object',
           properties: {
             id: { type: 'integer', example: 1 },
-            code: { type: 'string', example: 'CPE 101' },
-            title: { type: 'string', example: 'Introduction to Computer Engineering' },
-            description: { type: 'string', nullable: true, example: 'Foundations of engineering principles and ethics.' },
+            code: { type: 'string', example: 'CPE101' },
+            title: { type: 'string', example: 'Computer Programming 1' },
+            description: { type: 'string', nullable: true, example: 'Foundations of engineering principles and algorithmic problem solving.' },
             units: { type: 'integer', example: 3 },
             lecHours: { type: 'integer', example: 3 },
             labHours: { type: 'integer', example: 0 },
             prerequisite: { type: 'string', example: 'None' },
             yearLevel: { type: 'string', example: '1st Year' },
             semester: { type: 'string', example: '1st Semester' },
-            departmentId: { type: 'integer', example: 1 },
+            departmentId: { type: 'string', example: 'CPE' },
+            facultyName: { type: 'string', nullable: true, example: 'Dr. Alan Turing' },
+            facultyId: { type: 'integer', nullable: true, example: 10001, description: 'References admin.id' },
           },
         },
         Enrollment: {
           type: 'object',
           properties: {
-            id: { type: 'integer', example: 1 },
-            studentId: { type: 'integer', example: 4 },
-            subjectId: { type: 'integer', example: 1 },
+            studentId: { type: 'integer', example: 2022012701, description: 'Numeric Student ID (references admin.id)' },
+            studentName: { type: 'string', example: 'Carlos Reyes' },
+            courseId: { type: 'integer', example: 1, description: 'References courses.id' },
             semester: { type: 'string', example: '1st Semester' },
-            academicYear: { type: 'string', example: '2024-2025' },
+            academicYear: { type: 'string', example: '2026-2027' },
             section: { type: 'string', example: 'A' },
             status: { type: 'string', enum: ['ENROLLED', 'DROPPED', 'COMPLETED'], example: 'ENROLLED' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -148,15 +152,15 @@ This interactive OpenAPI documentation provides complete, executable specificati
           type: 'object',
           properties: {
             id: { type: 'integer', example: 1 },
-            subjectId: { type: 'integer', example: 1 },
-            instructorId: { type: 'integer', example: 3 },
-            departmentId: { type: 'integer', example: 1 },
-            academicYear: { type: 'string', example: '2024-2025' },
+            courseId: { type: 'integer', example: 1, description: 'References courses.id' },
+            instructorId: { type: 'integer', example: 10001, description: 'References admin.id (Department Head or Educator)' },
+            departmentId: { type: 'string', example: 'CPE' },
+            academicYear: { type: 'string', example: '2026-2027' },
             semester: { type: 'string', example: '1st Semester' },
             section: { type: 'string', example: 'A' },
-            status: { type: 'string', enum: ['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'Draft', 'Submitted', 'Approved', 'Rejected'], example: 'ACTIVE' },
+            status: { type: 'string', enum: ['Draft', 'Submitted', 'Approved', 'Rejected', 'DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED'], example: 'ACTIVE' },
             currentVersionNumber: { type: 'integer', example: 1 },
-            uploadedByUserId: { type: 'string', example: '10001', description: 'University ID Number of uploader' },
+            reviewedByUserId: { type: 'integer', nullable: true, example: 10001, description: 'References admin.id' },
             submittedAt: { type: 'string', format: 'date-time', nullable: true },
             reviewedAt: { type: 'string', format: 'date-time', nullable: true },
             reviewerRemarks: { type: 'string', nullable: true },
@@ -169,7 +173,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
             syllabusId: { type: 'integer', example: 1 },
             versionNumber: { type: 'integer', example: 1 },
             editorId: { type: 'integer', example: 3 },
-            uploadedByUserId: { type: 'string', example: '10001' },
+            uploadedByUserId: { type: 'integer', example: 10001 },
             changeSummary: { type: 'string', example: 'Initial creation with uploaded PDF' },
             changeType: { type: 'string', enum: ['Create', 'Edit', 'Restore'], example: 'Create' },
             approvalStatus: { type: 'string', enum: ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED'], example: 'APPROVED' },

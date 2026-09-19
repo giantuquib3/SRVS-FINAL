@@ -2,40 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req?: NextRequest) {
   const startTime = Date.now();
-  const searchParams = req ? new URL(req.url).searchParams : null;
-  const detailed = searchParams ? searchParams.get('detailed') !== 'false' : true;
-
   try {
     const [
-      departmentsCount,
-      subjectsCount,
       usersCount,
       adminsCount,
       deptHeadsCount,
-      facultiesCount,
+      educatorsCount,
       studentsCount,
+      coursesCount,
       syllabiCount,
       versionsCount,
+      auditLogsCount,
       enrollmentsCount,
     ] = await Promise.all([
-      prisma.department.count(),
-      prisma.subject.count(),
       prisma.user.count(),
-      prisma.admin.count(),
-      prisma.departmentHead.count(),
-      prisma.faculty.count(),
-      prisma.student.count(),
+      prisma.user.count({ where: { role: 'Admin' } }),
+      prisma.user.count({ where: { role: 'DepartmentHead' } }),
+      prisma.user.count({ where: { role: 'Educator' } }),
+      prisma.user.count({ where: { role: 'Student' } }),
+      prisma.course.count(),
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
+      prisma.auditLog.count(),
       prisma.enrollment.count(),
     ]);
 
     const adminUser = await prisma.user.findFirst({
       where: { role: 'Admin' },
-      select: { id: true, idNumber: true, email: true, fullName: true, role: true, accountStatus: true },
+      select: { id: true, email: true, fullName: true, departmentId: true },
     });
 
     const latencyMs = Date.now() - startTime;
@@ -46,18 +44,18 @@ export async function GET(req?: NextRequest) {
       latencyMs: `${latencyMs}ms`,
       timestamp: new Date().toISOString(),
       tables: {
-        srvs_departments: departmentsCount,
-        srvs_subjects: subjectsCount,
-        srvs_users: usersCount,
-        srvs_admins: adminsCount,
-        srvs_department_heads: deptHeadsCount,
-        srvs_faculties: facultiesCount,
-        srvs_students: studentsCount,
-        srvs_syllabi: syllabiCount,
-        srvs_syllabus_versions: versionsCount,
-        srvs_enrollments: enrollmentsCount,
+        admin: usersCount,
+        admins: adminsCount,
+        department_heads: deptHeadsCount,
+        educators: educatorsCount,
+        students: studentsCount,
+        courses: coursesCount,
+        syllabi: syllabiCount,
+        syllabus_versions: versionsCount,
+        enrollments: enrollmentsCount,
+        audit_logs: auditLogsCount,
       },
-      seededAdmin: adminUser,
+      seededAdmin: adminUser ? { ...adminUser, role: 'Admin' } : null,
     });
   } catch (error: any) {
     const latencyMs = Date.now() - startTime;

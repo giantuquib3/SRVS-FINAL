@@ -3,30 +3,38 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { createNotification } from '@/lib/notifications';
+import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
 
 export async function POST(req: NextRequest) {
   try {
     const { email, idNumber, username, password, firstName, lastName, role, departmentId } = await req.json();
 
-    const cleanId = (idNumber || username || '').trim();
+    const cleanIdStr = (idNumber || username || '').trim();
 
-    if (!email || !cleanId || !password || !firstName || !lastName || !departmentId) {
-      return NextResponse.json({ error: 'Please fill in all required fields including your University ID Number.' }, { status: 400 });
+    if (!email || !cleanIdStr || !password || !firstName || !lastName || !departmentId) {
+      return NextResponse.json({ error: 'Please fill in all required fields including a valid University ID Number.' }, { status: 400 });
     }
 
-    const selectedRole = role === 'Educator' ? 'Educator' : 'Student';
+    const selectedRole =
+      role === 'Admin'
+        ? 'Admin'
+        : role === 'DepartmentHead'
+        ? 'DepartmentHead'
+        : role === 'Educator'
+        ? 'Educator'
+        : 'Student';
 
     // Validate ID number length and format based on role
     if (selectedRole === 'Student') {
-      if (!/^\d{10}$/.test(cleanId)) {
+      if (!/^\d{10}$/.test(cleanIdStr)) {
         return NextResponse.json({
           error: 'Student ID number must be exactly 10 digits (e.g., 2022012708).',
         }, { status: 400 });
       }
     } else {
-      if (!/^\d{5}$/.test(cleanId)) {
+      if (!/^\d{5}$/.test(cleanIdStr)) {
         return NextResponse.json({
-          error: 'Faculty ID number must be exactly 5 digits (e.g., 10001 or 00000).',
+          error: `${selectedRole} ID number must be exactly 5 digits (e.g., 10001 or 00000).`,
         }, { status: 400 });
       }
     }
@@ -42,120 +50,98 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check unique email or ID number
+    const numericId = parseInt(cleanIdStr, 10);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'ID number must be a valid number.' }, { status: 400 });
+    }
+
+    // Check unique email or ID number across unified User table
     const existing = await prisma.user.findFirst({
       where: {
-        OR: [
-          { email: cleanEmail },
-          { idNumber: cleanId },
-        ],
+        OR: [{ id: numericId }, { email: cleanEmail }],
       },
     });
 
     if (existing) {
-      if (existing.idNumber === cleanId) {
-        return NextResponse.json({ error: `An account with ID Number ${cleanId} already exists.` }, { status: 409 });
+      if (existing.id === numericId) {
+        return NextResponse.json({ error: `An account with ID Number ${cleanIdStr} already exists.` }, { status: 409 });
       }
       return NextResponse.json({ error: 'An account with this institutional email already exists.' }, { status: 409 });
     }
 
-    // Resolve department
-    let dept = null;
-    const numericDeptId = Number(departmentId);
-    if (!isNaN(numericDeptId)) {
-      dept = await prisma.department.findUnique({ where: { id: numericDeptId } });
-    } else {
-      dept = await prisma.department.findUnique({ where: { code: String(departmentId).toUpperCase() } });
+    // Resolve department code
+    const deptCode = String(departmentId).trim().toUpperCase();
+    if (!isValidDepartmentCode(deptCode)) {
+      return NextResponse.json({ error: 'Selected department is invalid. Must be one of CPE, EE, CE, ECE, IE, ME.' }, { status: 400 });
     }
 
-    if (!dept) {
-      return NextResponse.json({ error: 'Selected department is invalid.' }, { status: 400 });
-    }
-
-    const initialStatus = 'PendingApproval';
+    const initialStatus = selectedRole === 'Admin' || selectedRole === 'DepartmentHead' ? 'Active' : 'PendingApproval';
     const passwordHash = await hashPassword(password);
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
-    // Create user and segregated role profile
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          idNumber: cleanId,
-          email: cleanEmail,
-          passwordHash,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          fullName,
-          role: selectedRole,
-          departmentId: dept.id,
-          accountStatus: initialStatus,
-        },
-      });
-
-      if (selectedRole === 'Educator') {
-        await tx.faculty.create({
-          data: {
-            userId: created.id,
-            employeeId: cleanId,
-            fullName,
-            email: cleanEmail,
-            department: dept.code,
-          },
-        });
-      } else {
-        await tx.student.create({
-          data: {
-            userId: created.id,
-            studentIdNumber: cleanId,
-            fullName,
-            email: cleanEmail,
-            department: dept.code,
-            enrolledSubjects: '',
-          },
-        });
-      }
-
-      return created;
-    });
-
-    await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
-      actionType: 'Register',
-      resultStatus: 'Success',
-      description: `New ${selectedRole} registration submitted (Status: PendingApproval) for department ${dept.code} [ID: ${cleanId}]`,
-      entityType: 'User',
-      entityId: user.id,
-      ipAddress: req.ip || '127.0.0.1',
-    });
-
-    // Notify Department Head & Admin of new registration
-    const approvers = await prisma.user.findMany({
-      where: {
-        OR: [
-          { role: 'Admin' },
-          { role: 'DepartmentHead', departmentId: dept.id },
-        ],
+    const createdRecord = await prisma.user.create({
+      data: {
+        id: numericId,
+        email: cleanEmail,
+        passwordHash,
+        fullName,
+        role: selectedRole,
+        departmentId: deptCode,
+        accountStatus: initialStatus,
+        academicRank: selectedRole === 'DepartmentHead' ? 'Department Chairperson' : selectedRole === 'Educator' ? 'Faculty Member' : null,
+        yearLevel: selectedRole === 'Student' ? '1st Year' : null,
       },
     });
 
-    for (const approver of approvers) {
-      await createNotification(
-        approver.id,
-        'New Registration Pending Review',
-        `A new ${selectedRole} (${fullName}, ID: ${cleanId}) from ${dept.name} has registered and awaits account verification.`,
-        '/admin/users'
-      );
+    // Notify administrators if pending approval
+    if (initialStatus === 'PendingApproval') {
+      const admins = await prisma.user.findMany({
+        where: { role: 'Admin' },
+        select: { id: true },
+      });
+
+      for (const adm of admins) {
+        await createNotification(
+          String(adm.id),
+          'New Account Registration Pending Approval',
+          `New ${selectedRole} account registration: ${fullName} (${cleanIdStr} - ${deptCode}) is awaiting review and approval.`,
+          '/admin/users'
+        );
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Account registration submitted successfully. Please wait for Department Head or Administrator approval.',
-      userId: user.id,
-      idNumber: user.idNumber,
-    }, { status: 201 });
+    await logAuditEvent({
+      userId: createdRecord.id,
+      userDisplayName: fullName,
+      actionType: 'Register',
+      resultStatus: 'Success',
+      description: `New [${selectedRole}] user registered with ID: ${cleanIdStr} (Status: ${initialStatus})`,
+      entityType: 'User',
+      entityId: String(numericId),
+      ipAddress: req.ip || '127.0.0.1',
+    });
+
+    return NextResponse.json(
+      {
+        message:
+          initialStatus === 'PendingApproval'
+            ? 'Account registered successfully! Your account is pending administrator approval before you can log in.'
+            : 'Account registered successfully! You may now sign in.',
+        user: {
+          id: createdRecord.id,
+          idNumber: String(createdRecord.id),
+          username: String(createdRecord.id),
+          email: createdRecord.email,
+          fullName: createdRecord.fullName,
+          role: selectedRole,
+          departmentId: deptCode,
+          accountStatus: initialStatus,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Registration error:', error);
-    return NextResponse.json({ error: 'Failed to complete registration: ' + error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Registration failed.' }, { status: 500 });
   }
 }

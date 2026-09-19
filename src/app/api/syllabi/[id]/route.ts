@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { getDepartmentName } from '@/lib/departments';
 
 export async function GET(
   req: NextRequest,
@@ -9,98 +10,44 @@ export async function GET(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    const numericId = Number(params.id);
-
-    if (isNaN(numericId)) {
-      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
-    }
+    const syllabusId = parseInt(params.id, 10);
+    if (isNaN(syllabusId)) return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id: numericId },
+      where: { id: syllabusId },
       include: {
-        subject: {
-          include: {
-            department: true,
-          },
-        },
-        instructor: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        department: true,
-        versions: {
-          orderBy: { versionNumber: 'desc' },
-          include: {
-            editor: {
-              select: {
-                id: true,
-                idNumber: true,
-                fullName: true,
-              },
-            },
-          },
-        },
+        course: true,
+        instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
+        versions: { orderBy: { versionNumber: 'desc' } },
       },
     });
 
-    if (!syllabus) {
-      return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
+    if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+
+    const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+
+    // Department Head: strictly scoped to own department
+    if (user.role === 'DepartmentHead' && userDeptCode && userDeptCode !== syllabus.departmentId.toUpperCase()) {
+      return NextResponse.json({ error: 'Access denied: Department Heads may only view syllabi within their department.' }, { status: 403 });
     }
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-    }
-
-    // 1. Department Head: Strictly scoped to own department
-    if (user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) !== syllabus.departmentId) {
-      return NextResponse.json({
-        error: 'Access denied: Department Heads may only view syllabi within their assigned department.',
-      }, { status: 403 });
-    }
-
-    // 2. Student: Must be Approved/Active, belong to student's department, AND actively enrolled in this subject
+    // Student: must be approved, in own department, and enrolled in the course
     if (user.role === 'Student') {
       if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Students can only view approved syllabi.' }, { status: 403 });
       }
-
-      let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!studentDeptId) {
-        const studentProfile = await prisma.student.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (studentProfile?.departmentRel?.id) {
-          studentDeptId = studentProfile.departmentRel.id;
-        }
+      if (!userDeptCode || syllabus.departmentId.toUpperCase() !== userDeptCode) {
+        return NextResponse.json({ error: 'Access denied: Students can only view syllabi in their department.' }, { status: 403 });
       }
-
-      // Strictly deny access if syllabus is from another department
-      if (!studentDeptId || syllabus.departmentId !== studentDeptId) {
-        return NextResponse.json({
-          error: 'Access denied: Students can only view syllabi belonging to their own academic department.',
-        }, { status: 403 });
-      }
-
-      const activeEnrollment = await prisma.enrollment.findFirst({
-        where: {
-          studentId: Number(user.id),
-          subjectId: syllabus.subjectId,
-          status: 'ENROLLED',
-          subject: {
-            departmentId: studentDeptId,
-          },
-        },
-      });
-
-      if (!activeEnrollment) {
-        return NextResponse.json({
-          error: 'Access restricted: You can only view syllabi for courses you are actively enrolled in.',
-        }, { status: 403 });
+      const studentIntId = parseInt(user.id, 10);
+      const enrollment = !isNaN(studentIntId)
+        ? await prisma.enrollment.findFirst({
+            where: { studentId: studentIntId, courseId: syllabus.courseId, status: 'ENROLLED' },
+          })
+        : null;
+      if (!enrollment) {
+        return NextResponse.json({ error: 'Access restricted: You can only view syllabi for courses you are enrolled in.' }, { status: 403 });
       }
     }
 
@@ -108,23 +55,30 @@ export async function GET(
       syllabus.versions.find((v) => v.versionNumber === syllabus.currentVersionNumber) ||
       syllabus.versions[0];
 
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
     const canEdit =
       user.role === 'Admin' ||
-      user.role === 'DepartmentHead' ||
-      (user.role === 'Educator' && Number(user.id) === syllabus.instructorId);
+      (user.role === 'DepartmentHead' && userDeptCode === syllabus.departmentId.toUpperCase()) ||
+      (user.role === 'Educator' && currentUserIdInt === syllabus.instructorId);
 
-    const formattedSyllabus = {
+    const deptCode = syllabus.departmentId;
+    const formatted = {
       ...syllabus,
-      course: syllabus.subject,
-      courseId: syllabus.subjectId,
+      department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+      course: {
+        ...syllabus.course,
+        department: {
+          id: syllabus.course.departmentId,
+          code: syllabus.course.departmentId,
+          name: getDepartmentName(syllabus.course.departmentId),
+        },
+      },
+      subject: syllabus.course,
+      subjectId: syllabus.courseId,
+      courseId: syllabus.courseId,
     };
 
-    return NextResponse.json({
-      syllabus: formattedSyllabus,
-      currentVersion,
-      versions: syllabus.versions,
-      canEdit,
-    });
+    return NextResponse.json({ syllabus: formatted, currentVersion, versions: syllabus.versions, canEdit });
   } catch (error: any) {
     console.error('Error fetching syllabus details:', error);
     return NextResponse.json({ error: 'Failed to retrieve syllabus.' }, { status: 500 });
@@ -137,54 +91,39 @@ export async function PATCH(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
-    const numericId = Number(params.id);
-    if (isNaN(numericId)) {
-      return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
-    }
+    const syllabusId = parseInt(params.id, 10);
+    if (isNaN(syllabusId)) return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
 
     const syllabus = await prisma.syllabus.findUnique({
-      where: { id: numericId },
+      where: { id: syllabusId },
       include: {
-        subject: { include: { department: true } },
+        course: true,
         versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
       },
     });
 
-    if (!syllabus) {
-      return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
-    }
+    if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
 
-    const currentUserId = Number(user.id);
-    const isAuthor = syllabus.instructorId === currentUserId;
-    const isDeptHead = user.role === 'DepartmentHead' && user.departmentId && Number(user.departmentId) === syllabus.departmentId;
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
+    const isAuthor = syllabus.instructorId === currentUserIdInt;
+    const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+    const isDeptHead = user.role === 'DepartmentHead' && userDeptCode === syllabus.departmentId.toUpperCase();
 
     if (!isAuthor && !isDeptHead) {
-      return NextResponse.json({ error: 'Forbidden: Only the assigned Faculty author and Department Head may revise this syllabus. System Administrators cannot author revisions.' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden: Only the assigned Educator author and Department Head may revise this syllabus.' }, { status: 403 });
     }
 
     const body = await req.json();
     const {
-      courseDescription,
-      learningOutcomes,
-      topics,
-      references,
-      gradingSystem,
-      schedule,
-      changeSummary,
-      saveAsDraft = false,
-      submitForApproval = false,
-      fileName,
-      fileUrl,
-      fileType,
-      fileSize,
+      courseDescription, learningOutcomes, topics, references, gradingSystem, schedule,
+      changeSummary, saveAsDraft = false, submitForApproval = false,
+      fileName, fileUrl, fileType, fileSize,
     } = body;
 
-    if (!changeSummary || !changeSummary.trim()) {
-      return NextResponse.json({ error: 'A summary of changes is required for revision history tracking.' }, { status: 400 });
+    if (!changeSummary?.trim()) {
+      return NextResponse.json({ error: 'A change summary is required for revision history tracking.' }, { status: 400 });
     }
 
     const latestVersion = syllabus.versions[0];
@@ -194,7 +133,6 @@ export async function PATCH(
     const isDraft = !canDirectApprove && saveAsDraft === true && submitForApproval === false;
     const versionApprovalStatus = canDirectApprove ? 'APPROVED' : (isDraft ? 'DRAFT' : 'PENDING_APPROVAL');
     const now = new Date();
-    const uIdNumber = String(user.idNumber || user.username || user.id);
 
     const contentSnapshot = {
       courseDescription: courseDescription?.trim() || '',
@@ -214,8 +152,7 @@ export async function PATCH(
         data: {
           syllabusId: syllabus.id,
           versionNumber: newVersionNumber,
-          editorId: currentUserId,
-          uploadedByUserId: uIdNumber,
+          editorId: currentUserIdInt,
           changeSummary: changeSummary.trim(),
           changeType: 'Edit',
           statusAtSave: versionApprovalStatus,
@@ -225,9 +162,9 @@ export async function PATCH(
           fileUrl: fileUrl || null,
           fileType: fileType || null,
           fileSize: fileSize || null,
-          submittedById: isDraft ? null : currentUserId,
+          submittedById: isDraft ? null : currentUserIdInt,
           submittedAt: isDraft ? null : now,
-          reviewedById: canDirectApprove ? currentUserId : null,
+          reviewedById: canDirectApprove ? currentUserIdInt : null,
           reviewedAt: canDirectApprove ? now : null,
         },
       });
@@ -251,7 +188,7 @@ export async function PATCH(
           status: newSyllabusStatus,
           submittedAt: isDraft ? syllabus.submittedAt : now,
           reviewedAt: canDirectApprove ? now : syllabus.reviewedAt,
-          reviewedByUserId: canDirectApprove ? currentUserId : syllabus.reviewedByUserId,
+          reviewedByUserId: canDirectApprove ? currentUserIdInt : syllabus.reviewedByUserId,
           reviewerRemarks: canDirectApprove ? 'Directly approved by Department Head' : syllabus.reviewerRemarks,
         },
       });
@@ -260,13 +197,13 @@ export async function PATCH(
     });
 
     await logAuditEvent({
-      userId: currentUserId,
+      userId: currentUserIdInt,
       userDisplayName: user.fullName,
       actionType: 'CreateRevision',
       resultStatus: 'Success',
-      description: `Created syllabus version ${newVersionNumber} for ${syllabus.subject.code} (${versionApprovalStatus})`,
+      description: `Created syllabus v${newVersionNumber} for ${syllabus.course.code} (${versionApprovalStatus})`,
       entityType: 'SyllabusVersion',
-      entityId: result.newVersion.id,
+      entityId: String(result.newVersion.id),
     });
 
     return NextResponse.json({
@@ -274,10 +211,8 @@ export async function PATCH(
       syllabus: result.updatedSyllabus,
       version: result.newVersion,
       message: canDirectApprove
-        ? `Version ${newVersionNumber} approved and published as the official active syllabus.`
-        : (isDraft
-          ? `Version ${newVersionNumber} saved as draft.`
-          : `Version ${newVersionNumber} submitted for Department Head review.`),
+        ? `Version ${newVersionNumber} approved and published.`
+        : isDraft ? `Version ${newVersionNumber} saved as draft.` : `Version ${newVersionNumber} submitted for review.`,
     });
   } catch (error: any) {
     console.error('Error revising syllabus:', error);

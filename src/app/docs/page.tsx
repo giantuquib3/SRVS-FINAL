@@ -140,13 +140,17 @@ export default function SwaggerDocsPage() {
           <div className="flex items-center space-x-4">
             {dbStatus?.tables && (
               <div className="hidden md:flex items-center space-x-2 text-[11px] font-mono text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                <span>Depts: <strong>{dbStatus.tables.srvs_departments}</strong></span>
+                <span>Admins: <strong>{dbStatus.tables.admins}</strong></span>
                 <span>•</span>
-                <span>Courses: <strong>{dbStatus.tables.srvs_courses}</strong></span>
+                <span>Dept Heads: <strong>{dbStatus.tables.department_heads}</strong></span>
                 <span>•</span>
-                <span>Users: <strong>{dbStatus.tables.srvs_users}</strong></span>
+                <span>Faculty: <strong>{dbStatus.tables.faculty}</strong></span>
                 <span>•</span>
-                <span>Audit Logs: <strong>{dbStatus.tables.srvs_audit_logs}</strong></span>
+                <span>Students: <strong>{dbStatus.tables.students}</strong></span>
+                <span>•</span>
+                <span>Subjects: <strong>{dbStatus.tables.srvs_subjects}</strong></span>
+                <span>•</span>
+                <span>Syllabi: <strong>{dbStatus.tables.srvs_syllabi}</strong></span>
               </div>
             )}
             <button

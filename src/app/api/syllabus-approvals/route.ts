@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
+import { logAuditEvent } from '@/lib/audit';
+import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,45 +18,17 @@ export async function GET(req: NextRequest) {
     const departmentParam = searchParams.get('departmentId');
 
     const where: any = {};
-
-    let deptInfo: { id: number; code: string; name: string } | null = null;
+    let deptInfo: { id: string; code: string; name: string } | null = null;
 
     if (user.role === 'DepartmentHead') {
-      let deptHeadDeptId = user.departmentId ? Number(user.departmentId) : null;
-      if (!deptHeadDeptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: Number(user.id) },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel?.id) {
-          deptHeadDeptId = dh.departmentRel.id;
-        } else if (dh?.department) {
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) deptHeadDeptId = d.id;
-        }
-      }
-
-      if (!deptHeadDeptId) {
-        return NextResponse.json({ approvals: [], stats: { pending: 0, approved: 0, rejected: 0, total: 0 } });
-      }
-
-      const d = await prisma.department.findUnique({
-        where: { id: deptHeadDeptId },
-        select: { id: true, code: true, name: true },
-      });
-      if (d) deptInfo = d;
-
-      where.syllabus = { departmentId: deptHeadDeptId };
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!deptCode) return NextResponse.json({ approvals: [], stats: { pending: 0, approved: 0, rejected: 0, total: 0 } });
+      deptInfo = { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) };
+      where.syllabus = { departmentId: deptCode };
     } else if (departmentParam) {
-      const numericDeptId = Number(departmentParam);
-      if (!isNaN(numericDeptId)) {
-        where.syllabus = { departmentId: numericDeptId };
-        const d = await prisma.department.findUnique({
-          where: { id: numericDeptId },
-          select: { id: true, code: true, name: true },
-        });
-        if (d) deptInfo = d;
-      }
+      const deptCode = String(departmentParam).trim().toUpperCase();
+      where.syllabus = { departmentId: deptCode };
+      deptInfo = { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) };
     }
 
     if (statusParam && statusParam !== 'ALL') {
@@ -62,95 +36,145 @@ export async function GET(req: NextRequest) {
         where.approvalStatus = { in: ['APPROVED', 'Approved'] };
       } else if (statusParam === 'REJECTED') {
         where.approvalStatus = { in: ['REJECTED', 'Rejected'] };
-      } else if (statusParam === 'PENDING_APPROVAL') {
-        where.approvalStatus = { in: ['PENDING_APPROVAL', 'PendingApproval', 'Pending', 'submitted', 'Submitted'] };
       } else {
-        where.approvalStatus = statusParam;
+        where.approvalStatus = { in: ['PENDING_APPROVAL', 'Submitted', 'submitted'] };
       }
     }
 
-    const pendingApprovals = await prisma.syllabusVersion.findMany({
+    const versions = await prisma.syllabusVersion.findMany({
       where,
       orderBy: { submittedAt: 'desc' },
       include: {
         syllabus: {
           include: {
-            subject: {
-              include: {
-                department: true,
-              },
-            },
-            instructor: {
-              select: {
-                id: true,
-                idNumber: true,
-                fullName: true,
-                email: true,
-                role: true,
-              },
-            },
-            department: true,
-          },
-        },
-        editor: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        submittedBy: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        reviewedBy: {
-          select: {
-            id: true,
-            idNumber: true,
-            fullName: true,
+            course: true,
+            instructor: { select: { id: true, fullName: true, email: true } },
           },
         },
       },
     });
 
-    // Map course alias so existing UI continues working without issues
-    const formattedApprovals = pendingApprovals.map((v) => ({
-      ...v,
-      syllabus: {
-        ...v.syllabus,
-        course: v.syllabus.subject,
-        courseId: v.syllabus.subjectId,
-      },
-    }));
+    const formatted = versions.map((v) => {
+      const sDept = v.syllabus.departmentId;
+      return {
+        ...v,
+        syllabus: {
+          ...v.syllabus,
+          department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
+          course: {
+            ...v.syllabus.course,
+            department: {
+              id: v.syllabus.course.departmentId,
+              code: v.syllabus.course.departmentId,
+              name: getDepartmentName(v.syllabus.course.departmentId),
+            },
+          },
+          subject: v.syllabus.course,
+          subjectId: v.syllabus.courseId,
+          courseId: v.syllabus.courseId,
+        },
+      };
+    });
 
-    const statsWhere: any = {};
-    if (where.syllabus) {
-      statsWhere.syllabus = where.syllabus;
-    }
-
+    const statsWhere: any = where.syllabus ? { syllabus: where.syllabus } : {};
     const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['PENDING_APPROVAL', 'PendingApproval', 'Pending', 'submitted', 'Submitted'] } } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['PENDING_APPROVAL', 'Submitted', 'submitted'] } } }),
       prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['APPROVED', 'Approved'] } } }),
       prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['REJECTED', 'Rejected'] } } }),
     ]);
 
     return NextResponse.json({
       department: deptInfo,
-      approvals: formattedApprovals,
-      stats: {
-        pending: pendingCount,
-        approved: approvedCount,
-        rejected: rejectedCount,
-        total: pendingCount + approvedCount + rejectedCount,
-      },
+      approvals: formatted,
+      stats: { pending: pendingCount, approved: approvedCount, rejected: rejectedCount, total: pendingCount + approvedCount + rejectedCount },
     });
   } catch (error: any) {
     console.error('Error fetching syllabus approvals:', error);
     return NextResponse.json({ error: 'Failed to retrieve syllabus approvals: ' + error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = await getSessionFromRequest(req);
+    if (!user || user.role !== 'DepartmentHead') {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads may approve/reject syllabi.' }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { versionId, syllabusId, action, remarks } = body;
+
+    if (!versionId || !action) {
+      return NextResponse.json({ error: 'versionId and action are required.' }, { status: 400 });
+    }
+
+    const parsedVersionId = parseInt(String(versionId), 10);
+    if (isNaN(parsedVersionId)) return NextResponse.json({ error: 'Invalid version ID.' }, { status: 400 });
+
+    const version = await prisma.syllabusVersion.findUnique({
+      where: { id: parsedVersionId },
+      include: { syllabus: { include: { course: true } } },
+    });
+    if (!version) return NextResponse.json({ error: 'Syllabus version not found.' }, { status: 404 });
+
+    const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+    if (deptCode && version.syllabus.departmentId !== deptCode) {
+      return NextResponse.json({ error: 'You may only review syllabi within your department.' }, { status: 403 });
+    }
+
+    const currentUserIdInt = parseInt(user.id, 10) || 0;
+    const isApprove = action === 'Approve' || action === 'APPROVE';
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.syllabusVersion.update({
+        where: { id: version.id },
+        data: {
+          approvalStatus: isApprove ? 'APPROVED' : 'REJECTED',
+          reviewedById: currentUserIdInt,
+          reviewedAt: now,
+          statusAtSave: isApprove ? 'APPROVED' : 'REJECTED',
+        },
+      });
+
+      if (isApprove) {
+        // Archive all previously active syllabi for this course
+        await tx.syllabus.updateMany({
+          where: {
+            courseId: version.syllabus.courseId,
+            id: { not: version.syllabusId },
+            status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
+          },
+          data: { status: 'ARCHIVED' },
+        });
+        await tx.syllabus.update({
+          where: { id: version.syllabusId },
+          data: { status: 'ACTIVE', reviewedAt: now, reviewedByUserId: currentUserIdInt, reviewerRemarks: remarks || 'Approved' },
+        });
+      } else {
+        await tx.syllabus.update({
+          where: { id: version.syllabusId },
+          data: { status: 'REJECTED', reviewedAt: now, reviewedByUserId: currentUserIdInt, reviewerRemarks: remarks || 'Rejected' },
+        });
+      }
+    });
+
+    await logAuditEvent({
+      userId: currentUserIdInt,
+      userDisplayName: user.fullName,
+      actionType: isApprove ? 'ApproveSyllabus' : 'RejectSyllabus',
+      resultStatus: 'Success',
+      description: `${isApprove ? 'Approved' : 'Rejected'} syllabus v${version.versionNumber} for ${version.syllabus.course.code}${remarks ? ` – Remarks: ${remarks}` : ''}`,
+      entityType: 'Syllabus',
+      entityId: String(version.syllabusId),
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Syllabus ${isApprove ? 'approved' : 'rejected'} successfully.`,
+    });
+  } catch (error: any) {
+    console.error('Error reviewing syllabus:', error);
+    return NextResponse.json({ error: 'Failed to review syllabus: ' + error.message }, { status: 500 });
   }
 }

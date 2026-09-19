@@ -9,14 +9,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const departmentId = searchParams.get('departmentId');
-    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20', 10)), 100);
-
+    if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+    // Announcements are surfaced via notifications; no separate table yet
     return NextResponse.json({ announcements: [] });
   } catch (error: any) {
     return NextResponse.json({ error: 'Failed to retrieve announcements.' }, { status: 500 });
@@ -31,7 +25,6 @@ export async function POST(req: NextRequest) {
     }
 
     const { title, message, departmentId } = await req.json();
-
     if (!title || !message) {
       return NextResponse.json({ error: 'Announcement title and message are required.' }, { status: 400 });
     }
@@ -41,12 +34,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Target department ID is required.' }, { status: 400 });
     }
 
-    const numericDeptId = Number(targetDeptId);
+    const deptCode = String(targetDeptId).toUpperCase();
 
-    // Find all users in this department (Educators, Students)
-    const departmentUsers = await prisma.user.findMany({
+    // Find all active Educators and Students in this department
+    const recipients = await prisma.user.findMany({
       where: {
-        departmentId: numericDeptId,
+        departmentId: deptCode,
+        role: { in: ['Educator', 'Student'] },
         accountStatus: 'Active',
       },
       select: { id: true, fullName: true, role: true },
@@ -54,13 +48,9 @@ export async function POST(req: NextRequest) {
 
     const announcementTitle = `[Announcement] ${title.trim()}`;
 
-    for (const recipient of departmentUsers) {
-      await createNotification(
-        recipient.id,
-        announcementTitle,
-        message.trim(),
-        recipient.role === 'Student' ? '/student/dashboard' : '/educator/dashboard'
-      );
+    for (const recipient of recipients) {
+      const link = recipient.role === 'Student' ? '/student/dashboard' : '/educator/dashboard';
+      await createNotification(recipient.id, announcementTitle, message.trim(), link);
     }
 
     await logAuditEvent({
@@ -68,16 +58,15 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'CreateAnnouncement',
       resultStatus: 'Success',
-      description: `Posted department announcement: "${title.trim()}" to ${departmentUsers.length} members`,
+      description: `Posted announcement: "${title.trim()}" to ${recipients.length} members in dept ${deptCode}`,
       entityType: 'Department',
-      entityId: numericDeptId,
-      ipAddress: req.ip || '127.0.0.1',
+      entityId: deptCode,
     });
 
     return NextResponse.json({
       success: true,
-      message: `Announcement broadcast to ${departmentUsers.length} department members.`,
-      recipientsCount: departmentUsers.length,
+      message: `Announcement broadcast to ${recipients.length} department members.`,
+      recipientsCount: recipients.length,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to create announcement.' }, { status: 500 });

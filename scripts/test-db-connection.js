@@ -1,11 +1,36 @@
+const fs = require('fs');
+const path = require('path');
 const { Client } = require('pg');
 
+// Parse .env manually
+try {
+  const envPath = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const match = line.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        let val = match[2].trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.substring(1, val.length - 1);
+        }
+        process.env[key] = val;
+      }
+    }
+  }
+} catch (e) {}
+
 async function testConnection(url, label) {
+  if (!url) {
+    console.log(`⚠️ ${label} URL not defined in .env`);
+    return false;
+  }
   console.log(`Testing ${label}...`);
   const client = new Client({
     connectionString: url,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
   });
 
   try {
@@ -22,11 +47,8 @@ async function testConnection(url, label) {
 }
 
 async function run() {
-  const p5432 = "postgresql://postgres.goxvhkbwfpffjnqphzpq:Giangwapo123%3F@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require";
-  const p6543 = "postgresql://postgres.goxvhkbwfpffjnqphzpq:Giangwapo123%3F@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require";
-
-  await testConnection(p5432, "Port 5432");
-  await testConnection(p6543, "Port 6543");
+  await testConnection(process.env.DIRECT_URL, "DIRECT_URL (Port 5432 / Session)");
+  await testConnection(process.env.DATABASE_URL, "DATABASE_URL (Port 6543 / Transaction Pooler)");
 }
 
 run();

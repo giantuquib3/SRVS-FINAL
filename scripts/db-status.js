@@ -2,32 +2,32 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function checkDatabase() {
-  console.log('🔍 Checking PostgreSQL Database Connection & Table Schema...\n');
+  console.log('🔍 Checking PostgreSQL Database Connection & Unified Table Schema...\n');
   const start = Date.now();
 
   try {
     const [
-      departments,
-      subjects,
-      users,
-      admins,
-      deptHeads,
-      faculties,
-      students,
+      totalUsers,
+      totalAdmins,
+      totalDeptHeads,
+      totalEducators,
+      totalStudents,
+      courses,
+      enrollments,
       syllabi,
       versions,
-      enrollments,
+      logs,
     ] = await Promise.all([
-      prisma.department.count(),
-      prisma.subject.count(),
       prisma.user.count(),
-      prisma.admin.count(),
-      prisma.departmentHead.count(),
-      prisma.faculty.count(),
-      prisma.student.count(),
+      prisma.user.count({ where: { role: 'Admin' } }),
+      prisma.user.count({ where: { role: 'DepartmentHead' } }),
+      prisma.user.count({ where: { role: 'Educator' } }),
+      prisma.user.count({ where: { role: 'Student' } }),
+      prisma.course.count(),
+      prisma.enrollment.count(),
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
-      prisma.enrollment.count(),
+      prisma.auditLog.count(),
     ]);
 
     const latency = Date.now() - start;
@@ -39,54 +39,46 @@ async function checkDatabase() {
     console.log(`Roundtrip Latency: ${latency} ms`);
     console.log(`Connection Status: HEALTHY & ONLINE\n`);
 
-    console.log('Streamlined & Segregated Table Record Counts:');
+    console.log('Simplified & Non-Redundant Database Tables (6 tables):');
     console.table({
-      'srvs_departments': { Records: departments, PK_Type: 'Integer (SERIAL)', Description: 'Engineering Departments' },
-      'srvs_subjects': { Records: subjects, PK_Type: 'Integer (SERIAL)', Description: 'Academic Subjects Curriculum' },
-      'srvs_users': { Records: users, PK_Type: 'Integer (SERIAL)', Description: 'Central User Accounts & Credentials' },
-      'srvs_admins': { Records: admins, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Admin Profiles' },
-      'srvs_department_heads': { Records: deptHeads, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Dept Head Profiles' },
-      'srvs_faculties': { Records: faculties, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Faculty Profiles' },
-      'srvs_students': { Records: students, PK_Type: 'Integer (SERIAL)', Description: 'Segregated Student Profiles' },
-      'srvs_syllabi': { Records: syllabi, PK_Type: 'Integer (SERIAL)', Description: 'Course Syllabi Master Records' },
-      'srvs_syllabus_versions': { Records: versions, PK_Type: 'Integer (SERIAL)', Description: 'Immutable Version Snapshots (v1, v2...)' },
-      'srvs_enrollments': { Records: enrollments, PK_Type: 'Integer (SERIAL)', Description: 'Student Subject Enrollments' },
+      'admin (users)': { Records: totalUsers, PK_Type: 'String (ID Number)', Description: `Unified User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
+      'courses': { Records: courses, PK_Type: 'String (Course Code)', Description: 'Course Catalog with facultyName & facultyId of syllabus author' },
+      'enrollments': { Records: enrollments, PK_Type: 'Compound (studentId INT, courseId)', Description: 'Student enrollments with numeric StudentId (INT) & direct StudentName' },
+      'syllabi': { Records: syllabi, PK_Type: 'String (CUID)', Description: 'Course Syllabi Master Records' },
+      'syllabus_versions': { Records: versions, PK_Type: 'String (CUID)', Description: 'Immutable Revision History' },
+      'audit_logs': { Records: logs, PK_Type: 'String (CUID)', Description: 'System Security & Activity Trail' },
     });
 
     const admin = await prisma.user.findFirst({
       where: { role: 'Admin' },
-      include: { adminProfile: true },
     });
 
-    console.log('\nSystem Administrator Status:');
+    console.log('\nSystem Administrator Account:');
     if (admin) {
-      console.log(`  ✓ Database ID (PK id): ${admin.id} [Type: Integer]`);
-      console.log(`  ✓ University ID Number: ${admin.idNumber}`);
+      console.log(`  ✓ Database ID: ${admin.id}`);
       console.log(`  ✓ Email: ${admin.email}`);
       console.log(`  ✓ Name: ${admin.fullName}`);
-      console.log(`  ✓ Admin Profile Link: ${admin.adminProfile ? 'Linked (PK ID: ' + admin.adminProfile.id + ')' : 'None'}`);
+      console.log(`  ✓ Status: ${admin.accountStatus}`);
     } else {
-      console.log('  ⚠️ No Admin user found! Run "npm run db:seed" to create the initial admin account.');
+      console.log('  ⚠️ No Admin user found! Run "node prisma/seed.js" to seed.');
     }
 
-    // Inspect srvs_students records
-    const studentRecords = await prisma.student.findMany({
+    const sampleUsers = await prisma.user.findMany({
+      take: 10,
       orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        fullName: true,
+        role: true,
+        departmentId: true,
+        accountStatus: true,
+      },
     });
 
-    console.log('\nStudent Table Records (srvs_students):');
-    console.table(
-      studentRecords.map((s) => ({
-        'PK_id': s.id,
-        'Student_ID_Number': s.studentIdNumber,
-        'Full_Name': s.fullName,
-        'Department': s.department, // "CPE" (not an ID or number)
-        'Enrolled_Subjects (Codes Only)': s.enrolledSubjects || 'None',
-        'Year_Level': s.yearLevel,
-      }))
-    );
+    console.log('\nRegistered Accounts Sample (users table):');
+    console.table(sampleUsers);
 
-    console.log('\n✅ Database verification completed successfully!');
+    console.log('\n✅ Database and schema verification completed successfully!');
   } catch (err) {
     console.error('❌ Database connection error:', err.message);
     process.exit(1);

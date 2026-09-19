@@ -1,31 +1,26 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-async function resetAndSeed() {
-  console.log('🔄 Cleaning old tables in PostgreSQL...');
+async function resetDatabase() {
+  console.log('🔄 Cleaning all tables in PostgreSQL for user-input mode...');
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE 
-        srvs_notifications, 
-        srvs_audit_logs, 
         srvs_syllabus_versions, 
         srvs_syllabi, 
-        srvs_enrollments, 
-        srvs_courses, 
-        srvs_users, 
-        srvs_departments 
+        srvs_subjects, 
+        students, 
+        faculty, 
+        department_heads, 
+        admins 
       CASCADE;
     `);
-    console.log('✓ Tables truncated cleanly.');
+    console.log('✓ All tables truncated cleanly (0 rows in all tables).');
   } catch (err) {
     console.error('Truncate error:', err.message);
-    process.exit(1);
   } finally {
     await prisma.$disconnect();
   }
-
-  console.log('\n🌱 Running seed script with natural primary keys...');
-  require('./seed.js');
 }
 
-resetAndSeed();
+resetDatabase();

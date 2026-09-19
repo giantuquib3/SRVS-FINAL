@@ -259,7 +259,7 @@ export default function EnrollmentsPage() {
                   <option value="">-- Select Student --</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.fullName} ({s.email}) {s.departmentCode || s.studentProfile?.department ? `[${s.departmentCode || s.studentProfile?.department}]` : ''}
+                      {s.fullName} ({s.email}) {s.departmentCode || s.department ? `[${s.departmentCode || s.department}]` : ''}
                     </option>
                   ))}
                 </select>

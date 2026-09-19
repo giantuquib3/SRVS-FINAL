@@ -1,127 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
+import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
-    const currentUserId = Number(user.id);
+    const currentUserId = user.id;
 
+    // ─── ADMIN ───────────────────────────────────────────────────────────────
     if (user.role === 'Admin') {
       const [
-        totalUsers,
-        pendingRegistrations,
+        totalAdmins,
+        totalDeptHeads,
+        totalEducators,
+        totalStudents,
+        pendingUsers,
+        totalCourses,
         totalSyllabi,
-        totalVersions,
-        recentVersions,
         pendingApprovals,
+        recentLogs,
       ] = await Promise.all([
-        prisma.user.count(),
+        prisma.user.count({ where: { role: 'Admin' } }),
+        prisma.user.count({ where: { role: 'DepartmentHead' } }),
+        prisma.user.count({ where: { role: 'Educator' } }),
+        prisma.user.count({ where: { role: 'Student' } }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval' } }),
+        prisma.course.count(),
         prisma.syllabus.count(),
-        prisma.syllabusVersion.count(),
-        prisma.syllabusVersion.findMany({
+        prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] } } }),
+        prisma.auditLog.findMany({
           orderBy: { createdAt: 'desc' },
-          take: 6,
-          include: {
-            editor: {
-              select: {
-                fullName: true,
-                role: true,
-              },
-            },
-            syllabus: {
-              include: {
-                subject: true,
-              },
-            },
-          },
+          take: 8,
         }),
-        prisma.syllabusVersion.count({ where: { approvalStatus: 'PENDING_APPROVAL' } }),
       ]);
 
-      const recentActivities = recentVersions.map((v) => ({
-        id: v.id,
-        actionType: v.changeType,
-        description: `Version ${v.versionNumber} (${v.approvalStatus}) for ${v.syllabus?.subject?.code || 'Syllabus'}`,
-        createdAt: v.createdAt,
-        user: {
-          fullName: v.editor.fullName,
-          role: v.editor.role,
-        },
-      }));
+      const totalUsers = totalAdmins + totalDeptHeads + totalEducators + totalStudents;
 
       return NextResponse.json({
         role: 'Admin',
         stats: {
           totalUsers,
-          pendingRegistrations,
+          totalAdmins,
+          totalDeptHeads,
+          totalEducators,
+          totalStudents,
+          pendingRegistrations: pendingUsers,
+          totalCourses,
           totalSyllabi,
-          totalVersions,
           pendingApprovals,
+          pendingSyllabi: pendingApprovals,
         },
-        recentActivities,
+        recentActivities: recentLogs.map((l) => ({
+          id: l.id,
+          actionType: l.actionType,
+          description: l.description,
+          createdAt: l.createdAt,
+          userDisplayName: l.userDisplayName,
+          resultStatus: l.resultStatus,
+          user: { fullName: l.userDisplayName, role: 'System' },
+        })),
       });
     }
 
+    // ─── DEPARTMENT HEAD ─────────────────────────────────────────────────────
     if (user.role === 'DepartmentHead') {
-      let deptId = user.departmentId ? Number(user.departmentId) : undefined;
-      let deptCode: string | undefined = undefined;
-      let deptName: string | undefined = undefined;
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      const deptName = getDepartmentName(deptCode);
 
-      if (!deptId) {
-        const dh = await prisma.departmentHead.findUnique({
-          where: { userId: currentUserId },
-          include: { departmentRel: true },
-        });
-        if (dh?.departmentRel) {
-          deptId = dh.departmentRel.id;
-          deptCode = dh.departmentRel.code;
-          deptName = dh.departmentRel.name;
-        } else if (dh?.department) {
-          deptCode = dh.department;
-          const d = await prisma.department.findUnique({ where: { code: dh.department } });
-          if (d) {
-            deptId = d.id;
-            deptName = d.name;
-          }
-        }
-      } else {
-        const d = await prisma.department.findUnique({ where: { id: deptId } });
-        if (d) {
-          deptCode = d.code;
-          deptName = d.name;
-        }
-      }
-
-      if (!deptId) {
+      if (!deptCode) {
         return NextResponse.json({
           role: 'DepartmentHead',
           department: null,
-          stats: {
-            totalCourses: 0,
-            totalSyllabi: 0,
-            draftSyllabi: 0,
-            submittedSyllabi: 0,
-            approvedSyllabi: 0,
-            rejectedSyllabi: 0,
-            educatorsCount: 0,
-            studentsCount: 0,
-            pendingRegistrations: 0,
-            pendingApprovals: 0,
-            missingSyllabi: 0,
-          },
+          stats: { totalCourses: 0, totalSyllabi: 0, draftSyllabi: 0, submittedSyllabi: 0, approvedSyllabi: 0, rejectedSyllabi: 0, educatorsCount: 0, studentsCount: 0, pendingRegistrations: 0, pendingApprovals: 0, missingSyllabi: 0 },
         });
       }
 
       const [
-        totalSubjects,
+        totalCourses,
         totalSyllabi,
         draftSyllabi,
         submittedSyllabi,
@@ -132,48 +92,25 @@ export async function GET(req: NextRequest) {
         pendingRegistrations,
         pendingApprovals,
       ] = await Promise.all([
-        prisma.subject.count({ where: { departmentId: deptId } }),
-        prisma.syllabus.count({ where: { departmentId: deptId } }),
-        prisma.syllabus.count({ where: { status: 'Draft', departmentId: deptId } }),
-        prisma.syllabus.count({ where: { status: 'Submitted', departmentId: deptId } }),
-        prisma.syllabus.count({ where: { status: 'Approved', departmentId: deptId } }),
-        prisma.syllabus.count({ where: { status: 'Rejected', departmentId: deptId } }),
-        prisma.faculty.count({
-          where: {
-            OR: [
-              ...(deptCode ? [{ department: deptCode }] : []),
-              ...(deptId ? [{ departmentRel: { id: deptId } }] : []),
-            ],
-          },
-        }),
-        prisma.student.count({
-          where: {
-            OR: [
-              ...(deptCode ? [{ department: deptCode }] : []),
-              ...(deptId ? [{ departmentRel: { id: deptId } }] : []),
-            ],
-          },
-        }),
-        prisma.user.count({ where: { accountStatus: 'PendingApproval', departmentId: deptId } }),
-        prisma.syllabusVersion.count({
-          where: {
-            approvalStatus: 'PENDING_APPROVAL',
-            syllabus: { departmentId: deptId },
-          },
-        }),
+        prisma.course.count({ where: { departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: ['Draft', 'DRAFT'] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: ['Submitted', 'PENDING_APPROVAL'] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: ['Rejected', 'REJECTED'] }, departmentId: deptCode } }),
+        prisma.user.count({ where: { role: 'Educator', departmentId: deptCode } }),
+        prisma.user.count({ where: { role: 'Student', departmentId: deptCode } }),
+        prisma.user.count({ where: { accountStatus: 'PendingApproval', departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] }, departmentId: deptCode } }),
       ]);
 
-      const missingSyllabi = Math.max(0, totalSubjects - approvedSyllabi);
+      const missingSyllabi = Math.max(0, totalCourses - approvedSyllabi);
 
       return NextResponse.json({
         role: 'DepartmentHead',
-        department: {
-          id: deptId,
-          code: deptCode,
-          name: deptName || (deptCode ? `${deptCode} Department` : null),
-        },
+        department: { id: deptCode, code: deptCode, name: deptName },
         stats: {
-          totalCourses: totalSubjects,
+          totalCourses,
           totalSyllabi,
           draftSyllabi,
           submittedSyllabi,
@@ -188,168 +125,93 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // ─── EDUCATOR ────────────────────────────────────────────────────────────
     if (user.role === 'Educator') {
-      let educatorDeptId = user.departmentId ? Number(user.departmentId) : undefined;
-      let educatorDeptCode: string | undefined = undefined;
-      let educatorDeptName: string | undefined = undefined;
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      const educatorIntId = !isNaN(parseInt(currentUserId, 10)) ? parseInt(currentUserId, 10) : 0;
 
-      if (!educatorDeptId) {
-        const fac = await prisma.faculty.findUnique({
-          where: { userId: currentUserId },
-          include: { departmentRel: true },
-        });
-        if (fac?.departmentRel) {
-          educatorDeptId = fac.departmentRel.id;
-          educatorDeptCode = fac.departmentRel.code;
-          educatorDeptName = fac.departmentRel.name;
-        } else if (fac?.department) {
-          educatorDeptCode = fac.department;
-          const d = await prisma.department.findUnique({ where: { code: fac.department } });
-          if (d) {
-            educatorDeptId = d.id;
-            educatorDeptName = d.name;
-          }
-        }
-      } else {
-        const d = await prisma.department.findUnique({ where: { id: educatorDeptId } });
-        if (d) {
-          educatorDeptCode = d.code;
-          educatorDeptName = d.name;
-        }
-      }
-
-      const [
-        totalMySyllabi,
-        draftCount,
-        submittedCount,
-        approvedCount,
-        rejectedCount,
-        recentSyllabi,
-      ] = await Promise.all([
-        prisma.syllabus.count({ where: { instructorId: currentUserId } }),
-        prisma.syllabus.count({ where: { instructorId: currentUserId, status: 'Draft' } }),
-        prisma.syllabus.count({ where: { instructorId: currentUserId, status: 'Submitted' } }),
-        prisma.syllabus.count({ where: { instructorId: currentUserId, status: 'Approved' } }),
-        prisma.syllabus.count({ where: { instructorId: currentUserId, status: 'Rejected' } }),
-        prisma.syllabus.findMany({
-          where: { instructorId: currentUserId },
-          orderBy: { updatedAt: 'desc' },
-          take: 5,
-          include: {
-            subject: true,
-            versions: {
-              orderBy: { versionNumber: 'desc' },
-              take: 1,
+      const [totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount, recentSyllabi] =
+        await Promise.all([
+          prisma.syllabus.count({ where: { instructorId: educatorIntId } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Draft', 'DRAFT'] } } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Submitted', 'PENDING_APPROVAL'] } } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Rejected', 'REJECTED'] } } }),
+          prisma.syllabus.findMany({
+            where: { instructorId: educatorIntId },
+            orderBy: { updatedAt: 'desc' },
+            take: 5,
+            include: {
+              course: true,
+              versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
             },
-          },
-        }),
-      ]);
+          }),
+        ]);
 
-      const formattedSyllabi = recentSyllabi.map((s) => ({
+      const formattedSyllabi = (recentSyllabi as any[]).map((s: any) => ({
         ...s,
-        course: s.subject,
+        subject: s.course,
+        subjectId: s.courseId,
       }));
 
       return NextResponse.json({
         role: 'Educator',
-        department: {
-          id: educatorDeptId,
-          code: educatorDeptCode,
-          name: educatorDeptName || (educatorDeptCode ? `${educatorDeptCode} Department` : null),
-        },
-        stats: {
-          totalMySyllabi,
-          draftCount,
-          submittedCount,
-          approvedCount,
-          rejectedCount,
-          unreadNotifications: 0,
-        },
+        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        stats: { totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount },
         recentSyllabi: formattedSyllabi,
       });
     }
 
-    // Student role
-    let studentDeptId = user.departmentId ? Number(user.departmentId) : null;
-    let studentDeptCode = user.departmentCode || '';
-    let studentDeptName = user.departmentName || '';
+    // ─── STUDENT ─────────────────────────────────────────────────────────────
+    const studentDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : '';
 
-    if (!studentDeptId) {
-      const studentProfile = await prisma.student.findUnique({
-        where: { userId: currentUserId },
-        include: { departmentRel: true },
-      });
-      if (studentProfile?.departmentRel) {
-        studentDeptId = studentProfile.departmentRel.id;
-        studentDeptCode = studentProfile.departmentRel.code;
-        studentDeptName = studentProfile.departmentRel.name;
-      } else if (studentProfile?.department) {
-        studentDeptCode = studentProfile.department;
-        const d = await prisma.department.findUnique({ where: { code: studentProfile.department } });
-        if (d) {
-          studentDeptId = d.id;
-          studentDeptName = d.name;
-        }
-      }
-    }
-
-    const enrollmentWhere: any = {
-      studentId: currentUserId,
-      status: 'ENROLLED',
-    };
-    if (studentDeptId) {
-      enrollmentWhere.subject = { departmentId: studentDeptId };
-    }
-
-    const [enrolledCount, activeEnrollments] = await Promise.all([
-      prisma.enrollment.count({ where: enrollmentWhere }),
-      prisma.enrollment.findMany({
-        where: enrollmentWhere,
-        include: {
-          subject: {
-            include: {
-              department: true,
-              syllabi: {
-                where: {
-                  status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] },
-                  ...(studentDeptId ? { departmentId: studentDeptId } : {}),
-                },
-                orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-                take: 1,
-                include: {
-                  versions: {
-                    where: { approvalStatus: { in: ['APPROVED', 'Approved'] } },
-                    orderBy: { versionNumber: 'desc' },
-                    take: 1,
-                  },
+    const studentIntId = parseInt(currentUserId, 10);
+    const enrollments = !isNaN(studentIntId)
+      ? await prisma.enrollment.findMany({
+          where: { studentId: studentIntId, status: 'ENROLLED' },
+          include: {
+            course: {
+              include: {
+                syllabi: {
+                  where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
+                  orderBy: { updatedAt: 'desc' },
+                  take: 1,
                 },
               },
             },
           },
+        })
+      : [];
+
+    const availableSyllabiCount = enrollments.filter((e: any) => e.course?.syllabi?.length > 0).length;
+
+    const formattedEnrollments = enrollments.map((e: any) => {
+      const deptCode = String(e.course.departmentId || '');
+      return {
+        id: `${e.studentId}_${e.courseId}`,
+        studentId: e.studentId,
+        studentName: e.studentName,
+        courseId: e.courseId,
+        subjectId: e.courseId,
+        course: {
+          ...e.course,
+          department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
         },
-      }),
-    ]);
-
-    const formattedEnrollments = activeEnrollments.map((e) => ({
-      ...e,
-      course: e.subject,
-    }));
-
-    const availableSyllabiCount = activeEnrollments.filter((e) => {
-      return e.subject?.syllabi && e.subject.syllabi.length > 0;
-    }).length;
+        subject: e.course,
+      };
+    });
 
     return NextResponse.json({
       role: 'Student',
       stats: {
-        enrolledCount,
+        enrolledCount: enrollments.length,
         availableSyllabiCount,
         unreadNotifications: 0,
       },
       department: {
-        id: studentDeptId,
+        id: studentDeptCode,
         code: studentDeptCode,
-        name: studentDeptName,
+        name: getDepartmentName(studentDeptCode),
       },
       enrolledSubjects: formattedEnrollments,
     });

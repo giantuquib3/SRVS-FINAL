@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,106 +11,52 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: Number(session.id) },
-    select: {
-      id: true,
-      idNumber: true,
-      email: true,
-      fullName: true,
-      role: true,
-      accountStatus: true,
-      departmentId: true,
-      department: {
-        select: {
-          id: true,
-          code: true,
-          name: true,
-        },
-      },
-      studentProfile: {
-        select: {
-          department: true,
-          departmentRel: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
-          },
-        },
-      },
-      deptHeadProfile: {
-        select: {
-          department: true,
-          departmentRel: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
-          },
-        },
-      },
-      facultyProfile: {
-        select: {
-          department: true,
-          departmentRel: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!user || user.accountStatus !== 'Active') {
+  const userIdInt = parseInt(session.id, 10);
+  if (isNaN(userIdInt)) {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  const isAdmin = user.role === 'Admin';
+  const userRecord = await prisma.user.findUnique({
+    where: { id: userIdInt },
+  });
 
-  const deptId = isAdmin
-    ? null
-    : user.departmentId ||
-      user.studentProfile?.departmentRel?.id ||
-      user.deptHeadProfile?.departmentRel?.id ||
-      user.facultyProfile?.departmentRel?.id ||
-      null;
+  if (!userRecord || (userRecord.accountStatus && userRecord.accountStatus !== 'Active')) {
+    return NextResponse.json({ user: null }, { status: 401 });
+  }
 
-  const deptCode = isAdmin
-    ? null
-    : user.department?.code ||
-      user.studentProfile?.departmentRel?.code ||
-      user.studentProfile?.department ||
-      user.deptHeadProfile?.departmentRel?.code ||
-      user.deptHeadProfile?.department ||
-      user.facultyProfile?.departmentRel?.code ||
-      user.facultyProfile?.department ||
-      null;
+  const isAdmin = userRecord.role === 'Admin';
+  const deptCode = isAdmin ? null : (userRecord.departmentId || null);
+  const deptName = isAdmin ? 'All Departments (Administration)' : getDepartmentName(deptCode);
 
-  const deptName = isAdmin
-    ? 'All Departments (Administration)'
-    : user.department?.name ||
-      user.studentProfile?.departmentRel?.name ||
-      user.deptHeadProfile?.departmentRel?.name ||
-      user.facultyProfile?.departmentRel?.name ||
-      (deptCode ? `${deptCode} Department` : null);
+  let userEnrollments: any[] = [];
+  if (userRecord.role === 'Student') {
+    userEnrollments = await prisma.enrollment.findMany({
+      where: { studentId: userRecord.id, status: 'ENROLLED' },
+      include: { course: true },
+    });
+  }
+
+  const enrolledCodes = userEnrollments
+    .map((e) => e.course?.code)
+    .filter(Boolean)
+    .join(', ');
 
   return NextResponse.json({
     user: {
-      id: user.id,
-      idNumber: user.idNumber,
-      email: user.email,
-      username: user.idNumber,
-      fullName: user.fullName,
-      role: user.role,
-      departmentId: deptId,
+      id: userRecord.id,
+      idNumber: userRecord.id,
+      email: userRecord.email,
+      username: userRecord.id,
+      fullName: userRecord.fullName,
+      role: userRecord.role,
+      departmentId: deptCode,
       departmentCode: deptCode,
       departmentName: deptName,
+      title: userRecord.academicRank || (userRecord.role === 'DepartmentHead' ? 'Department Chairperson' : null),
+      academicRank: userRecord.academicRank || (userRecord.role === 'Educator' ? 'Faculty Member' : null),
+      yearLevel: userRecord.yearLevel || (userRecord.role === 'Student' ? '1st Year' : null),
+      enrolledSubjects: enrolledCodes,
+      enrollments: userEnrollments,
     },
   });
 }
