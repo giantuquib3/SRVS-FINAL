@@ -8,6 +8,7 @@ export async function GET(req?: NextRequest) {
   const startTime = Date.now();
   try {
     const [
+      departmentsCount,
       usersCount,
       adminsCount,
       deptHeadsCount,
@@ -19,6 +20,7 @@ export async function GET(req?: NextRequest) {
       auditLogsCount,
       enrollmentsCount,
     ] = await Promise.all([
+      prisma.department.count(),
       prisma.user.count(),
       prisma.user.count({ where: { role: 'Admin' } }),
       prisma.user.count({ where: { role: 'DepartmentHead' } }),
@@ -44,7 +46,9 @@ export async function GET(req?: NextRequest) {
       latencyMs: `${latencyMs}ms`,
       timestamp: new Date().toISOString(),
       tables: {
-        admin: usersCount,
+        departments: departmentsCount,
+        users: usersCount,
+        admin: usersCount, // Backwards-compatible alias
         admins: adminsCount,
         department_heads: deptHeadsCount,
         educators: educatorsCount,

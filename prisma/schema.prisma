@@ -9,19 +9,36 @@ datasource db {
   relationMode = "prisma"
 }
 
-// 1. Master Authentication & User Directory (Admins, Department Heads, Educators, and Students)
+// 1. Academic Departments (Institutional Engineering Departments)
+model Department {
+  id          String   @id // String ID: CPE, EE, CE, ECE, IE, ME
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users   User[]
+  courses Course[]
+  syllabi Syllabus[]
+
+  @@map("departments")
+}
+
+// 2. Master User Directory (Admins, Department Heads, Educators, and Students)
 model User {
-  id            Int      @id // University ID: 0 (Admin), 5 digits (Faculty/DeptHead), 10 digits / numeric (Student)
-  email         String   @unique
+  id            Int         @id // University ID: 0 (Admin), 5 digits (Faculty/DeptHead), 10 digits / numeric (Student)
+  email         String      @unique
   passwordHash  String
   fullName      String
-  role          String   @default("Student") // Admin, DepartmentHead, Educator, Student
-  departmentId  String?  // CPE, EE, CE, ECE, IE, ME (Remains string)
-  academicRank  String?  // Department Chairperson, Assistant Professor, Instructor, etc.
-  yearLevel     String?  // 1st Year, 2nd Year, 3rd Year, 4th Year
-  accountStatus String   @default("Active") // Active, PendingApproval, Rejected, Deactivated
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  role          String      @default("Student") // Admin, DepartmentHead, Educator, Student
+  departmentId  String?     // CPE, EE, CE, ECE, IE, ME (References Department.id)
+  department    Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  academicRank  String?     // Department Chairperson, Assistant Professor, Instructor, etc.
+  yearLevel     String?     // 1st Year, 2nd Year, 3rd Year, 4th Year
+  accountStatus String      @default("Active") // Active, PendingApproval, Rejected, Deactivated
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   // Relational Connections
   coursesAssigned   Course[]          @relation("FacultyCourses")
@@ -38,27 +55,28 @@ model User {
   @@index([role])
   @@index([departmentId])
   @@index([accountStatus])
-  @@map("admin")
+  @@map("users")
 }
 
-// 2. Courses (Academic Curriculum Catalog)
+// 3. Courses (Academic Curriculum Catalog)
 model Course {
-  id           Int      @id @default(autoincrement()) // INTEGER primary key
-  code         String   @unique // e.g. "CPE101"
+  id           Int         @id @default(autoincrement()) // INTEGER primary key
+  code         String      @unique // e.g. "CPE101"
   title        String
   description  String?
-  units        Int      @default(3)
-  lecHours     Int      @default(3)
-  labHours     Int      @default(0)
-  prerequisite String?  @default("None")
-  yearLevel    String?  @default("1st Year")
-  semester     String?  @default("1st Semester")
-  departmentId String   // CPE, EE, CE, ECE, IE, ME (Remains string)
-  facultyName  String?  // Name of professor who uploaded syllabus
-  facultyId    Int?     // Connected to User.id (admin)
-  faculty      User?    @relation("FacultyCourses", fields: [facultyId], references: [id], onDelete: SetNull)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  units        Int         @default(3)
+  lecHours     Int         @default(3)
+  labHours     Int         @default(0)
+  prerequisite String?     @default("None")
+  yearLevel    String?     @default("1st Year")
+  semester     String?     @default("1st Semester")
+  departmentId String      // References Department.id
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  facultyName  String?     // Name of professor who uploaded syllabus
+  facultyId    Int?        // Connected to User.id (users)
+  faculty      User?       @relation("FacultyCourses", fields: [facultyId], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   syllabi     Syllabus[]
   enrollments Enrollment[]
@@ -68,9 +86,9 @@ model Course {
   @@map("courses")
 }
 
-// 3. Student Course Enrollments
+// 4. Student Course Enrollments
 model Enrollment {
-  studentId    Int      // Numeric Student ID (references admin.id)
+  studentId    Int      // Numeric Student ID (references users.id)
   studentName  String   // Full Name of the enrolled student
   courseId     Int      // INTEGER Course ID (references courses.id)
   course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -88,14 +106,15 @@ model Enrollment {
   @@map("enrollments")
 }
 
-// 4. Master Syllabi Approvals
+// 5. Master Syllabi Approvals
 model Syllabus {
   id                   Int             @id @default(autoincrement()) // INTEGER primary key
   courseId             Int             // INTEGER references courses.id
   course               Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  instructorId         Int             // INTEGER references admin.id
+  instructorId         Int             // INTEGER references users.id
   instructor           User            @relation("InstructorSyllabi", fields: [instructorId], references: [id], onDelete: Cascade)
-  departmentId         String          // CPE, EE, CE, ECE, IE, ME (Remains string)
+  departmentId         String          // References Department.id
+  department           Department      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   academicYear         String
   semester             String
   section              String          @default("A")
@@ -104,7 +123,7 @@ model Syllabus {
   reviewerRemarks      String?
   submittedAt          DateTime?
   reviewedAt           DateTime?
-  reviewedByUserId     Int?            // INTEGER references admin.id
+  reviewedByUserId     Int?            // INTEGER references users.id
   reviewedBy           User?           @relation("DeptHeadReviewedSyllabi", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
@@ -118,13 +137,13 @@ model Syllabus {
   @@map("syllabi")
 }
 
-// 8. Syllabus Versions & Revision Tracking
+// 6. Syllabus Versions & Revision Tracking
 model SyllabusVersion {
   id              Int      @id @default(autoincrement()) // INTEGER primary key
   syllabusId      Int      // INTEGER references syllabi.id
   syllabus        Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
   versionNumber   Int
-  editorId        Int      // INTEGER references admin.id
+  editorId        Int      // INTEGER references users.id
   editor          User     @relation("EditorVersions", fields: [editorId], references: [id])
   changeSummary   String
   changeType      String   @default("Create") // Create, Edit, Submit, Approve, Reject, Restore
@@ -139,10 +158,10 @@ model SyllabusVersion {
   fileSize Int?
 
   // Submission & Review tracking
-  submittedById   Int?      // INTEGER references admin.id
+  submittedById   Int?      // INTEGER references users.id
   submittedBy     User?     @relation("SubmittedVersions", fields: [submittedById], references: [id], onDelete: SetNull)
   submittedAt     DateTime?
-  reviewedById    Int?      // INTEGER references admin.id
+  reviewedById    Int?      // INTEGER references users.id
   reviewedBy      User?     @relation("ReviewedVersions", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
   rejectionReason String?
@@ -156,10 +175,10 @@ model SyllabusVersion {
   @@map("syllabus_versions")
 }
 
-// 9. System Audit Trail
+// 7. System Audit Trail
 model AuditLog {
   id              Int      @id @default(autoincrement()) // INTEGER primary key
-  userId          Int?     // INTEGER references admin.id
+  userId          Int?     // INTEGER references users.id
   user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   userDisplayName String?
   actionType      String   // Login, Register, ApproveUser, RejectUser, CreateCourse, EnrollStudent, SubmitSyllabus, etc.

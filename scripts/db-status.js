@@ -7,6 +7,7 @@ async function checkDatabase() {
 
   try {
     const [
+      totalDepts,
       totalUsers,
       totalAdmins,
       totalDeptHeads,
@@ -18,6 +19,7 @@ async function checkDatabase() {
       versions,
       logs,
     ] = await Promise.all([
+      prisma.department.count(),
       prisma.user.count(),
       prisma.user.count({ where: { role: 'Admin' } }),
       prisma.user.count({ where: { role: 'DepartmentHead' } }),
@@ -39,14 +41,15 @@ async function checkDatabase() {
     console.log(`Roundtrip Latency: ${latency} ms`);
     console.log(`Connection Status: HEALTHY & ONLINE\n`);
 
-    console.log('Simplified & Non-Redundant Database Tables (6 tables):');
+    console.log('Organized Relational Database Tables (7 Core Tables):');
     console.table({
-      'admin (users)': { Records: totalUsers, PK_Type: 'String (ID Number)', Description: `Unified User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
-      'courses': { Records: courses, PK_Type: 'String (Course Code)', Description: 'Course Catalog with facultyName & facultyId of syllabus author' },
-      'enrollments': { Records: enrollments, PK_Type: 'Compound (studentId INT, courseId)', Description: 'Student enrollments with numeric StudentId (INT) & direct StudentName' },
-      'syllabi': { Records: syllabi, PK_Type: 'String (CUID)', Description: 'Course Syllabi Master Records' },
-      'syllabus_versions': { Records: versions, PK_Type: 'String (CUID)', Description: 'Immutable Revision History' },
-      'audit_logs': { Records: logs, PK_Type: 'String (CUID)', Description: 'System Security & Activity Trail' },
+      'departments': { Records: totalDepts, PK_Type: 'String (Code: CPE, EE, CE, etc.)', Description: 'Academic Engineering Departments (Primary reference for departmentId)' },
+      'users': { Records: totalUsers, PK_Type: 'INTEGER (University ID)', Description: `Master User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
+      'courses': { Records: courses, PK_Type: 'INTEGER (SERIAL)', Description: 'Curriculum Course Catalog linked to departments(id) & users(id)' },
+      'enrollments': { Records: enrollments, PK_Type: 'Compound (studentId INT, courseId INT)', Description: 'Student enrollments with numeric StudentId (INT) & CourseId (INT)' },
+      'syllabi': { Records: syllabi, PK_Type: 'INTEGER (SERIAL)', Description: 'Master Syllabi linked to courses(id), users(id), departments(id)' },
+      'syllabus_versions': { Records: versions, PK_Type: 'INTEGER (SERIAL)', Description: 'Immutable Revision History linked to syllabi(id) & users(id)' },
+      'audit_logs': { Records: logs, PK_Type: 'INTEGER (SERIAL)', Description: 'Security & Audit Trail linked to users(id)' },
     });
 
     const admin = await prisma.user.findFirst({
@@ -58,14 +61,13 @@ async function checkDatabase() {
       console.log(`  ✓ Database ID: ${admin.id}`);
       console.log(`  ✓ Email: ${admin.email}`);
       console.log(`  ✓ Name: ${admin.fullName}`);
+      console.log(`  ✓ Role: ${admin.role}`);
       console.log(`  ✓ Status: ${admin.accountStatus}`);
-    } else {
-      console.log('  ⚠️ No Admin user found! Run "node prisma/seed.js" to seed.');
     }
 
+    console.log('\nSample Users by Role:');
     const sampleUsers = await prisma.user.findMany({
       take: 10,
-      orderBy: { id: 'asc' },
       select: {
         id: true,
         fullName: true,
@@ -73,15 +75,13 @@ async function checkDatabase() {
         departmentId: true,
         accountStatus: true,
       },
+      orderBy: { id: 'asc' },
     });
-
-    console.log('\nRegistered Accounts Sample (users table):');
     console.table(sampleUsers);
 
     console.log('\n✅ Database and schema verification completed successfully!');
-  } catch (err) {
-    console.error('❌ Database connection error:', err.message);
-    process.exit(1);
+  } catch (error) {
+    console.error('❌ Database check failed:', error);
   } finally {
     await prisma.$disconnect();
   }

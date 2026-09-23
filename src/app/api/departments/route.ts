@@ -9,10 +9,16 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search');
 
-    let list = DEPARTMENTS;
+    // Retrieve from database table departments, fallback to constant if empty
+    let dbDepts = await prisma.department.findMany({
+      orderBy: { code: 'asc' },
+    });
+
+    let list = dbDepts.length > 0 ? dbDepts : DEPARTMENTS;
+
     if (search?.trim()) {
       const q = search.trim().toLowerCase();
-      list = DEPARTMENTS.filter(
+      list = list.filter(
         (d) => d.code.toLowerCase().includes(q) || d.name.toLowerCase().includes(q)
       );
     }

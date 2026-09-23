@@ -73,7 +73,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
       },
       {
         name: '10. System & PostgreSQL Database Health',
-        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all 6 core unified entities (admin, courses, enrollments, syllabi, syllabus_versions, audit_logs).',
+        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all 7 core organized entities (departments, users, courses, enrollments, syllabi, syllabus_versions, audit_logs).',
       },
     ],
     components: {
@@ -101,7 +101,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
             fullName: { type: 'string', example: 'Dr. Alan Turing' },
             role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'DepartmentHead' },
             accountStatus: { type: 'string', enum: ['PendingApproval', 'Active', 'Rejected', 'Deactivated'], example: 'Active' },
-            departmentId: { type: 'string', example: 'CPE' },
+            departmentId: { type: 'string', example: 'CPE', description: 'References departments.id' },
             academicRank: { type: 'string', nullable: true, example: 'Department Chairperson' },
             yearLevel: { type: 'string', nullable: true, example: null },
             createdAt: { type: 'string', format: 'date-time' },
@@ -110,7 +110,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
         Department: {
           type: 'object',
           properties: {
-            id: { type: 'string', example: 'CPE' },
+            id: { type: 'string', example: 'CPE', description: 'Department code identifier (e.g. CPE, EE, CE, ECE, IE, ME)' },
             code: { type: 'string', example: 'CPE' },
             name: { type: 'string', example: 'Computer Engineering Department' },
             description: { type: 'string', nullable: true, example: 'College of Engineering' },
@@ -130,15 +130,15 @@ This interactive OpenAPI documentation provides complete, executable specificati
             prerequisite: { type: 'string', example: 'None' },
             yearLevel: { type: 'string', example: '1st Year' },
             semester: { type: 'string', example: '1st Semester' },
-            departmentId: { type: 'string', example: 'CPE' },
+            departmentId: { type: 'string', example: 'CPE', description: 'References departments.id' },
             facultyName: { type: 'string', nullable: true, example: 'Dr. Alan Turing' },
-            facultyId: { type: 'integer', nullable: true, example: 10001, description: 'References admin.id' },
+            facultyId: { type: 'integer', nullable: true, example: 10001, description: 'References users.id' },
           },
         },
         Enrollment: {
           type: 'object',
           properties: {
-            studentId: { type: 'integer', example: 2022012701, description: 'Numeric Student ID (references admin.id)' },
+            studentId: { type: 'integer', example: 2022012701, description: 'Numeric Student ID (references users.id)' },
             studentName: { type: 'string', example: 'Carlos Reyes' },
             courseId: { type: 'integer', example: 1, description: 'References courses.id' },
             semester: { type: 'string', example: '1st Semester' },
@@ -153,14 +153,14 @@ This interactive OpenAPI documentation provides complete, executable specificati
           properties: {
             id: { type: 'integer', example: 1 },
             courseId: { type: 'integer', example: 1, description: 'References courses.id' },
-            instructorId: { type: 'integer', example: 10001, description: 'References admin.id (Department Head or Educator)' },
-            departmentId: { type: 'string', example: 'CPE' },
+            instructorId: { type: 'integer', example: 10001, description: 'References users.id (Department Head or Educator)' },
+            departmentId: { type: 'string', example: 'CPE', description: 'References departments.id' },
             academicYear: { type: 'string', example: '2026-2027' },
             semester: { type: 'string', example: '1st Semester' },
             section: { type: 'string', example: 'A' },
             status: { type: 'string', enum: ['Draft', 'Submitted', 'Approved', 'Rejected', 'DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED'], example: 'ACTIVE' },
             currentVersionNumber: { type: 'integer', example: 1 },
-            reviewedByUserId: { type: 'integer', nullable: true, example: 10001, description: 'References admin.id' },
+            reviewedByUserId: { type: 'integer', nullable: true, example: 10001, description: 'References users.id' },
             submittedAt: { type: 'string', format: 'date-time', nullable: true },
             reviewedAt: { type: 'string', format: 'date-time', nullable: true },
             reviewerRemarks: { type: 'string', nullable: true },
