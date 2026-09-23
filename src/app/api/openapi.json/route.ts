@@ -73,7 +73,7 @@ This interactive OpenAPI documentation provides complete, executable specificati
       },
       {
         name: '10. System & PostgreSQL Database Health',
-        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all 7 core organized entities (departments, users, courses, enrollments, syllabi, syllabus_versions, audit_logs).',
+        description: 'Live database connection latency, connection pooler diagnostics, and table row counts across all 7 core organized entities (departments, admin, courses, enrollments, syllabi, syllabus_versions, audit_logs).',
       },
     ],
     components: {
