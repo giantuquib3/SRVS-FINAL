@@ -189,7 +189,7 @@ async function runTestSuite() {
     learningOutcomes: ['Outcome 1: Mastery', 'Outcome 2: Innovation'],
     directApprove: true,
   });
-  assert(createSyllabusRes.status === 201, 'POST /api/syllabi (DeptHead creates and direct-approves)');
+  assert(createSyllabusRes.status === 201, 'POST /api/syllabi (DeptHead creates and direct-approves)', `(status: ${createSyllabusRes.status}, data: ${JSON.stringify(createSyllabusRes.data)})`);
   const createdSyllabusId = createSyllabusRes.data.syllabus?.id;
 
   const syllabusDetailRes = await request(`http://localhost:3000/api/syllabi/${createdSyllabusId}`, {
