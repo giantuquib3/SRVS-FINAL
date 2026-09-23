@@ -236,7 +236,7 @@ New self-registered accounts default to **PendingApproval** status awaiting admi
                     email: { type: 'string', format: 'email', example: 'gian@usjr.edu.ph', description: 'Institutional email address' },
                     password: { type: 'string', minLength: 6, example: 'Password123!', description: 'Password (min 6 characters)' },
                     role: { type: 'string', enum: ['Student', 'Educator'], example: 'Student', description: 'Role requested' },
-                    departmentId: { type: 'string', example: '1', description: 'Department ID or Department code (e.g. 1 or "CPE")' },
+                    departmentId: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE', description: 'Academic department code (CPE, EE, CE, ECE, IE, ME)' },
                   },
                 },
               },
@@ -394,9 +394,9 @@ Authenticates a user via their **University ID Number** (or username) and passwo
                           username: { type: 'string', example: '00000' },
                           fullName: { type: 'string', example: 'System Administrator' },
                           role: { type: 'string', example: 'Admin' },
-                          departmentId: { type: 'integer', nullable: true, example: null },
-                          departmentCode: { type: 'string', nullable: true, example: null },
-                          departmentName: { type: 'string', nullable: true, example: null },
+                          departmentId: { type: 'string', nullable: true, enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+                          departmentCode: { type: 'string', nullable: true, example: 'CPE' },
+                          departmentName: { type: 'string', nullable: true, example: 'Computer Engineering Department' },
                         },
                       },
                     },
@@ -544,7 +544,7 @@ Authenticates a user via their **University ID Number** (or username) and passwo
 Retrieves a paginated list of all system users.
 - **Admin**: Has full visibility across all university departments.
 - **Department Head**: Automatically scoped to users within their assigned department.
-- Includes segregated profile information (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, \`srvs_students\`).
+- Master user directory based on the \`admin\` table.
           `.trim(),
           security: [{ cookieAuth: [] }],
           parameters: [
@@ -566,8 +566,15 @@ Retrieves a paginated list of all system users.
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter by academic department ID or code',
-              schema: { type: 'string', example: '1' },
+              description: 'Filter by academic department code (CPE, EE, CE, ECE, IE, ME)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+            },
+            {
+              name: 'idNumber',
+              in: 'query',
+              required: false,
+              description: 'Filter by user ID number (e.g., 2022012708 for student, 10001 for educator/dept head, 0 for admin)',
+              schema: { type: 'string', example: '10001' },
             },
             {
               name: 'search',
@@ -629,9 +636,9 @@ Retrieves a paginated list of all system users.
           tags: ['2. Role: System Administrator'],
           summary: 'Create User Account (Admin Direct Provisioning)',
           description: `
-System Administrator direct account creation with immediate role allocation and segregated profile synchronization:
-- Automatically creates entry in \`srvs_users\` and corresponding segregated profile (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, or \`srvs_students\`).
-- Validates 10-digit ID for Students and 5-digit ID for Faculty/Admin.
+System Administrator direct account creation with immediate role allocation:
+- Automatically creates entry in the \`admin\` user directory table.
+- Validates 10-digit ID for Students (e.g. 2022012708) and 5-digit ID for Faculty/Admin (e.g. 10001).
           `.trim(),
           security: [{ cookieAuth: [] }],
           parameters: [
@@ -657,7 +664,7 @@ System Administrator direct account creation with immediate role allocation and 
                     idNumber: { type: 'string', example: '10002', description: '5-digit ID for Faculty/Admin or 10-digit ID for Student' },
                     password: { type: 'string', minLength: 6, example: 'FacultyPass123!', description: 'Initial account password' },
                     role: { type: 'string', enum: ['Admin', 'DepartmentHead', 'Educator', 'Student'], example: 'Educator', description: 'Institutional role' },
-                    departmentId: { type: 'string', example: '1', description: 'Department numeric ID or code (e.g. 1 or "CPE")' },
+                    departmentId: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE', description: 'Academic department code (CPE, EE, CE, ECE, IE, ME)' },
                     accountStatus: { type: 'string', enum: ['Active', 'PendingApproval', 'Deactivated'], example: 'Active', description: 'Initial account status' },
                   },
                 },
@@ -666,7 +673,7 @@ System Administrator direct account creation with immediate role allocation and 
           },
           responses: {
             201: {
-              description: 'User account created and segregated profile synchronized',
+              description: 'User account created successfully in admin directory',
               content: {
                 'application/json': {
                   schema: {
@@ -692,7 +699,7 @@ Executes administrative account actions:
 - \`Reject\`: Rejects pending registration
 - \`Activate\`: Re-enables a deactivated user
 - \`Deactivate\`: Suspends account access
-- \`ChangeRole\`: Switches user role and cleanly synchronizes segregated role profile tables (\`srvs_admins\`, \`srvs_department_heads\`, \`srvs_faculties\`, \`srvs_students\`).
+- \`ChangeRole\`: Switches user role in the institutional directory.
           `.trim(),
           security: [{ cookieAuth: [] }],
           parameters: [
@@ -713,7 +720,7 @@ Executes administrative account actions:
                   type: 'object',
                   required: ['userId', 'action'],
                   properties: {
-                    userId: { type: 'string', example: '1', description: 'User ID (numeric ID or ID Number string)' },
+                    userId: { type: 'string', example: '10001', description: 'User ID number (e.g. 10001 for educator, 2022012708 for student)' },
                     action: {
                       type: 'string',
                       enum: ['Approve', 'Reject', 'Activate', 'Deactivate', 'ChangeRole'],
@@ -753,15 +760,15 @@ Executes administrative account actions:
         delete: {
           tags: ['2. Role: System Administrator'],
           summary: 'Delete User Account (Admin Only)',
-          description: 'Permanently deletes a user account, cascading deletion to segregated role profiles and course enrollments. System administrators cannot delete their own active account.',
+          description: 'Permanently deletes or deactivates a user account. System administrators cannot delete their own active account.',
           security: [{ cookieAuth: [] }],
           parameters: [
             {
               name: 'userId',
               in: 'query',
               required: true,
-              description: 'User numeric ID or ID Number string to delete',
-              schema: { type: 'string', example: '4' },
+              description: 'User ID number to delete (e.g. 2022012708 or 10001)',
+              schema: { type: 'string', example: '2022012708' },
             },
             {
               name: 'hardDelete',
@@ -937,6 +944,13 @@ Executes administrative account actions:
               schema: { type: 'integer', default: 100, example: 50 },
             },
             {
+              name: 'userId',
+              in: 'query',
+              required: false,
+              description: 'Filter audit logs by User ID number (e.g. 2022012708, 10001, 0)',
+              schema: { type: 'integer', example: 10001 },
+            },
+            {
               name: 'actionType',
               in: 'query',
               required: false,
@@ -1020,8 +1034,15 @@ Retrieves students directory with departmental filtering:
               name: 'department',
               in: 'query',
               required: false,
-              description: 'Filter by department code (e.g., "CPE") or department ID',
-              schema: { type: 'string', example: 'CPE' },
+              description: 'Filter by academic department code (CPE, EE, CE, ECE, IE, ME)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+            },
+            {
+              name: 'studentId',
+              in: 'query',
+              required: false,
+              description: 'Filter by Student ID Number (e.g. 2022012708)',
+              schema: { type: 'string', example: '2022012708' },
             },
             {
               name: 'search',
@@ -1072,12 +1093,11 @@ Retrieves students directory with departmental filtering:
                         items: {
                           type: 'object',
                           properties: {
-                            id: { type: 'integer', example: 4, description: 'User master ID' },
-                            studentTableId: { type: 'integer', example: 1, description: 'srvs_students table integer ID' },
+                            id: { type: 'integer', example: 2022012708, description: 'Student ID Number in admin table' },
                             idNumber: { type: 'string', example: '2022012708', description: '10-digit Student ID Number' },
                             fullName: { type: 'string', example: 'Gian Carlo' },
                             email: { type: 'string', example: 'gian@usjr.edu.ph' },
-                            department: { type: 'string', example: 'CPE', description: 'Department code (not a number)' },
+                            department: { type: 'string', example: 'CPE', description: 'Department code' },
                             enrolledSubjects: { type: 'string', example: 'CPE 101', description: 'Codes only of enrolled subjects' },
                             yearLevel: { type: 'string', example: '3rd Year' },
                           },
@@ -1104,8 +1124,8 @@ Retrieves students directory with departmental filtering:
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter announcements by target department ID',
-              schema: { type: 'integer', example: 1 },
+              description: 'Filter announcements by target department code (CPE, EE, CE, ECE, IE, ME)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
             },
             {
               name: 'limit',
@@ -1164,7 +1184,7 @@ Retrieves students directory with departmental filtering:
                   properties: {
                     title: { type: 'string', example: 'Midterm Syllabus Review Schedule', description: 'Announcement title' },
                     message: { type: 'string', example: 'All faculty members are requested to submit draft syllabi by Friday.', description: 'Body text' },
-                    departmentId: { type: 'integer', example: 1, description: 'Target department ID' },
+                    departmentId: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE', description: 'Target department code (CPE, EE, CE, ECE, IE, ME)' },
                   },
                 },
               },
@@ -1212,7 +1232,14 @@ Retrieves students directory with departmental filtering:
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter by department ID or department code (e.g., "CPE")',
+              description: 'Filter by academic department code (CPE, EE, CE, ECE, IE, ME)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+            },
+            {
+              name: 'courseId',
+              in: 'query',
+              required: false,
+              description: 'Filter by Course ID integer (e.g. 1) or Course Code (e.g. CPE101)',
               schema: { type: 'string', example: '1' },
             },
             {
@@ -1292,7 +1319,7 @@ Retrieves students directory with departmental filtering:
                   properties: {
                     code: { type: 'string', example: 'CPE 101', description: 'Unique subject code' },
                     title: { type: 'string', example: 'Introduction to Computer Engineering', description: 'Descriptive course title' },
-                    departmentId: { type: 'string', example: '1', description: 'Department numeric ID or code (e.g. 1 or "CPE")' },
+                    departmentId: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE', description: 'Academic department code (CPE, EE, CE, ECE, IE, ME)' },
                     description: { type: 'string', example: 'Foundations of hardware-software co-design.', description: 'Course catalog description' },
                     units: { type: 'integer', example: 3, description: 'Total academic units' },
                     lecHours: { type: 'integer', example: 3, description: 'Lecture hours per week' },
@@ -1329,11 +1356,13 @@ Retrieves students directory with departmental filtering:
       '/api/courses': {
         get: {
           tags: ['6. Academic Curriculum & Subjects'],
-          summary: 'Courses Catalog (Legacy Compatibility Route for Subjects)',
-          description: 'Alias route returning academic subjects mapped as courses for existing UI consumers.',
+          summary: 'Courses Catalog',
+          description: 'Retrieves academic courses catalog with department, faculty, and syllabus status.',
           parameters: [
             { name: 'search', in: 'query', required: false, description: 'Search courses by code or title', schema: { type: 'string', example: 'CPE' } },
-            { name: 'departmentId', in: 'query', required: false, description: 'Filter courses by department', schema: { type: 'string', example: '1' } },
+            { name: 'departmentId', in: 'query', required: false, description: 'Filter courses by academic department code (CPE, EE, CE, ECE, IE, ME)', schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' } },
+            { name: 'courseId', in: 'query', required: false, description: 'Filter by Course ID integer (e.g. 1) or Course Code (e.g. CPE101)', schema: { type: 'string', example: '1' } },
+            { name: 'facultyId', in: 'query', required: false, description: 'Filter by assigned Faculty ID number (e.g. 10001)', schema: { type: 'integer', example: 10001 } },
             { name: 'yearLevel', in: 'query', required: false, description: 'Filter by student year standing', schema: { type: 'string', example: '2nd Year' } },
             { name: 'semester', in: 'query', required: false, description: 'Filter by academic term offered', schema: { type: 'string', example: '1st Semester' } },
             { name: 'limit', in: 'query', required: false, description: 'Max results to return', schema: { type: 'integer', default: 50, example: 50 } },
@@ -1357,8 +1386,8 @@ Retrieves students directory with departmental filtering:
         },
         post: {
           tags: ['6. Academic Curriculum & Subjects', '3. Role: Department Head'],
-          summary: 'Create Course (Legacy Compatibility Route for Subjects)',
-          description: 'Alias route to create a subject/course entry in the curriculum. Restricted exclusively to Department Heads (Administrators cannot add courses).',
+          summary: 'Create Course',
+          description: 'Creates a course entry in the curriculum catalog. Accessible to Department Heads and Administrators.',
           security: [{ cookieAuth: [] }],
           parameters: [
             {
@@ -1380,7 +1409,7 @@ Retrieves students directory with departmental filtering:
                   properties: {
                     code: { type: 'string', example: 'CPE 201' },
                     title: { type: 'string', example: 'Data Structures and Algorithms' },
-                    departmentId: { type: 'string', example: '1' },
+                    departmentId: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE', description: 'Academic department code (CPE, EE, CE, ECE, IE, ME)' },
                     description: { type: 'string', example: 'Algorithm analysis and abstract data types.' },
                     units: { type: 'integer', example: 3 },
                     lecHours: { type: 'integer', example: 2 },
@@ -1388,6 +1417,7 @@ Retrieves students directory with departmental filtering:
                     prerequisite: { type: 'string', example: 'CPE 101' },
                     yearLevel: { type: 'string', example: '2nd Year' },
                     semester: { type: 'string', example: '1st Semester' },
+                    facultyId: { type: 'integer', example: 10001, description: 'Assigned Faculty / Educator ID number' },
                   },
                 },
               },
@@ -1395,8 +1425,30 @@ Retrieves students directory with departmental filtering:
           },
           responses: {
             201: { description: 'Course created successfully' },
-            400: { description: 'Missing required fields' },
-            403: { description: 'Unauthorized: Only Department Heads can add courses. System Administrators cannot add courses.' },
+            400: { description: 'Missing required fields or invalid department' },
+            403: { description: 'Unauthorized: Only Department Heads and Administrators can add courses.' },
+            409: { description: 'Course with this code already exists' },
+          },
+        },
+        delete: {
+          tags: ['6. Academic Curriculum & Subjects', '3. Role: Department Head'],
+          summary: 'Delete Course',
+          description: 'Deletes a course by Course ID integer or Course Code. Restricted to Department Heads and Administrators.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'query',
+              required: true,
+              description: 'Course integer ID (e.g. 1) or Course Code (e.g. CPE101)',
+              schema: { type: 'string', example: '1' },
+            },
+          ],
+          responses: {
+            200: { description: 'Course deleted successfully' },
+            400: { description: 'Course ID is required' },
+            403: { description: 'Unauthorized' },
+            404: { description: 'Course not found' },
           },
         },
       },
@@ -1420,21 +1472,21 @@ Retrieves student enrollments:
               name: 'studentId',
               in: 'query',
               required: false,
-              description: 'Filter by Student ID Number or integer user ID',
-              schema: { type: 'string', example: '4' },
-            },
-            {
-              name: 'subjectId',
-              in: 'query',
-              required: false,
-              description: 'Filter by Subject integer ID or code (e.g. "CPE 101")',
-              schema: { type: 'string', example: '1' },
+              description: 'Filter by Student ID Number (e.g. 2022012708)',
+              schema: { type: 'string', example: '2022012708' },
             },
             {
               name: 'courseId',
               in: 'query',
               required: false,
-              description: 'Alias parameter for subjectId',
+              description: 'Filter by Course integer ID (e.g. 1) or Course Code (e.g. "CPE101")',
+              schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'subjectId',
+              in: 'query',
+              required: false,
+              description: 'Alias parameter for courseId',
               schema: { type: 'string', example: '1' },
             },
             {
@@ -1442,7 +1494,7 @@ Retrieves student enrollments:
               in: 'query',
               required: false,
               description: 'Filter by academic year',
-              schema: { type: 'string', example: '2024-2025' },
+              schema: { type: 'string', example: '2026-2027' },
             },
             {
               name: 'semester',
@@ -1508,9 +1560,9 @@ Retrieves student enrollments:
           tags: ['7. Student Enrollments'],
           summary: 'Enroll Student in Subject',
           description: `
-Enrolls a student in an academic subject for a given semester and academic year:
-- Automatically synchronizes the student's \`enrolledSubjects\` field in \`srvs_students\` with subject codes only (e.g. \`"CPE 101, CPE 201"\`).
-- Prevents duplicate enrollments in the same subject within the same semester.
+Enrolls a student in an academic course for a given semester and academic year:
+- Verifies and connects to the student user record in the \`admin\` table using their 10-digit ID number.
+- Prevents duplicate enrollments in the same course within the same semester.
           `.trim(),
           security: [{ cookieAuth: [] }],
           parameters: [
@@ -1529,13 +1581,13 @@ Enrolls a student in an academic subject for a given semester and academic year:
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['studentId', 'subjectId', 'semester', 'academicYear'],
+                  required: ['studentId', 'courseId', 'semester', 'academicYear'],
                   properties: {
-                    studentId: { type: 'string', example: '4', description: 'Student integer ID or 10-digit ID Number' },
-                    subjectId: { type: 'string', example: '1', description: 'Subject integer ID or subject code (e.g. "CPE 101")' },
-                    courseId: { type: 'string', example: '1', description: 'Alias for subjectId' },
+                    studentId: { type: 'string', example: '2022012708', description: 'Student 10-digit ID Number (e.g. 2022012708)' },
+                    courseId: { type: 'string', example: '1', description: 'Course integer ID (e.g. 1) or Course Code (e.g. "CPE101")' },
+                    subjectId: { type: 'string', example: '1', description: 'Alias for courseId' },
                     semester: { type: 'string', example: '1st Semester', description: 'Academic term' },
-                    academicYear: { type: 'string', example: '2024-2025', description: 'Academic year' },
+                    academicYear: { type: 'string', example: '2026-2027', description: 'Academic year' },
                     section: { type: 'string', example: 'A', description: 'Class section' },
                     status: { type: 'string', enum: ['ENROLLED', 'DROPPED', 'COMPLETED'], example: 'ENROLLED' },
                   },
@@ -1545,7 +1597,7 @@ Enrolls a student in an academic subject for a given semester and academic year:
           },
           responses: {
             201: {
-              description: 'Student enrolled and subject codes synchronized',
+              description: 'Student enrolled and synchronized',
               content: {
                 'application/json': {
                   schema: {
@@ -1558,9 +1610,37 @@ Enrolls a student in an academic subject for a given semester and academic year:
                 },
               },
             },
-            400: { description: 'Missing required parameters or invalid student/subject' },
+            400: { description: 'Missing required parameters or invalid student/course' },
             403: { description: 'Unauthorized: Admin or Department Head access required.' },
-            409: { description: 'Student is already enrolled in this subject for this term' },
+            409: { description: 'Student is already enrolled in this course for this term' },
+          },
+        },
+        delete: {
+          tags: ['7. Student Enrollments'],
+          summary: 'Unenroll Student from Course',
+          description: 'Unenrolls a student from a course. Accessible to Students (self-unenroll), Department Heads, and Administrators.',
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: 'studentId',
+              in: 'query',
+              required: true,
+              description: 'Student ID Number (e.g. 2022012708)',
+              schema: { type: 'string', example: '2022012708' },
+            },
+            {
+              name: 'courseId',
+              in: 'query',
+              required: true,
+              description: 'Course integer ID (e.g. 1) or Course Code (e.g. CPE101)',
+              schema: { type: 'string', example: '1' },
+            },
+          ],
+          responses: {
+            200: { description: 'Student unenrolled successfully' },
+            400: { description: 'Valid numeric studentId and courseId required' },
+            403: { description: 'Unauthorized' },
+            404: { description: 'Enrollment or course not found' },
           },
         },
       },
@@ -1585,7 +1665,14 @@ Queries course syllabi based on user authorization:
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter by department numeric ID',
+              description: 'Filter by academic department code (CPE, EE, CE, ECE, IE, ME)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+            },
+            {
+              name: 'courseId',
+              in: 'query',
+              required: false,
+              description: 'Filter by Course ID integer (e.g. 1) or Course Code (e.g. CPE101)',
               schema: { type: 'string', example: '1' },
             },
             {
@@ -1627,8 +1714,8 @@ Queries course syllabi based on user authorization:
               name: 'instructorId',
               in: 'query',
               required: false,
-              description: 'Filter syllabi authored by specific instructor user ID',
-              schema: { type: 'integer', example: 3 },
+              description: 'Filter syllabi authored by specific instructor user ID number (e.g. 10001)',
+              schema: { type: 'integer', example: 10001 },
             },
             {
               name: 'hasUploadedFile',
@@ -1704,8 +1791,9 @@ Creates a syllabus master record and initializes **Version 1**:
                   type: 'object',
                   required: ['subjectId', 'semester', 'academicYear'],
                   properties: {
-                    subjectId: { type: 'string', example: '1', description: 'Subject integer ID or code (e.g. 1 or "CPE 101")' },
-                    courseId: { type: 'string', example: '1', description: 'Alias for subjectId' },
+                    subjectId: { type: 'string', example: '1', description: 'Course integer ID or code (e.g. 1 or "CPE101")' },
+                    courseId: { type: 'string', example: '1', description: 'Course integer ID or code (e.g. 1 or "CPE101")' },
+                    instructorId: { type: 'integer', example: 10001, description: 'Instructor / Educator ID Number (defaults to authenticated user)' },
                     semester: { type: 'string', example: '1st Semester', description: 'Academic term' },
                     academicYear: { type: 'string', example: '2024-2025', description: 'Academic year' },
                     section: { type: 'string', example: 'A', description: 'Class section' },
@@ -2268,8 +2356,22 @@ Non-destructive rollback:
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter by department numeric ID (Admins only)',
+              description: 'Filter by academic department code (CPE, EE, CE, ECE, IE, ME) (Admins only)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
+            },
+            {
+              name: 'courseId',
+              in: 'query',
+              required: false,
+              description: 'Filter approvals by Course ID integer (e.g. 1) or Course Code (e.g. CPE101)',
               schema: { type: 'string', example: '1' },
+            },
+            {
+              name: 'instructorId',
+              in: 'query',
+              required: false,
+              description: 'Filter approvals by instructor ID number (e.g. 10001)',
+              schema: { type: 'integer', example: 10001 },
             },
             {
               name: 'academicYear',
@@ -2649,8 +2751,8 @@ Department Head rejects a pending syllabus version with required feedback remark
               name: 'departmentId',
               in: 'query',
               required: false,
-              description: 'Filter dashboard metrics by department (Admins only)',
-              schema: { type: 'integer', example: 1 },
+              description: 'Filter dashboard metrics by department code (Admins only)',
+              schema: { type: 'string', enum: ['CPE', 'EE', 'CE', 'ECE', 'IE', 'ME'], example: 'CPE' },
             },
             {
               name: 'includeRecentActivities',
@@ -2723,16 +2825,18 @@ Department Head rejects a pending syllabus version with required feedback remark
                       tables: {
                         type: 'object',
                         properties: {
-                          srvs_departments: { type: 'integer', example: 1 },
-                          srvs_subjects: { type: 'integer', example: 3 },
-                          srvs_users: { type: 'integer', example: 4 },
-                          srvs_admins: { type: 'integer', example: 1 },
-                          srvs_department_heads: { type: 'integer', example: 1 },
-                          srvs_faculties: { type: 'integer', example: 1 },
-                          srvs_students: { type: 'integer', example: 1 },
-                          srvs_syllabi: { type: 'integer', example: 2 },
-                          srvs_syllabus_versions: { type: 'integer', example: 2 },
-                          srvs_enrollments: { type: 'integer', example: 1 },
+                          departments: { type: 'integer', example: 6 },
+                          admin: { type: 'integer', example: 22 },
+                          users: { type: 'integer', example: 22 },
+                          admins: { type: 'integer', example: 1 },
+                          department_heads: { type: 'integer', example: 6 },
+                          educators: { type: 'integer', example: 6 },
+                          students: { type: 'integer', example: 9 },
+                          courses: { type: 'integer', example: 13 },
+                          syllabi: { type: 'integer', example: 0 },
+                          syllabus_versions: { type: 'integer', example: 0 },
+                          enrollments: { type: 'integer', example: 9 },
+                          audit_logs: { type: 'integer', example: 55 },
                         },
                       },
                       seededAdmin: {

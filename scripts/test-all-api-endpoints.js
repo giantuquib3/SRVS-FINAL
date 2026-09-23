@@ -122,10 +122,25 @@ async function runTestSuite() {
   });
   assert(usersRes.status === 200 && usersRes.data.users?.length > 0, 'GET /api/users (Admin access)');
 
+  const userIdRes = await request('http://localhost:3000/api/users?idNumber=10001', {
+    headers: { Cookie: sessions['Admin'] },
+  });
+  assert(userIdRes.status === 200 && userIdRes.data.users?.some(u => String(u.id) === '10001'), 'GET /api/users?idNumber=10001 (User ID number filtering)');
+
+  const userDeptRes = await request('http://localhost:3000/api/users?departmentId=CPE', {
+    headers: { Cookie: sessions['Admin'] },
+  });
+  assert(userDeptRes.status === 200 && userDeptRes.data.users?.every(u => u.departmentId === 'CPE'), 'GET /api/users?departmentId=CPE (Department code filtering)');
+
   const studentsRes = await request('http://localhost:3000/api/students', {
     headers: { Cookie: sessions['DepartmentHead'] },
   });
   assert(studentsRes.status === 200 && Array.isArray(studentsRes.data.students), 'GET /api/students (Department Head scoped)');
+
+  const studentIdRes = await request('http://localhost:3000/api/students?studentId=2022012708', {
+    headers: { Cookie: sessions['DepartmentHead'] },
+  });
+  assert(studentIdRes.status === 200 && studentIdRes.data.students?.some(s => String(s.id) === '2022012708'), 'GET /api/students?studentId=2022012708 (Student ID number filtering)');
 
   // 6. Course & Curriculum Management
   console.log('\n6. Courses & Curriculum');
@@ -133,6 +148,11 @@ async function runTestSuite() {
     headers: { Cookie: sessions['Admin'] },
   });
   assert(coursesRes.status === 200 && coursesRes.data.courses?.length > 0, 'GET /api/courses');
+
+  const courseDeptRes = await request('http://localhost:3000/api/courses?departmentId=CPE', {
+    headers: { Cookie: sessions['Admin'] },
+  });
+  assert(courseDeptRes.status === 200 && courseDeptRes.data.courses?.every(c => c.departmentId === 'CPE'), 'GET /api/courses?departmentId=CPE (Course department code filtering)');
 
   const subjectsRes = await request('http://localhost:3000/api/subjects', {
     headers: { Cookie: sessions['Student'] },
@@ -263,6 +283,11 @@ async function runTestSuite() {
     headers: { Cookie: sessions['Admin'] },
   });
   assert(auditRes.status === 200 && auditRes.data.logs?.length > 0, 'GET /api/audit-logs');
+
+  const auditUserRes = await request('http://localhost:3000/api/audit-logs?userId=10001', {
+    headers: { Cookie: sessions['Admin'] },
+  });
+  assert(auditUserRes.status === 200 && Array.isArray(auditUserRes.data.logs), 'GET /api/audit-logs?userId=10001 (Audit log user ID number filtering)');
 
   // 11. OpenAPI Specification Document
   console.log('\n11. OpenAPI 3.0.3 Specification Document');

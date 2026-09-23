@@ -41,6 +41,28 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const courseParam = (searchParams.get('courseId') || searchParams.get('subjectId'))?.trim();
+    const instructorParam = searchParams.get('instructorId')?.trim();
+    const syllabusIdParam = searchParams.get('syllabusId')?.trim();
+
+    if (syllabusIdParam) {
+      const sId = parseInt(syllabusIdParam, 10);
+      if (!isNaN(sId)) where.syllabusId = sId;
+    }
+    if (courseParam) {
+      const parsedCourseId = parseInt(courseParam, 10);
+      where.syllabus = {
+        ...(where.syllabus || {}),
+        ...(!isNaN(parsedCourseId) ? { courseId: parsedCourseId } : { course: { code: courseParam.toUpperCase() } }),
+      };
+    }
+    if (instructorParam) {
+      const parsedInstId = parseInt(instructorParam, 10);
+      if (!isNaN(parsedInstId)) {
+        where.syllabus = { ...(where.syllabus || {}), instructorId: parsedInstId };
+      }
+    }
+
     const versions = await prisma.syllabusVersion.findMany({
       where,
       orderBy: { submittedAt: 'desc' },

@@ -30,6 +30,23 @@ export async function GET(req: NextRequest) {
       where.departmentId = String(departmentId).trim().toUpperCase();
     }
 
+    const courseIdParam = searchParams.get('courseId') || searchParams.get('subjectId') || searchParams.get('id');
+    const facultyParam = searchParams.get('facultyId');
+
+    if (courseIdParam) {
+      const parsedId = parseInt(courseIdParam, 10);
+      if (!isNaN(parsedId)) {
+        where.id = parsedId;
+      } else {
+        where.code = courseIdParam.trim().toUpperCase();
+      }
+    }
+
+    if (facultyParam) {
+      const parsedFacultyId = parseInt(facultyParam, 10);
+      if (!isNaN(parsedFacultyId)) where.facultyId = parsedFacultyId;
+    }
+
     if (search) {
       where.OR = [
         { code: { contains: search, mode: 'insensitive' } },

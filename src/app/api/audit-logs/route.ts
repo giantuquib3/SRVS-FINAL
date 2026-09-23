@@ -16,10 +16,15 @@ export async function GET(req: NextRequest) {
     const limitParam = searchParams.get('limit');
     const take = limitParam ? Math.min(Math.max(1, parseInt(limitParam, 10) || 50), 500) : 100;
     const actionType = searchParams.get('actionType') || undefined;
+    const userParam = searchParams.get('userId') || searchParams.get('idNumber');
     const search = searchParams.get('search')?.toLowerCase();
 
     const where: any = {};
     if (actionType) where.actionType = actionType;
+    if (userParam) {
+      const uInt = parseInt(userParam, 10);
+      if (!isNaN(uInt)) where.userId = uInt;
+    }
     if (search) {
       where.OR = [
         { description: { contains: search, mode: 'insensitive' } },

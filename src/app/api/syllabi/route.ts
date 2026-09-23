@@ -75,8 +75,28 @@ export async function GET(req: NextRequest) {
     if (semester) where.semester = semester;
     if (academicYear) where.academicYear = academicYear;
 
+    const courseParam = (searchParams.get('courseId') || searchParams.get('subjectId'))?.trim();
+    const instructorParam = searchParams.get('instructorId')?.trim();
+
+    if (courseParam) {
+      const parsedCourseId = parseInt(courseParam, 10);
+      if (!isNaN(parsedCourseId)) {
+        where.courseId = parsedCourseId;
+      } else {
+        where.course = { ...(where.course || {}), code: courseParam.toUpperCase() };
+      }
+    }
+
+    if (instructorParam) {
+      const parsedInstId = parseInt(instructorParam, 10);
+      if (!isNaN(parsedInstId)) {
+        where.instructorId = parsedInstId;
+      }
+    }
+
     if (search) {
       where.course = {
+        ...(where.course || {}),
         OR: [
           { code: { contains: search, mode: 'insensitive' } },
           { title: { contains: search, mode: 'insensitive' } },

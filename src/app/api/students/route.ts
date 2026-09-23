@@ -19,8 +19,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const queryDept = searchParams.get('department') || searchParams.get('departmentId');
     const search = searchParams.get('search');
+    const studentIdParam = searchParams.get('studentId') || searchParams.get('idNumber') || searchParams.get('userId') || searchParams.get('id');
 
     const where: any = { role: 'Student' };
+
+    if (studentIdParam) {
+      const sInt = parseInt(studentIdParam, 10);
+      if (!isNaN(sInt)) where.id = sInt;
+    }
 
     if (user.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;

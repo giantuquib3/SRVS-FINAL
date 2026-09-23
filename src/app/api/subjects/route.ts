@@ -31,6 +31,16 @@ export async function GET(req: NextRequest) {
     if (yearLevel) where.yearLevel = yearLevel;
     if (semester) where.semester = semester;
 
+    const courseIdParam = searchParams.get('courseId') || searchParams.get('subjectId') || searchParams.get('id');
+    if (courseIdParam) {
+      const parsedId = parseInt(courseIdParam, 10);
+      if (!isNaN(parsedId)) {
+        where.id = parsedId;
+      } else {
+        where.code = courseIdParam.trim().toUpperCase();
+      }
+    }
+
     if (search) {
       where.OR = [
         { code: { contains: search, mode: 'insensitive' } },

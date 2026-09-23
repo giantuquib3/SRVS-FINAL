@@ -17,9 +17,18 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const role = searchParams.get('role');
     const search = searchParams.get('search')?.trim().toLowerCase();
-    const deptParam = searchParams.get('departmentId')?.toUpperCase();
+    const deptParam = (searchParams.get('departmentId') || searchParams.get('departmentCode'))?.toUpperCase();
+    const idParam = (searchParams.get('idNumber') || searchParams.get('userId') || searchParams.get('id'))?.trim();
 
     const where: any = {};
+
+    // Filter by specific user ID number (e.g. 2022012708, 10001, 0)
+    if (idParam) {
+      const parsedId = parseInt(idParam, 10);
+      if (!isNaN(parsedId)) {
+        where.id = parsedId;
+      }
+    }
 
     // Dept Heads can only see their own department's users
     if (user.role === 'DepartmentHead') {
@@ -133,13 +142,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
 
-    const { idNumber, email, fullName, role, departmentId, password, accountStatus, academicRank, yearLevel } = await req.json();
+    const { idNumber, userId, email, fullName, role, departmentId, departmentCode, password, accountStatus, academicRank, yearLevel } = await req.json();
 
-    const cleanId = (idNumber || '').trim();
+    const cleanId = String(idNumber || userId || '').trim();
     const cleanEmail = (email || '').trim().toLowerCase();
 
     if (!cleanId || !cleanEmail || !fullName || !role || !password) {
-      return NextResponse.json({ error: 'ID, email, full name, role, and password are required.' }, { status: 400 });
+      return NextResponse.json({ error: 'ID number, email, full name, role, and password are required.' }, { status: 400 });
     }
 
     const numericId = parseInt(cleanId, 10);
@@ -154,7 +163,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A user with this ID or email already exists.' }, { status: 409 });
     }
 
-    const deptCode = departmentId ? String(departmentId).toUpperCase() : null;
+    const rawDept = departmentId || departmentCode;
+    const deptCode = rawDept ? String(rawDept).toUpperCase() : null;
     if (deptCode && !isValidDepartmentCode(deptCode)) {
       return NextResponse.json({ error: 'Invalid department code.' }, { status: 400 });
     }
@@ -200,12 +210,12 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, action, role, newRole, departmentId, accountStatus, fullName, academicRank, yearLevel } = body;
+    const { userId, idNumber, action, role, newRole, departmentId, departmentCode, accountStatus, fullName, academicRank, yearLevel } = body;
 
-    const targetIdStr = String(userId || '').trim();
+    const targetIdStr = String(userId || idNumber || '').trim();
     const targetId = parseInt(targetIdStr, 10);
     if (isNaN(targetId)) {
-      return NextResponse.json({ error: 'Valid integer userId is required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Valid integer userId or idNumber is required.' }, { status: 400 });
     }
 
     const targetUser = await prisma.user.findUnique({ where: { id: targetId } });
@@ -279,10 +289,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const targetIdStr = (searchParams.get('userId') || searchParams.get('id') || '').trim();
+    const targetIdStr = (searchParams.get('userId') || searchParams.get('idNumber') || searchParams.get('id') || '').trim();
     const targetId = parseInt(targetIdStr, 10);
     if (isNaN(targetId)) {
-      return NextResponse.json({ error: 'Valid integer userId is required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Valid integer userId or idNumber is required.' }, { status: 400 });
     }
 
     if (String(targetId) === String(sessionUser.id)) {
