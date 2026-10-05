@@ -7,16 +7,18 @@ import { getDepartmentName } from '@/lib/departments';
 export const dynamic = 'force-dynamic';
 
 function applyStatusFilter(where: any, status: string | null) {
-  if (!status) return;
-  const s = status.toLowerCase();
-  if (s === 'submitted' || s === 'pending_approval') {
-    where.status = { in: ['Submitted', 'PENDING_APPROVAL'] };
-  } else if (s === 'approved' || s === 'active') {
-    where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
-  } else if (s === 'draft') {
-    where.status = { in: ['Draft', 'DRAFT'] };
-  } else if (s === 'rejected') {
-    where.status = { in: ['Rejected', 'REJECTED'] };
+  if (!status || status === 'ALL') return;
+  const sUpper = status.toUpperCase();
+  if (sUpper === 'ACTIVE' || sUpper === 'APPROVED') {
+    where.status = { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] };
+  } else if (sUpper === 'DRAFT') {
+    where.status = { in: ['DRAFT', 'Draft'] };
+  } else if (sUpper === 'SUBMITTED' || sUpper === 'PENDING_APPROVAL' || sUpper === 'PENDING') {
+    where.status = { in: ['PENDING_APPROVAL', 'Submitted', 'submitted', 'UNDER_REVIEW', 'Under Review'] };
+  } else if (sUpper === 'UNDER_REVIEW') {
+    where.status = { in: ['UNDER_REVIEW', 'Under Review'] };
+  } else if (sUpper === 'REJECTED') {
+    where.status = { in: ['REJECTED', 'Rejected'] };
   } else {
     where.status = status;
   }
@@ -32,9 +34,13 @@ export async function GET(req: NextRequest) {
     const academicYear = searchParams.get('academicYear');
     const search = searchParams.get('search')?.trim();
     const mySyllabi = searchParams.get('mySyllabi') === 'true';
+    const courseIdParam = searchParams.get('courseId') || searchParams.get('id');
+    const courseCodeParam = searchParams.get('courseCode');
+    const instructorParam = searchParams.get('instructorId') || searchParams.get('idNumber');
 
     const where: any = {};
 
+    // Department-Level Data Isolation (Requirement 21)
     if (user?.role === 'Student') {
       where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
       const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
@@ -49,13 +55,14 @@ export async function GET(req: NextRequest) {
             select: { courseId: true },
           })
         : [];
-      const enrolledCourseIds = enrollments.map((e) => e.courseId);
+      const enrolledCourseIds = enrollments.map((e: any) => e.courseId);
       if (enrolledCourseIds.length === 0) return NextResponse.json({ syllabi: [] });
       where.courseId = { in: enrolledCourseIds };
 
     } else if (user?.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (deptCode) where.departmentId = deptCode;
+      if (!deptCode) return NextResponse.json({ syllabi: [] });
+      where.departmentId = deptCode;
       applyStatusFilter(where, status);
 
     } else if (user?.role === 'Educator') {
@@ -75,23 +82,21 @@ export async function GET(req: NextRequest) {
     if (semester) where.semester = semester;
     if (academicYear) where.academicYear = academicYear;
 
-    const courseParam = (searchParams.get('courseId') || searchParams.get('subjectId'))?.trim();
-    const instructorParam = searchParams.get('instructorId')?.trim();
-
-    if (courseParam) {
-      const parsedCourseId = parseInt(courseParam, 10);
-      if (!isNaN(parsedCourseId)) {
-        where.courseId = parsedCourseId;
-      } else {
-        where.course = { ...(where.course || {}), code: courseParam.toUpperCase() };
-      }
+    // courseId (integer database ID)
+    if (courseIdParam) {
+      const parsedCourseId = parseInt(courseIdParam, 10);
+      if (!isNaN(parsedCourseId)) where.courseId = parsedCourseId;
     }
 
+    // courseCode (string institutional course code)
+    if (courseCodeParam) {
+      where.course = { ...(where.course || {}), code: courseCodeParam.trim().toUpperCase() };
+    }
+
+    // instructorId (integer institutional ID)
     if (instructorParam) {
       const parsedInstId = parseInt(instructorParam, 10);
-      if (!isNaN(parsedInstId)) {
-        where.instructorId = parsedInstId;
-      }
+      if (!isNaN(parsedInstId)) where.instructorId = parsedInstId;
     }
 
     if (search) {
@@ -108,9 +113,25 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { updatedAt: 'desc' },
       include: {
-        course: true,
+        course: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            units: true,
+            departmentId: true,
+            professorName: true,
+          },
+        },
         instructor: {
-          select: { id: true, fullName: true, email: true, academicRank: true },
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+            departmentId: true,
+            academicRank: true,
+          },
         },
         versions: {
           orderBy: { versionNumber: 'desc' },
@@ -119,48 +140,65 @@ export async function GET(req: NextRequest) {
             id: true,
             versionNumber: true,
             changeSummary: true,
-            changeType: true,
             statusAtSave: true,
             approvalStatus: true,
             fileName: true,
             fileUrl: true,
             fileType: true,
             fileSize: true,
-            editorId: true,
-            submittedById: true,
-            reviewedById: true,
             createdAt: true,
-            submittedAt: true,
-            reviewedAt: true,
           },
         },
       },
     });
 
-    const formatted = syllabi.map((s) => {
-      const deptCode = s.departmentId;
+    const formatted = syllabi.map((s: any) => {
+      const deptCode = String(s.departmentId || s.course.departmentId || '');
+      const latestVersion = s.versions?.[0] || null;
       return {
-        ...s,
-        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
-        course: {
-          ...s.course,
-          department: {
-            id: s.course.departmentId,
-            code: s.course.departmentId,
-            name: getDepartmentName(s.course.departmentId),
-          },
-        },
-        // Back-compat aliases
-        subject: s.course,
-        subjectId: s.courseId,
+        id: s.id,
         courseId: s.courseId,
+        instructorId: s.instructorId,
+        departmentId: deptCode,
+        academicYear: s.academicYear,
+        semester: s.semester,
+        section: s.section,
+        status: s.status,
+        currentVersionNumber: s.currentVersionNumber,
+        reviewerRemarks: s.reviewerRemarks,
+        submittedAt: s.submittedAt,
+        reviewedAt: s.reviewedAt,
+        reviewedByUserId: s.reviewedByUserId,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        course: {
+          id: s.course.id,
+          code: s.course.code,
+          title: s.course.title,
+          units: s.course.units,
+          departmentId: s.course.departmentId,
+          professorName: s.course.professorName || null,
+          department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        },
+        instructor: s.instructor
+          ? {
+              id: s.instructor.id,
+              idNumber: s.instructor.id,
+              fullName: s.instructor.fullName,
+              email: s.instructor.email,
+              role: s.instructor.role,
+              academicRank: s.instructor.academicRank,
+            }
+          : null,
+        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        latestVersion,
       };
     });
 
-    return NextResponse.json({ syllabi: formatted });
+    return NextResponse.json({ syllabi: formatted, total: formatted.length });
   } catch (error: any) {
     console.error('Error fetching syllabi:', error);
-    return NextResponse.json({ error: 'Failed to fetch syllabi.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to retrieve syllabi.' }, { status: 500 });
   }
 }
 
@@ -169,55 +207,71 @@ export async function POST(req: NextRequest) {
     const user = await getSessionFromRequest(req);
     if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
       return NextResponse.json({
-        error: 'Unauthorized: Only Department Heads and Educators can create a syllabus.',
+        error: 'Unauthorized: Only Department Heads and Educators can create or upload syllabi.',
       }, { status: 403 });
     }
 
     const body = await req.json();
     const {
-      courseId, subjectId,
-      semester, academicYear,
-      courseDescription, learningOutcomes, topics, references, gradingSystem, schedule,
+      courseId,
+      courseCode,
+      semester,
+      academicYear,
+      courseDescription,
+      learningOutcomes,
+      topics,
+      references,
+      gradingSystem,
+      schedule,
       section = 'A',
-      directApprove = false,
       saveAsDraft = true,
-      fileName, fileUrl, fileType, fileSize,
+      fileName,
+      fileUrl,
+      fileType,
+      fileSize,
     } = body;
 
-    const rawTarget = String(subjectId || courseId || '').trim().toUpperCase();
-    if (!rawTarget || !semester || !academicYear) {
-      return NextResponse.json({ error: 'Subject/Course, Semester, and Academic Year are required.' }, { status: 400 });
+    if ((!courseId && !courseCode) || !semester || !academicYear) {
+      return NextResponse.json({ error: 'courseId or courseCode, Semester, and Academic Year are required.' }, { status: 400 });
     }
 
-    const parsedCourseTarget = !isNaN(parseInt(rawTarget, 10)) ? parseInt(rawTarget, 10) : null;
-    const course = await prisma.course.findFirst({
-      where: {
-        OR: [
-          ...(parsedCourseTarget !== null ? [{ id: parsedCourseTarget }] : []),
-          { code: rawTarget },
-        ],
-      },
-    });
+    // Resolve course
+    let course = null;
+    if (courseId && !isNaN(parseInt(String(courseId), 10))) {
+      course = await prisma.course.findUnique({ where: { id: parseInt(String(courseId), 10) } });
+    } else if (courseCode) {
+      course = await prisma.course.findUnique({ where: { code: String(courseCode).trim().toUpperCase() } });
+    }
+
     if (!course) {
-      return NextResponse.json({ error: 'Selected course/subject was not found.' }, { status: 404 });
+      return NextResponse.json({ error: 'Selected course was not found.' }, { status: 404 });
     }
 
+    // Department Isolation (Requirement 21)
     const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-    if (userDeptCode && course.departmentId !== userDeptCode) {
+    if (userDeptCode && course.departmentId.toUpperCase() !== userDeptCode) {
       return NextResponse.json({
         error: `You may only create syllabi for courses within your assigned department (${userDeptCode}).`,
       }, { status: 403 });
     }
 
-    if (!fileUrl && (!courseDescription || !courseDescription.trim())) {
+    // File type validation (Requirement 9: PDF syllabi only)
+    if (fileUrl && fileType && fileType.toUpperCase() !== 'PDF') {
       return NextResponse.json({
-        error: 'Please provide either a course description or an uploaded syllabus document (PDF/DOCX).',
+        error: 'Invalid file type. The SRVS system accepts PDF syllabi only.',
       }, { status: 400 });
     }
 
-    const canDirectApprove = user.role === 'DepartmentHead' && (directApprove === true || !saveAsDraft);
-    const initialStatus = canDirectApprove ? 'ACTIVE' : (saveAsDraft ? 'DRAFT' : 'PENDING_APPROVAL');
-    const versionApprovalStatus = canDirectApprove ? 'APPROVED' : initialStatus;
+    if (!fileUrl && (!courseDescription || !courseDescription.trim())) {
+      return NextResponse.json({
+        error: 'Please provide either a course description or an uploaded PDF syllabus document.',
+      }, { status: 400 });
+    }
+
+    // Workflow enforcement (Requirement 11): DRAFT -> SUBMITTED -> UNDER_REVIEW -> APPROVED / REJECTED
+    const isDraft = saveAsDraft === true;
+    const initialStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
+    const versionApprovalStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
     const now = new Date();
     const currentUserIdInt = parseInt(user.id, 10) || 0;
 
@@ -230,28 +284,19 @@ export async function POST(req: NextRequest) {
       schedule: schedule?.trim() || '',
     };
 
-    // In the unified architecture, instructorId references admin.id directly.
-    // Department Heads can directly author/upload syllabi or optionally assign an educator.
+    // Requirement 10: Determine uploader from authenticated session
     let instructorIdInt = currentUserIdInt;
     if (user.role === 'DepartmentHead' && body.instructorId) {
       const parsedInstructorId = parseInt(String(body.instructorId), 10);
       if (!isNaN(parsedInstructorId)) {
         const assignedUser = await prisma.user.findUnique({ where: { id: parsedInstructorId } });
-        if (assignedUser) instructorIdInt = parsedInstructorId;
+        if (assignedUser && assignedUser.departmentId === course.departmentId) {
+          instructorIdInt = parsedInstructorId;
+        }
       }
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      if (canDirectApprove) {
-        await tx.syllabus.updateMany({
-          where: {
-            courseId: course.id,
-            status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
-          },
-          data: { status: 'ARCHIVED' },
-        });
-      }
-
       const syllabus = await tx.syllabus.create({
         data: {
           courseId: course.id,
@@ -262,21 +307,19 @@ export async function POST(req: NextRequest) {
           section: section || 'A',
           status: initialStatus,
           currentVersionNumber: 1,
-          submittedAt: initialStatus === 'PENDING_APPROVAL' ? now : null,
-          reviewedAt: canDirectApprove ? now : null,
-          reviewedByUserId: canDirectApprove ? currentUserIdInt : null,
-          reviewerRemarks: canDirectApprove ? 'Approved on initial creation by Department Head' : null,
+          submittedAt: isDraft ? null : now,
         },
       });
 
-      const courseFacultyId = user.role === 'Educator' ? currentUserIdInt : instructorIdInt;
-      await tx.course.update({
-        where: { id: course.id },
-        data: {
-          facultyName: user.role === 'Educator' ? user.fullName : (course.facultyName || user.fullName),
-          facultyId: courseFacultyId,
-        },
-      });
+      // Update professorName on course if empty
+      if (!course.professorName) {
+        await tx.course.update({
+          where: { id: course.id },
+          data: {
+            professorName: user.fullName,
+          },
+        });
+      }
 
       const version = await tx.syllabusVersion.create({
         data: {
@@ -284,20 +327,18 @@ export async function POST(req: NextRequest) {
           versionNumber: 1,
           editorId: currentUserIdInt,
           changeSummary: fileUrl
-            ? `Initial creation with uploaded document (${fileName})`
-            : 'Initial syllabus creation (Version 1)',
+            ? `Initial syllabus creation with uploaded PDF document (${fileName})`
+            : 'Initial syllabus drafting (Version 1)',
           changeType: 'Create',
           statusAtSave: versionApprovalStatus,
           approvalStatus: versionApprovalStatus,
           content: contentSnapshot,
           fileName: fileName || null,
           fileUrl: fileUrl || null,
-          fileType: fileType || null,
+          fileType: 'PDF',
           fileSize: fileSize || null,
-          submittedById: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? currentUserIdInt : null,
-          submittedAt: initialStatus === 'PENDING_APPROVAL' || canDirectApprove ? now : null,
-          reviewedById: canDirectApprove ? currentUserIdInt : null,
-          reviewedAt: canDirectApprove ? now : null,
+          submittedById: isDraft ? null : currentUserIdInt,
+          submittedAt: isDraft ? null : now,
         },
       });
 
@@ -307,11 +348,9 @@ export async function POST(req: NextRequest) {
     await logAuditEvent({
       userId: currentUserIdInt,
       userDisplayName: user.fullName,
-      actionType: canDirectApprove
-        ? 'UploadAndApproveSyllabus'
-        : saveAsDraft ? 'DraftSyllabus' : 'SubmitSyllabus',
+      actionType: isDraft ? 'DraftSyllabus' : 'SubmitSyllabus',
       resultStatus: 'Success',
-      description: `Created syllabus for ${course.code} (${semester}, AY ${academicYear}) – Status: ${initialStatus}`,
+      description: `Created syllabus for [${course.code}] ${course.title} (${semester}, AY ${academicYear}) – Status: ${initialStatus}`,
       entityType: 'Syllabus',
       entityId: String(result.syllabus.id),
     });
@@ -320,9 +359,9 @@ export async function POST(req: NextRequest) {
       success: true,
       syllabus: result.syllabus,
       version: result.version,
-      message: canDirectApprove
-        ? `${course.code} syllabus created, approved, and activated.`
-        : saveAsDraft ? 'Syllabus draft saved.' : 'Syllabus submitted for review.',
+      message: isDraft
+        ? 'Syllabus draft saved successfully.'
+        : 'Syllabus submitted for department head review and approval.',
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating syllabus:', error);

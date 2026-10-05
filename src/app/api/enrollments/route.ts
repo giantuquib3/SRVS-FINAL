@@ -12,45 +12,60 @@ export async function GET(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const studentParam = searchParams.get('studentId');
-    const courseParam = searchParams.get('courseId') || searchParams.get('subjectId');
+    const studentParam = searchParams.get('studentId') || searchParams.get('idNumber');
+    const courseIdParam = searchParams.get('courseId');
+    const courseCodeParam = searchParams.get('courseCode');
 
     const where: any = { status: 'ENROLLED' };
 
+    // Department & Role Isolation (Requirement 21)
     if (user.role === 'Student') {
       const userIntId = parseInt(user.id, 10);
       where.studentId = !isNaN(userIntId) ? userIntId : 0;
     } else if (user.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (deptCode) where.course = { departmentId: deptCode };
+      if (!deptCode) return NextResponse.json({ enrollments: [], total: 0 });
+      where.course = { departmentId: deptCode };
+      if (studentParam) {
+        const sInt = parseInt(studentParam, 10);
+        if (!isNaN(sInt)) where.studentId = sInt;
+      }
+    } else if (user.role === 'Admin') {
       if (studentParam) {
         const sInt = parseInt(studentParam, 10);
         if (!isNaN(sInt)) where.studentId = sInt;
       }
     } else {
-      if (studentParam) {
-        const sInt = parseInt(studentParam, 10);
-        if (!isNaN(sInt)) where.studentId = sInt;
-      }
+      return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
     }
 
-    if (courseParam) {
-      const parsedCourseId = !isNaN(parseInt(courseParam, 10)) ? parseInt(courseParam, 10) : null;
-      if (parsedCourseId !== null) {
-        where.courseId = parsedCourseId;
-      } else {
-        where.course = { ...(where.course || {}), code: courseParam.trim().toUpperCase() };
-      }
+    // courseId filter (integer database ID)
+    if (courseIdParam) {
+      const parsedCourseId = parseInt(courseIdParam, 10);
+      if (!isNaN(parsedCourseId)) where.courseId = parsedCourseId;
+    }
+
+    // courseCode filter (string course code e.g. CPE101)
+    if (courseCodeParam) {
+      where.course = { ...(where.course || {}), code: courseCodeParam.trim().toUpperCase() };
     }
 
     const enrollments = await prisma.enrollment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            departmentId: true,
+          },
+        },
         course: {
           include: {
             syllabi: {
-              where: { status: { in: ['Approved', 'APPROVED'] } },
+              where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
               orderBy: { updatedAt: 'desc' },
               take: 1,
               select: { id: true, status: true, academicYear: true, semester: true, currentVersionNumber: true },
@@ -60,32 +75,42 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const formatted = enrollments.map((e) => {
+    const formatted = enrollments.map((e: any) => {
       const courseDeptCode = String(e.course.departmentId || '');
       return {
-        ...e,
         id: `${e.studentId}_${e.courseId}`,
+        studentId: e.studentId,
+        studentName: e.studentName || e.student?.fullName,
+        courseId: e.courseId,
+        semester: e.semester,
+        academicYear: e.academicYear,
+        section: e.section,
+        status: e.status,
+        createdAt: e.createdAt,
+        updatedAt: e.updatedAt,
         student: {
-          id: String(e.studentId),
-          idNumber: String(e.studentId),
-          fullName: e.studentName,
+          id: e.studentId,
+          idNumber: e.studentId,
+          fullName: e.studentName || e.student?.fullName,
+          email: e.student?.email,
         },
         course: {
-          ...e.course,
+          id: e.course.id,
+          code: e.course.code,
+          title: e.course.title,
+          units: e.course.units,
+          departmentId: courseDeptCode,
+          professorName: e.course.professorName || null,
           department: { id: courseDeptCode, code: courseDeptCode, name: getDepartmentName(courseDeptCode) },
+          activeSyllabus: e.course.syllabi?.[0] || null,
         },
-        subject: {
-          ...e.course,
-          department: { id: courseDeptCode, code: courseDeptCode, name: getDepartmentName(courseDeptCode) },
-        },
-        subjectId: e.courseId,
       };
     });
 
-    return NextResponse.json({ enrollments: formatted });
+    return NextResponse.json({ enrollments: formatted, total: formatted.length });
   } catch (error: any) {
     console.error('Error fetching enrollments:', error);
-    return NextResponse.json({ error: 'Failed to fetch enrollments.' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to retrieve enrollments.' }, { status: 500 });
   }
 }
 
@@ -95,39 +120,53 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
     const body = await req.json();
-    let { studentId, studentName, courseId, subjectId, courseCode, semester = '1st Semester', academicYear = '2026-2027', section = 'A' } = body;
+    let { studentId, studentName, idNumber, courseId, courseCode, semester = '1st Semester', academicYear = '2026-2027', section = 'A' } = body;
 
+    // Student self-enrollment or Admin/DeptHead enrollment
     if (user.role === 'Student') {
       studentId = user.id;
     } else if (user.role !== 'Admin' && user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
+      return NextResponse.json({ error: 'Unauthorized: Only Students, Department Heads, and Administrators may create enrollments.' }, { status: 403 });
     }
 
-    const rawTarget = String(subjectId || courseId || courseCode || '').trim().toUpperCase();
-    const cleanStudentIdStr = String(studentId || '').trim();
+    const cleanStudentIdStr = String(studentId || idNumber || '').trim();
     const numericStudentId = parseInt(cleanStudentIdStr, 10);
 
-    if (isNaN(numericStudentId) || !rawTarget) {
-      return NextResponse.json({ error: 'Valid numeric Student ID and Course are required.' }, { status: 400 });
+    if (isNaN(numericStudentId)) {
+      return NextResponse.json({ error: 'A valid numeric 10-digit student ID number is required.' }, { status: 400 });
     }
 
-    // Find the course
-    const parsedCourseTarget = !isNaN(parseInt(rawTarget, 10)) ? parseInt(rawTarget, 10) : null;
-    const course = await prisma.course.findFirst({
-      where: {
-        OR: [
-          ...(parsedCourseTarget !== null ? [{ id: parsedCourseTarget }] : []),
-          { code: rawTarget },
-        ],
-      },
-    });
-    if (!course) return NextResponse.json({ error: 'Course not found.' }, { status: 404 });
+    // Resolve course by integer courseId or string courseCode
+    let course = null;
+    if (courseId !== undefined && courseId !== null && !isNaN(parseInt(String(courseId), 10))) {
+      course = await prisma.course.findUnique({ where: { id: parseInt(String(courseId), 10) } });
+    } else if (courseCode) {
+      course = await prisma.course.findUnique({ where: { code: String(courseCode).trim().toUpperCase() } });
+    }
 
-    // Verify or auto-provision student in admin user directory to satisfy FK
-    let studentUser = await prisma.user.findFirst({
-      where: { id: numericStudentId },
-    });
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found. Please provide a valid courseId or courseCode.' }, { status: 404 });
+    }
 
+    // Department Isolation (Requirement 21)
+    if (user.role === 'DepartmentHead') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!deptCode || course.departmentId.toUpperCase() !== deptCode) {
+        return NextResponse.json({
+          error: `Department Heads may only enroll students in courses within their assigned department (${deptCode}).`,
+        }, { status: 403 });
+      }
+    } else if (user.role === 'Student') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (deptCode && course.departmentId.toUpperCase() !== deptCode) {
+        return NextResponse.json({
+          error: `Students may only enroll in courses within their assigned department (${deptCode}).`,
+        }, { status: 403 });
+      }
+    }
+
+    // Verify or auto-provision student record in master directory to satisfy FK
+    let studentUser = await prisma.user.findUnique({ where: { id: numericStudentId } });
     if (!studentUser) {
       try {
         studentUser = await prisma.user.create({
@@ -142,23 +181,13 @@ export async function POST(req: NextRequest) {
           },
         });
       } catch (e) {
-        studentUser = await prisma.user.findFirst({ where: { id: numericStudentId } });
+        studentUser = await prisma.user.findUnique({ where: { id: numericStudentId } });
       }
     }
 
-    const resolvedStudentName = (studentName?.trim() || studentUser?.fullName || `Student ${numericStudentId}`);
+    const resolvedStudentName = studentName?.trim() || studentUser?.fullName || `Student ${numericStudentId}`;
 
-    // Department Head scoping
-    if (user.role === 'DepartmentHead') {
-      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (!deptCode || course.departmentId !== deptCode) {
-        return NextResponse.json({
-          error: 'Department Heads may only manage enrollments within their own department.',
-        }, { status: 403 });
-      }
-    }
-
-    // Check duplicate enrollment
+    // Check duplicate enrollment for this course
     const existing = await prisma.enrollment.findUnique({
       where: {
         studentId_courseId: {
@@ -201,46 +230,68 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'EnrollStudent',
       resultStatus: 'Success',
-      description: `Enrolled student ${resolvedStudentName} (${numericStudentId}) into ${course.code} – ${course.title}`,
+      description: `Enrolled student ${resolvedStudentName} (${numericStudentId}) in [${course.code}] ${course.title} (${semester}, ${academicYear} Sec ${section})`,
       entityType: 'Enrollment',
       entityId: `${numericStudentId}_${course.id}`,
     });
 
-    const courseDeptCode = String(course.departmentId || '');
-    return NextResponse.json({
-      success: true,
-      enrollment: {
-        ...enrollment,
-        id: `${enrollment.studentId}_${enrollment.courseId}`,
-        student: { id: String(enrollment.studentId), idNumber: String(enrollment.studentId), fullName: enrollment.studentName },
-        course: { ...course, department: { id: courseDeptCode, code: courseDeptCode, name: getDepartmentName(courseDeptCode) } },
-        subject: { ...course },
-        subjectId: course.id,
+    const courseDept = String(course.departmentId || '');
+
+    return NextResponse.json(
+      {
+        success: true,
+        enrollment: {
+          id: `${enrollment.studentId}_${enrollment.courseId}`,
+          studentId: enrollment.studentId,
+          studentName: enrollment.studentName,
+          courseId: enrollment.courseId,
+          semester: enrollment.semester,
+          academicYear: enrollment.academicYear,
+          section: enrollment.section,
+          status: enrollment.status,
+          createdAt: enrollment.createdAt,
+          updatedAt: enrollment.updatedAt,
+          student: {
+            id: enrollment.studentId,
+            idNumber: enrollment.studentId,
+            fullName: resolvedStudentName,
+            email: studentUser?.email,
+          },
+          course: {
+            id: course.id,
+            code: course.code,
+            title: course.title,
+            units: course.units,
+            departmentId: courseDept,
+            professorName: course.professorName || null,
+            department: { id: courseDept, code: courseDept, name: getDepartmentName(courseDept) },
+          },
+        },
       },
-    }, { status: 201 });
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Error creating enrollment:', error);
-    return NextResponse.json({ error: 'Failed to enroll student: ' + error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create enrollment: ' + error.message }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Admin' && user.role !== 'DepartmentHead' && user.role !== 'Student')) {
-      return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const enrollmentId = searchParams.get('id');
-    let studentId = searchParams.get('studentId');
-    let courseId = (searchParams.get('courseId') || searchParams.get('subjectId') || '').trim().toUpperCase();
+    let studentId = searchParams.get('studentId') || searchParams.get('idNumber');
+    let courseId = searchParams.get('courseId');
+    const courseCode = searchParams.get('courseCode');
 
-    if (enrollmentId && (!studentId || !courseId)) {
+    if (enrollmentId && enrollmentId.includes('_')) {
       const parts = enrollmentId.split('_');
       if (parts.length === 2) {
         studentId = parts[0];
-        courseId = parts[1].toUpperCase();
+        courseId = parts[1];
       }
     }
 
@@ -249,22 +300,32 @@ export async function DELETE(req: NextRequest) {
     // Students can only unenroll themselves
     if (user.role === 'Student') {
       numericStudentId = parseInt(user.id, 10);
+    } else if (user.role !== 'Admin' && user.role !== 'DepartmentHead') {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 
-    if (isNaN(numericStudentId) || !courseId) {
-      return NextResponse.json({ error: 'Valid numeric studentId and courseId required.' }, { status: 400 });
+    if (isNaN(numericStudentId) || (!courseId && !courseCode)) {
+      return NextResponse.json({ error: 'Valid numeric studentId and courseId or courseCode are required.' }, { status: 400 });
     }
 
-    const parsedTargetCourseId = !isNaN(parseInt(courseId, 10)) ? parseInt(courseId, 10) : null;
-    const targetCourse = await prisma.course.findFirst({
-      where: {
-        OR: [
-          ...(parsedTargetCourseId !== null ? [{ id: parsedTargetCourseId }] : []),
-          { code: courseId },
-        ],
-      },
-    });
+    let targetCourse = null;
+    if (courseId && !isNaN(parseInt(courseId, 10))) {
+      targetCourse = await prisma.course.findUnique({ where: { id: parseInt(courseId, 10) } });
+    } else if (courseCode) {
+      targetCourse = await prisma.course.findUnique({ where: { code: courseCode.trim().toUpperCase() } });
+    }
+
     if (!targetCourse) return NextResponse.json({ error: 'Course not found.' }, { status: 404 });
+
+    // Department Isolation (Requirement 21)
+    if (user.role === 'DepartmentHead') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!deptCode || targetCourse.departmentId.toUpperCase() !== deptCode) {
+        return NextResponse.json({
+          error: `Department Heads may only manage enrollments within their assigned department (${deptCode}).`,
+        }, { status: 403 });
+      }
+    }
 
     const existing = await prisma.enrollment.findUnique({
       where: {
@@ -290,7 +351,7 @@ export async function DELETE(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: 'UnenrollStudent',
       resultStatus: 'Success',
-      description: `Unenrolled student ${existing.studentName} (${numericStudentId}) from course ${targetCourse.code}`,
+      description: `Unenrolled student ${existing.studentName} (${numericStudentId}) from course [${targetCourse.code}] ${targetCourse.title}`,
       entityType: 'Enrollment',
       entityId: `${numericStudentId}_${targetCourse.id}`,
     });

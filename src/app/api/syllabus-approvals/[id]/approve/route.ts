@@ -47,7 +47,7 @@ export async function POST(
       }
     }
 
-    if (version.approvalStatus !== 'PENDING_APPROVAL') {
+    if (!['PENDING_APPROVAL', 'SUBMITTED', 'Submitted'].includes(version.approvalStatus)) {
       return NextResponse.json({ error: `Cannot approve: Version is in '${version.approvalStatus}' status.` }, { status: 400 });
     }
 
@@ -68,7 +68,7 @@ export async function POST(
 
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabus.id },
-        data: { currentVersionNumber: version.versionNumber, status: 'ACTIVE', reviewedAt: now, reviewedByUserId: currentUserIdInt, reviewerRemarks: comments.trim() || 'Approved' },
+        data: { currentVersionNumber: version.versionNumber, status: 'APPROVED', reviewedAt: now, reviewedByUserId: currentUserIdInt, reviewerRemarks: comments.trim() || 'Approved' },
       });
 
       return { approvedVersion, updatedSyllabus };

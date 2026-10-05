@@ -32,9 +32,22 @@ export async function POST(
     let body: any = {};
     try { body = await req.json(); } catch (e) { /* body is optional */ }
 
-    const updated = await prisma.syllabus.update({
-      where: { id: syllabusId },
-      data: { status: 'Submitted', submittedAt: new Date() },
+    const now = new Date();
+    const updated = await prisma.$transaction(async (tx: any) => {
+      const latestVersion = await tx.syllabusVersion.findFirst({
+        where: { syllabusId },
+        orderBy: { versionNumber: 'desc' },
+      });
+      if (latestVersion) {
+        await tx.syllabusVersion.update({
+          where: { id: latestVersion.id },
+          data: { approvalStatus: 'SUBMITTED', statusAtSave: 'SUBMITTED', submittedById: currentUserIdInt, submittedAt: now },
+        });
+      }
+      return tx.syllabus.update({
+        where: { id: syllabusId },
+        data: { status: 'SUBMITTED', submittedAt: now },
+      });
     });
 
     const notesSummary = body?.notes ? ` – Note: "${body.notes}"` : '';

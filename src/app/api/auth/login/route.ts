@@ -7,7 +7,10 @@ import { getDepartmentName } from '@/lib/departments';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const idInput = (body.idNumber || body.username || body.email || '').trim();
+    const rawInput = body.idNumber !== undefined && body.idNumber !== null
+      ? String(body.idNumber)
+      : (body.username !== undefined && body.username !== null ? String(body.username) : (body.email || ''));
+    const idInput = String(rawInput).trim();
     const password = body.password;
 
     if (!idInput || !password) {
@@ -84,7 +87,6 @@ export async function POST(req: NextRequest) {
       id: String(matchedUser.id),
       idNumber: String(matchedUser.id),
       email: matchedUser.email,
-      username: String(matchedUser.id),
       fullName: matchedUser.fullName,
       role,
       departmentId: deptCode,
@@ -108,10 +110,10 @@ export async function POST(req: NextRequest) {
       user: {
         id: matchedUser.id,
         idNumber: matchedUser.id,
-        username: matchedUser.id,
         email: matchedUser.email,
         fullName: matchedUser.fullName,
         role,
+        departmentId: deptCode,
         departmentName: deptName,
       },
     });

@@ -150,10 +150,10 @@ export default function LoginPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                Username (ID Number)
+                ID Number
               </label>
               <span className="text-[10px] text-slate-500 font-semibold">
-                ID Number, Email, or Username
+                (e.g. 00000)
               </span>
             </div>
             <div className="relative">

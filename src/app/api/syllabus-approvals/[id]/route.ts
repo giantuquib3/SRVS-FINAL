@@ -26,7 +26,7 @@ export async function GET(
         syllabus: {
           include: {
             course: true,
-            instructor: { select: { id: true, fullName: true, email: true } },
+            instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
           },
         },
       },
@@ -40,7 +40,7 @@ export async function GET(
           syllabus: {
             include: {
               course: true,
-              instructor: { select: { id: true, fullName: true, email: true } },
+              instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
             },
           },
         },
@@ -49,14 +49,15 @@ export async function GET(
 
     if (!version) return NextResponse.json({ error: 'Syllabus approval request not found.' }, { status: 404 });
 
+    // Department Isolation (Requirement 21)
     if (user.role === 'DepartmentHead') {
       if (!user.departmentId || String(user.departmentId).toUpperCase() !== version.syllabus.departmentId.toUpperCase()) {
-        return NextResponse.json({ error: 'Forbidden: You do not have permission to view this approval.' }, { status: 403 });
+        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals outside your assigned department.' }, { status: 403 });
       }
     }
 
     const previousApprovedVersion = await prisma.syllabusVersion.findFirst({
-      where: { syllabusId: version.syllabusId, approvalStatus: 'APPROVED', versionNumber: { lt: version.versionNumber } },
+      where: { syllabusId: version.syllabusId, approvalStatus: { in: ['APPROVED', 'Approved'] }, versionNumber: { lt: version.versionNumber } },
       orderBy: { versionNumber: 'desc' },
     });
 
@@ -65,21 +66,52 @@ export async function GET(
     const sDept = version.syllabus.departmentId;
 
     const formatted = {
-      ...version,
+      id: version.id,
+      versionNumber: version.versionNumber,
+      syllabusId: version.syllabusId,
+      changeSummary: version.changeSummary,
+      approvalStatus: version.approvalStatus,
+      statusAtSave: version.statusAtSave,
+      fileName: version.fileName,
+      fileUrl: version.fileUrl,
+      fileType: version.fileType,
+      fileSize: version.fileSize,
+      submittedAt: version.submittedAt,
+      submittedById: version.submittedById,
+      reviewedAt: version.reviewedAt,
+      reviewedById: version.reviewedById,
+      rejectionReason: version.rejectionReason,
+      content: version.content,
       syllabus: {
-        ...version.syllabus,
+        id: version.syllabus.id,
+        academicYear: version.syllabus.academicYear,
+        semester: version.syllabus.semester,
+        section: version.syllabus.section,
+        status: version.syllabus.status,
+        departmentId: sDept,
+        department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
         course: {
-          ...version.syllabus.course,
+          id: version.syllabus.course.id,
+          code: version.syllabus.course.code,
+          title: version.syllabus.course.title,
+          units: version.syllabus.course.units,
+          departmentId: version.syllabus.course.departmentId,
+          professorName: version.syllabus.course.professorName || null,
           department: {
             id: version.syllabus.course.departmentId,
             code: version.syllabus.course.departmentId,
             name: getDepartmentName(version.syllabus.course.departmentId),
           },
         },
-        subject: version.syllabus.course,
-        courseId: version.syllabus.courseId,
-        subjectId: version.syllabus.courseId,
-        department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
+        instructor: version.syllabus.instructor
+          ? {
+              id: version.syllabus.instructor.id,
+              idNumber: version.syllabus.instructor.id,
+              fullName: version.syllabus.instructor.fullName,
+              email: version.syllabus.instructor.email,
+              academicRank: version.syllabus.instructor.academicRank,
+            }
+          : null,
       },
     };
 

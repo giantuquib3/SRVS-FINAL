@@ -10,8 +10,8 @@ const client = new Client({
   const res = await client.query(`
     SELECT table_name, column_name, data_type, is_nullable
     FROM information_schema.columns
-    WHERE table_schema = 'public'
-    ORDER BY table_name, ordinal_position;
+    WHERE table_schema = 'public' AND table_name = 'courses'
+    ORDER BY ordinal_position;
   `);
   console.table(res.rows);
   await client.end();

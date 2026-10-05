@@ -176,7 +176,7 @@ async function runTestSuite() {
   assert(addCourseRes.status === 201, `POST /api/courses (DeptHead adds course [${newCourseCode}])`);
   const createdCourseId = addCourseRes.data.course?.id;
 
-  // 7. Syllabus Lifecycle (Direct Department Head Upload, Drafting, Approvals)
+  // 7. Syllabus Lifecycle (Drafting, Submission, Review & Approval)
   console.log('\n7. Syllabus Lifecycle & Review');
   const createSyllabusRes = await request('http://localhost:3000/api/syllabi', {
     method: 'POST',
@@ -185,11 +185,11 @@ async function runTestSuite() {
     courseId: createdCourseId,
     semester: '1st Semester',
     academicYear: '2026-2027',
-    courseDescription: 'Syllabus uploaded and authored directly by Department Head.',
+    courseDescription: 'Syllabus authored directly by Department Head.',
     learningOutcomes: ['Outcome 1: Mastery', 'Outcome 2: Innovation'],
-    directApprove: true,
+    status: 'Draft',
   });
-  assert(createSyllabusRes.status === 201, 'POST /api/syllabi (DeptHead creates and direct-approves)', `(status: ${createSyllabusRes.status}, data: ${JSON.stringify(createSyllabusRes.data)})`);
+  assert(createSyllabusRes.status === 201, 'POST /api/syllabi (DeptHead creates Draft syllabus)', `(status: ${createSyllabusRes.status}, data: ${JSON.stringify(createSyllabusRes.data)})`);
   const createdSyllabusId = createSyllabusRes.data.syllabus?.id;
 
   const syllabusDetailRes = await request(`http://localhost:3000/api/syllabi/${createdSyllabusId}`, {
@@ -294,7 +294,7 @@ async function runTestSuite() {
   const openApiRes = await request('http://localhost:3000/api/openapi.json');
   assert(openApiRes.status === 200, 'GET /api/openapi.json (200 OK)');
   assert(openApiRes.data.openapi === '3.0.3', 'OpenAPI version 3.0.3');
-  assert(Object.keys(openApiRes.data.paths).length >= 25, `OpenAPI paths registered: ${Object.keys(openApiRes.data.paths).length}`);
+  assert(Object.keys(openApiRes.data.paths).length === 16, `OpenAPI 16 official consolidated endpoints registered: ${Object.keys(openApiRes.data.paths).length}`);
 
   // 12. Cleanup
   console.log('\n12. Cleanup Test Course');

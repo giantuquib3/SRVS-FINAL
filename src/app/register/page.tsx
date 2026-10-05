@@ -14,10 +14,11 @@ import {
   ArrowRight,
   CreditCard
 } from 'lucide-react';
+import { DEPARTMENTS } from '@/lib/departments';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [departments, setDepartments] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>(DEPARTMENTS);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -34,13 +35,18 @@ export default function RegisterPage() {
 
   useEffect(() => {
     fetch('/api/departments')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      })
       .then((data) => {
-        if (data.departments) {
+        if (data?.departments && data.departments.length > 0) {
           setDepartments(data.departments);
         }
       })
-      .catch(() => setError('Failed to load departments from database.'));
+      .catch((err) => {
+        console.warn('Departments loaded from fallback:', err);
+      });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

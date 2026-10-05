@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
   try {
     const { idNumber, email, newPassword, confirmPassword } = await req.json();
 
-    const cleanIdStr = (idNumber || '').trim();
-    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanIdStr = idNumber !== undefined && idNumber !== null ? String(idNumber).trim() : '';
+    const cleanEmail = String(email || '').trim().toLowerCase();
 
     if (!cleanIdStr || !cleanEmail || !newPassword) {
       return NextResponse.json(

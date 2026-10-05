@@ -41,7 +41,6 @@ model User {
   updatedAt     DateTime    @updatedAt
 
   // Relational Connections
-  coursesAssigned   Course[]          @relation("FacultyCourses")
   syllabiAuthored   Syllabus[]        @relation("InstructorSyllabi")
   syllabiReviewed   Syllabus[]        @relation("DeptHeadReviewedSyllabi")
   enrollments       Enrollment[]      @relation("StudentEnrollments")
@@ -55,34 +54,31 @@ model User {
   @@index([role])
   @@index([departmentId])
   @@index([accountStatus])
-  @@map("admin")
+  @@map("users")
 }
 
 // 3. Courses (Academic Curriculum Catalog)
 model Course {
-  id           Int         @id @default(autoincrement()) // INTEGER primary key
-  code         String      @unique // e.g. "CPE101"
-  title        String
-  description  String?
-  units        Int         @default(3)
-  lecHours     Int         @default(3)
-  labHours     Int         @default(0)
-  prerequisite String?     @default("None")
-  yearLevel    String?     @default("1st Year")
-  semester     String?     @default("1st Semester")
-  departmentId String      // References Department.id
-  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  facultyName  String?     // Name of professor who uploaded syllabus
-  facultyId    Int?        // Connected to User.id (users)
-  faculty      User?       @relation("FacultyCourses", fields: [facultyId], references: [id], onDelete: SetNull)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            Int         @id @default(autoincrement()) // INTEGER primary key
+  code          String      @unique // e.g. "CPE101"
+  title         String
+  description   String?
+  units         Int         @default(3)
+  lecHours      Int         @default(3)
+  labHours      Int         @default(0)
+  prerequisite  String?     @default("None")
+  yearLevel     String?     @default("1st Year")
+  semester      String?     @default("1st Semester")
+  departmentId  String      // References Department.id (CPE, EE, CE, ECE, IE, ME)
+  department    Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  professorName String?     // Professor / Faculty responsible for the course syllabus
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   syllabi     Syllabus[]
   enrollments Enrollment[]
 
   @@index([departmentId])
-  @@index([facultyId])
   @@map("courses")
 }
 
@@ -118,7 +114,7 @@ model Syllabus {
   academicYear         String
   semester             String
   section              String          @default("A")
-  status               String          @default("Draft") // Draft, Submitted, Approved, Rejected
+  status               String          @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
   currentVersionNumber Int             @default(1)
   reviewerRemarks      String?
   submittedAt          DateTime?
@@ -147,8 +143,8 @@ model SyllabusVersion {
   editor          User     @relation("EditorVersions", fields: [editorId], references: [id])
   changeSummary   String
   changeType      String   @default("Create") // Create, Edit, Submit, Approve, Reject, Restore
-  statusAtSave    String   @default("Draft")
-  approvalStatus  String   @default("Draft") // Draft, Submitted, Approved, Rejected
+  statusAtSave    String   @default("DRAFT")
+  approvalStatus  String   @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REJECTED
   content         Json
 
   // Document upload fields (PDF, DOC, DOCX)

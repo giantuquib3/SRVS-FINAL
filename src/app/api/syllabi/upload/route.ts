@@ -9,7 +9,9 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
     if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Faculty can upload syllabus documents. System Administrators cannot author or upload syllabi.' }, { status: 403 });
+      return NextResponse.json({
+        error: 'Unauthorized: Only Department Heads and Faculty can upload syllabus documents. Administrators cannot author or upload syllabi.',
+      }, { status: 403 });
     }
 
     const formData = await req.formData();
@@ -21,24 +23,31 @@ export async function POST(req: NextRequest) {
 
     const originalName = file.name;
     const ext = path.extname(originalName).toLowerCase();
-    const allowedExtensions = ['.pdf', '.doc', '.docx'];
 
-    if (!allowedExtensions.includes(ext)) {
+    // Requirement 9: The SRVS system accepts PDF syllabi only. DOCX is not allowed.
+    if (ext !== '.pdf') {
       return NextResponse.json({
-        error: 'Invalid file format. Only PDF, DOC, and DOCX documents are accepted for syllabus uploads.',
+        error: 'Invalid file format. The SRVS system accepts PDF syllabi only (.pdf). DOCX and other formats are not allowed.',
       }, { status: 400 });
     }
 
-    // Max 15MB
-    const maxBytes = 15 * 1024 * 1024;
+    // Requirement 9: Maximum file size is 20 MB
+    const maxBytes = 20 * 1024 * 1024; // 20 MB
     if (file.size > maxBytes) {
       return NextResponse.json({
-        error: 'File size exceeds 15MB maximum limit.',
+        error: 'File size exceeds 20MB maximum limit for PDF syllabus uploads.',
       }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+
+    // Validate PDF magic bytes (%PDF)
+    if (buffer.length < 4 || buffer.subarray(0, 4).toString() !== '%PDF') {
+      return NextResponse.json({
+        error: 'Invalid file content. The file does not appear to be a valid PDF document.',
+      }, { status: 400 });
+    }
 
     // Ensure public/uploads/syllabi directory exists
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'syllabi');
@@ -59,9 +68,9 @@ export async function POST(req: NextRequest) {
       success: true,
       fileName: originalName,
       fileUrl,
-      fileType: ext.replace('.', '').toUpperCase(),
+      fileType: 'PDF',
       fileSize: file.size,
-    });
+    }, { status: 201 });
   } catch (error: any) {
     console.error('File upload error:', error);
     return NextResponse.json({ error: 'Failed to upload document: ' + error.message }, { status: 500 });

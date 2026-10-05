@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { createNotification } from '@/lib/notifications';
 import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
 
 export async function POST(req: NextRequest) {
   try {
     const { email, idNumber, username, password, firstName, lastName, role, departmentId } = await req.json();
 
-    const cleanIdStr = (idNumber || username || '').trim();
+    const cleanIdStr = idNumber !== undefined && idNumber !== null
+      ? String(idNumber).trim()
+      : (username !== undefined && username !== null ? String(username).trim() : '');
 
     if (!email || !cleanIdStr || !password || !firstName || !lastName || !departmentId) {
       return NextResponse.json({ error: 'Please fill in all required fields including a valid University ID Number.' }, { status: 400 });
@@ -93,23 +94,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Notify administrators if pending approval
-    if (initialStatus === 'PendingApproval') {
-      const admins = await prisma.user.findMany({
-        where: { role: 'Admin' },
-        select: { id: true },
-      });
-
-      for (const adm of admins) {
-        await createNotification(
-          String(adm.id),
-          'New Account Registration Pending Approval',
-          `New ${selectedRole} account registration: ${fullName} (${cleanIdStr} - ${deptCode}) is awaiting review and approval.`,
-          '/admin/users'
-        );
-      }
-    }
-
+    // Audit log registration event
     await logAuditEvent({
       userId: createdRecord.id,
       userDisplayName: fullName,
@@ -129,8 +114,7 @@ export async function POST(req: NextRequest) {
             : 'Account registered successfully! You may now sign in.',
         user: {
           id: createdRecord.id,
-          idNumber: String(createdRecord.id),
-          username: String(createdRecord.id),
+          idNumber: createdRecord.id,
           email: createdRecord.email,
           fullName: createdRecord.fullName,
           role: selectedRole,

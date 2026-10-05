@@ -25,7 +25,7 @@ export default function SwaggerDocsPage() {
   const [dbStatus, setDbStatus] = useState<any>(null);
   const [loadingDb, setLoadingDb] = useState(true);
   const [activeTab, setActiveTab] = useState<'api' | 'schema'>('api');
-  const [selectedTable, setSelectedTable] = useState<string>('admin');
+  const [selectedTable, setSelectedTable] = useState<string>('users');
 
   const fetchDbStatus = async () => {
     setLoadingDb(true);
@@ -101,21 +101,21 @@ export default function SwaggerDocsPage() {
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Last modification timestamp' },
       ],
     },
-    admin: {
-      name: 'admin',
-      description: 'Master authentication and user directory table (admin) consolidating Admins, Department Heads, Educators (Faculty), and Students. This central table allows System Administrators to view, search, approve, and manage the full list of institutional users.',
-      badge: 'Master User Directory (admin)',
-      pk: 'id (INTEGER) — University ID Number (0: Admin, 5 digits: Faculty/DeptHead, 10 digits: Student)',
+    users: {
+      name: 'users',
+      description: 'Master authentication and user directory table (users) consolidating Admins, Department Heads, Educators (Faculty), and Students. Institutional user identification uses idNumber (represented by id). Single source of truth for all system accounts.',
+      badge: 'Master User Directory (users)',
+      pk: 'id (INTEGER) — Institutional idNumber (0: Admin, 5 digits: Faculty/DeptHead, 10 digits: Student)',
       fks: [
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
-        { name: 'id', type: 'INTEGER', nullable: false, desc: 'Primary Key (Numeric University ID)' },
+        { name: 'id', type: 'INTEGER', nullable: false, desc: 'Primary Key / Institutional idNumber (0: Admin, 5 digits: Faculty/DeptHead, 10 digits: Student)' },
         { name: 'email', type: 'TEXT', nullable: false, desc: 'Institutional USJ-R email (Unique)' },
         { name: 'passwordHash', type: 'TEXT', nullable: false, desc: 'Bcrypt hashed password' },
         { name: 'fullName', type: 'TEXT', nullable: false, desc: 'Full institutional name' },
         { name: 'role', type: 'TEXT', nullable: false, desc: 'Enum: Admin | DepartmentHead | Educator | Student' },
-        { name: 'departmentId', type: 'VARCHAR(10)', nullable: true, desc: 'FK -> departments.id' },
+        { name: 'departmentId', type: 'VARCHAR(10)', nullable: true, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
         { name: 'academicRank', type: 'TEXT', nullable: true, desc: 'Chairperson, Professor, Instructor, etc.' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: '1st Year, 2nd Year, 3rd Year, 4th Year (Students)' },
         { name: 'accountStatus', type: 'TEXT', nullable: false, desc: 'Active | PendingApproval | Rejected | Deactivated' },
@@ -125,16 +125,15 @@ export default function SwaggerDocsPage() {
     },
     courses: {
       name: 'courses',
-      description: 'Academic curriculum courses catalog managed by Department Heads and System Administrators.',
+      description: 'Academic curriculum courses catalog managed by Department Heads and System Administrators with department-level data isolation.',
       badge: 'Academic Curriculum',
       pk: 'id (INTEGER SERIAL)',
       fks: [
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
-        { col: 'facultyId', target: 'admin.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
-        { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Primary Key' },
-        { name: 'code', type: 'TEXT', nullable: false, desc: 'Course Code (e.g. CPE101) [Unique]' },
+        { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Internal Primary Key (courseId)' },
+        { name: 'code', type: 'TEXT', nullable: false, desc: 'Course Code / courseCode (e.g. CPE101) [Unique]' },
         { name: 'title', type: 'TEXT', nullable: false, desc: 'Descriptive Course Title' },
         { name: 'description', type: 'TEXT', nullable: true, desc: 'Overview of topics and objectives' },
         { name: 'units', type: 'INTEGER', nullable: false, desc: 'Credit units (Default: 3)' },
@@ -143,24 +142,23 @@ export default function SwaggerDocsPage() {
         { name: 'prerequisite', type: 'TEXT', nullable: true, desc: 'Required prerequisite courses' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: 'Target academic year level' },
         { name: 'semester', type: 'TEXT', nullable: true, desc: '1st Semester | 2nd Semester | Summer' },
-        { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id' },
-        { name: 'facultyName', type: 'TEXT', nullable: true, desc: 'Name of syllabus author' },
-        { name: 'facultyId', type: 'INTEGER', nullable: true, desc: 'FK -> admin.id (Educator/DeptHead)' },
+        { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
+        { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Faculty/Professor responsible for course syllabus' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Course creation date' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Course modification date' },
       ],
     },
     enrollments: {
       name: 'enrollments',
-      description: 'Student course enrollments with composite primary key (studentId, courseId). Direct connection to student user record in admin table and course.',
+      description: 'Student course enrollments with composite primary key (studentId, courseId). Direct connection to student user record in users table and course.',
       badge: 'Student Records',
       pk: '(studentId INT, courseId INT) — Composite Primary Key',
       fks: [
-        { col: 'studentId', target: 'admin.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
+        { col: 'studentId', target: 'users.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
         { col: 'courseId', target: 'courses.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
       ],
       columns: [
-        { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> admin.id (Student University ID)' },
+        { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Student University ID)' },
         { name: 'courseId', type: 'INTEGER', nullable: false, desc: 'FK -> courses.id' },
         { name: 'studentName', type: 'TEXT', nullable: false, desc: 'Cached student full name' },
         { name: 'semester', type: 'TEXT', nullable: false, desc: 'Semester of enrollment' },
@@ -178,24 +176,24 @@ export default function SwaggerDocsPage() {
       pk: 'id (INTEGER SERIAL)',
       fks: [
         { col: 'courseId', target: 'courses.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
-        { col: 'instructorId', target: 'admin.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
+        { col: 'instructorId', target: 'users.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
-        { col: 'reviewedByUserId', target: 'admin.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
+        { col: 'reviewedByUserId', target: 'users.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
         { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Primary Key' },
         { name: 'courseId', type: 'INTEGER', nullable: false, desc: 'FK -> courses.id' },
-        { name: 'instructorId', type: 'INTEGER', nullable: false, desc: 'FK -> admin.id (Educator/DeptHead)' },
+        { name: 'instructorId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Educator/DeptHead)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id' },
         { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'Target academic year' },
         { name: 'semester', type: 'TEXT', nullable: false, desc: 'Target semester' },
         { name: 'section', type: 'TEXT', nullable: false, desc: 'Course section' },
-        { name: 'status', type: 'TEXT', nullable: false, desc: 'Draft | Submitted | Approved | Rejected' },
+        { name: 'status', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED' },
         { name: 'currentVersionNumber', type: 'INTEGER', nullable: false, desc: 'Active approved version number' },
         { name: 'reviewerRemarks', type: 'TEXT', nullable: true, desc: 'Feedback comments from Department Head' },
         { name: 'submittedAt', type: 'TIMESTAMP', nullable: true, desc: 'Submission for review timestamp' },
         { name: 'reviewedAt', type: 'TIMESTAMP', nullable: true, desc: 'Approval/rejection timestamp' },
-        { name: 'reviewedByUserId', type: 'INTEGER', nullable: true, desc: 'FK -> admin.id (Department Head)' },
+        { name: 'reviewedByUserId', type: 'INTEGER', nullable: true, desc: 'FK -> users.id (Department Head)' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Initial creation timestamp' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Latest modification timestamp' },
       ],
@@ -207,27 +205,27 @@ export default function SwaggerDocsPage() {
       pk: 'id (INTEGER SERIAL)',
       fks: [
         { col: 'syllabusId', target: 'syllabi.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
-        { col: 'editorId', target: 'admin.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
-        { col: 'submittedById', target: 'admin.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
-        { col: 'reviewedById', target: 'admin.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
+        { col: 'editorId', target: 'users.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
+        { col: 'submittedById', target: 'users.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
+        { col: 'reviewedById', target: 'users.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
         { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Primary Key' },
         { name: 'syllabusId', type: 'INTEGER', nullable: false, desc: 'FK -> syllabi.id' },
         { name: 'versionNumber', type: 'INTEGER', nullable: false, desc: 'Sequential version number (1, 2, 3...)' },
-        { name: 'editorId', type: 'INTEGER', nullable: false, desc: 'FK -> admin.id (Editor/Author)' },
+        { name: 'editorId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Editor/Author)' },
         { name: 'changeSummary', type: 'TEXT', nullable: false, desc: 'User explanation of modifications' },
         { name: 'changeType', type: 'TEXT', nullable: false, desc: 'Create | Edit | Submit | Approve | Reject | Restore' },
         { name: 'statusAtSave', type: 'TEXT', nullable: false, desc: 'Status at snapshot creation' },
-        { name: 'approvalStatus', type: 'TEXT', nullable: false, desc: 'Approval state at snapshot' },
+        { name: 'approvalStatus', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED' },
         { name: 'content', type: 'JSONB', nullable: false, desc: 'Complete immutable content payload' },
         { name: 'fileName', type: 'TEXT', nullable: true, desc: 'Uploaded file original name' },
         { name: 'fileUrl', type: 'TEXT', nullable: true, desc: 'Hosted file storage path' },
-        { name: 'fileType', type: 'TEXT', nullable: true, desc: 'PDF | DOC | DOCX' },
+        { name: 'fileType', type: 'TEXT', nullable: true, desc: 'PDF (SRVS accepts PDF syllabi only, max 20MB)' },
         { name: 'fileSize', type: 'INTEGER', nullable: true, desc: 'File size in bytes' },
-        { name: 'submittedById', type: 'INTEGER', nullable: true, desc: 'FK -> admin.id' },
+        { name: 'submittedById', type: 'INTEGER', nullable: true, desc: 'FK -> users.id' },
         { name: 'submittedAt', type: 'TIMESTAMP', nullable: true, desc: 'Submission timestamp' },
-        { name: 'reviewedById', type: 'INTEGER', nullable: true, desc: 'FK -> admin.id' },
+        { name: 'reviewedById', type: 'INTEGER', nullable: true, desc: 'FK -> users.id' },
         { name: 'reviewedAt', type: 'TIMESTAMP', nullable: true, desc: 'Review timestamp' },
         { name: 'rejectionReason', type: 'TEXT', nullable: true, desc: 'Feedback if rejected' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Snapshot timestamp' },
@@ -240,11 +238,11 @@ export default function SwaggerDocsPage() {
       badge: 'Security Audit',
       pk: 'id (INTEGER SERIAL)',
       fks: [
-        { col: 'userId', target: 'admin.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
+        { col: 'userId', target: 'users.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
         { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Primary Key' },
-        { name: 'userId', type: 'INTEGER', nullable: true, desc: 'FK -> admin.id (Actor ID)' },
+        { name: 'userId', type: 'INTEGER', nullable: true, desc: 'FK -> users.id (Actor ID)' },
         { name: 'userDisplayName', type: 'TEXT', nullable: true, desc: 'Cached display name of actor' },
         { name: 'actionType', type: 'TEXT', nullable: false, desc: 'Login | CreateCourse | ApproveSyllabus | etc.' },
         { name: 'resultStatus', type: 'TEXT', nullable: false, desc: 'Success | Failed | Warning' },
@@ -332,7 +330,7 @@ export default function SwaggerDocsPage() {
               <div className="hidden lg:flex items-center space-x-2 text-[11px] font-mono text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
                 <span>Depts: <strong className="text-[#005A36]">{dbStatus.tables.departments ?? 6}</strong></span>
                 <span>•</span>
-                <span>Users (admin): <strong className="text-[#005A36]">{dbStatus.tables.admin ?? 22}</strong></span>
+                <span>Users: <strong className="text-[#005A36]">{dbStatus.tables.users ?? 22}</strong></span>
                 <span className="text-slate-400">({dbStatus.tables.admins ?? 1} Adm, {dbStatus.tables.department_heads ?? 4} DH, {dbStatus.tables.educators ?? 5} Edu, {dbStatus.tables.students ?? 12} Stu)</span>
                 <span>•</span>
                 <span>Courses: <strong className="text-[#005A36]">{dbStatus.tables.courses ?? 13}</strong></span>
@@ -370,7 +368,7 @@ export default function SwaggerDocsPage() {
             <BookOpen className="w-4 h-4" />
             <span>Interactive OpenAPI 3.0 Explorer</span>
             <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-emerald-100 text-emerald-800 font-extrabold">
-              28 Endpoints
+              21 Canonical Endpoints
             </span>
           </button>
 
@@ -493,7 +491,7 @@ export default function SwaggerDocsPage() {
 │  PK: id INTEGER (SERIAL)       │                     │  PK: (studentId, courseId) INT │
 │  code (UNIQUE), title, units   │                     │  studentName, semester, status │
 │  FK: departmentId -> dept.id   │                     └────────────────────────────────┘
-│  FK: facultyId -> admin.id     │                              ▲
+│  professorName (TEXT)          │                              ▲
 └────────────────────────────────┘                              │
         │ 1:N                                                   │
         ▼                                                       │

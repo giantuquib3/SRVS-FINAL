@@ -34,8 +34,8 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden: Department Heads may only review syllabi for their own department.' }, { status: 403 });
     }
 
-    const targetStatus = action === 'Approve' ? 'Approved' : 'Rejected';
-    const versionStatus = action === 'Approve' ? 'APPROVED' : 'REJECTED';
+    const targetStatus = action === 'Approve' ? 'APPROVED' : 'REJECTED';
+    const versionStatus = targetStatus;
     const currentUserIdInt = parseInt(user.id, 10) || 0;
     const now = new Date();
 
@@ -43,7 +43,7 @@ export async function POST(
       if (action === 'Approve') {
         await tx.syllabus.updateMany({
           where: { courseId: syllabus.courseId, id: { not: syllabus.id }, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
-          data: { status: 'Archived' },
+          data: { status: 'ARCHIVED' },
         });
       }
 

@@ -46,7 +46,6 @@ export async function GET(req: NextRequest) {
       id: userRecord.id,
       idNumber: userRecord.id,
       email: userRecord.email,
-      username: userRecord.id,
       fullName: userRecord.fullName,
       role: userRecord.role,
       departmentId: deptCode,

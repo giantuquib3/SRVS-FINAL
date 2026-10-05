@@ -8,10 +8,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'srvs-default-super-secret-key-2026
 const key = new TextEncoder().encode(JWT_SECRET);
 
 export interface SessionUser {
-  id: string;
+  id: string; // Institutional ID (e.g. "0", "10001", "2022012708")
   idNumber?: string;
   email: string;
-  username?: string | null;
   fullName: string;
   role: string; // Admin, DepartmentHead, Educator, Student
   departmentId?: string | null;
@@ -89,11 +88,6 @@ export function verifyPassword(password: string, hashedPassword: string): boolea
     }
   } catch {
     // ignore
-  }
-
-  // 3. Fallback check for known seed passwords
-  if (password === 'Giangwapo123?' || password === 'admin123') {
-    return true;
   }
 
   return false;

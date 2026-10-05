@@ -51,7 +51,7 @@ export async function POST(
     if (syllabusVersion.approvalStatus === 'APPROVED') {
       return NextResponse.json({ error: `Version ${versionNum} is already approved.` }, { status: 400 });
     }
-    if (syllabusVersion.approvalStatus === 'PENDING_APPROVAL') {
+    if (syllabusVersion.approvalStatus === 'PENDING_APPROVAL' || syllabusVersion.approvalStatus === 'SUBMITTED') {
       return NextResponse.json({ error: `Version ${versionNum} is already pending review.` }, { status: 400 });
     }
 
@@ -60,11 +60,11 @@ export async function POST(
     const result = await prisma.$transaction(async (tx) => {
       const updatedVersion = await tx.syllabusVersion.update({
         where: { id: syllabusVersion.id },
-        data: { approvalStatus: 'PENDING_APPROVAL', statusAtSave: 'PENDING_APPROVAL', submittedById: currentUserIdInt, submittedAt: now },
+        data: { approvalStatus: 'SUBMITTED', statusAtSave: 'SUBMITTED', submittedById: currentUserIdInt, submittedAt: now },
       });
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabusId },
-        data: { status: 'PENDING_APPROVAL', submittedAt: now },
+        data: { status: 'SUBMITTED', submittedAt: now },
       });
       return { updatedVersion, updatedSyllabus };
     });
