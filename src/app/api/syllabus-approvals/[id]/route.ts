@@ -25,7 +25,7 @@ export async function GET(
       include: {
         syllabus: {
           include: {
-            course: true,
+            subject: true,
             instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
           },
         },
@@ -39,7 +39,7 @@ export async function GET(
         include: {
           syllabus: {
             include: {
-              course: true,
+              subject: true,
               instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
             },
           },
@@ -49,7 +49,7 @@ export async function GET(
 
     if (!version) return NextResponse.json({ error: 'Syllabus approval request not found.' }, { status: 404 });
 
-    // Department Isolation (Requirement 21)
+    // Department Isolation
     if (user.role === 'DepartmentHead') {
       if (!user.departmentId || String(user.departmentId).toUpperCase() !== version.syllabus.departmentId.toUpperCase()) {
         return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals outside your assigned department.' }, { status: 403 });
@@ -64,6 +64,20 @@ export async function GET(
     const currentUserIdInt = parseInt(user.id, 10) || 0;
     const isSelfSubmission = currentUserIdInt === version.submittedById || currentUserIdInt === version.syllabus.instructorId;
     const sDept = version.syllabus.departmentId;
+
+    const subjectData = {
+      id: version.syllabus.subject.id,
+      code: version.syllabus.subject.code,
+      title: version.syllabus.subject.title,
+      units: version.syllabus.subject.units,
+      departmentId: version.syllabus.subject.departmentId,
+      professorName: version.syllabus.subject.professorName || null,
+      department: {
+        id: version.syllabus.subject.departmentId,
+        code: version.syllabus.subject.departmentId,
+        name: getDepartmentName(version.syllabus.subject.departmentId),
+      },
+    };
 
     const formatted = {
       id: version.id,
@@ -90,19 +104,8 @@ export async function GET(
         status: version.syllabus.status,
         departmentId: sDept,
         department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
-        course: {
-          id: version.syllabus.course.id,
-          code: version.syllabus.course.code,
-          title: version.syllabus.course.title,
-          units: version.syllabus.course.units,
-          departmentId: version.syllabus.course.departmentId,
-          professorName: version.syllabus.course.professorName || null,
-          department: {
-            id: version.syllabus.course.departmentId,
-            code: version.syllabus.course.departmentId,
-            name: getDepartmentName(version.syllabus.course.departmentId),
-          },
-        },
+        subject: subjectData,
+        course: subjectData, // Alias
         instructor: version.syllabus.instructor
           ? {
               id: version.syllabus.instructor.id,

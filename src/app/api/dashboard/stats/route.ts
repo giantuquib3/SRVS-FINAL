@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         totalEducators,
         totalStudents,
         pendingUsers,
-        totalCourses,
+        totalSubjects,
         totalSyllabi,
         pendingApprovals,
         recentLogs,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         prisma.user.count({ where: { role: 'Educator' } }),
         prisma.user.count({ where: { role: 'Student' } }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval' } }),
-        prisma.course.count(),
+        prisma.subject.count(),
         prisma.syllabus.count(),
         prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] } } }),
         prisma.auditLog.findMany({
@@ -50,7 +50,8 @@ export async function GET(req: NextRequest) {
           totalEducators,
           totalStudents,
           pendingRegistrations: pendingUsers,
-          totalCourses,
+          totalSubjects,
+          totalCourses: totalSubjects, // Alias
           totalSyllabi,
           pendingApprovals,
           pendingSyllabi: pendingApprovals,
@@ -76,12 +77,12 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           role: 'DepartmentHead',
           department: null,
-          stats: { totalCourses: 0, totalSyllabi: 0, draftSyllabi: 0, submittedSyllabi: 0, approvedSyllabi: 0, rejectedSyllabi: 0, educatorsCount: 0, studentsCount: 0, pendingRegistrations: 0, pendingApprovals: 0, missingSyllabi: 0 },
+          stats: { totalSubjects: 0, totalCourses: 0, totalSyllabi: 0, draftSyllabi: 0, submittedSyllabi: 0, approvedSyllabi: 0, rejectedSyllabi: 0, educatorsCount: 0, studentsCount: 0, pendingRegistrations: 0, pendingApprovals: 0, missingSyllabi: 0 },
         });
       }
 
       const [
-        totalCourses,
+        totalSubjects,
         totalSyllabi,
         draftSyllabi,
         submittedSyllabi,
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
         pendingRegistrations,
         pendingApprovals,
       ] = await Promise.all([
-        prisma.course.count({ where: { departmentId: deptCode } }),
+        prisma.subject.count({ where: { departmentId: deptCode } }),
         prisma.syllabus.count({ where: { departmentId: deptCode } }),
         prisma.syllabus.count({ where: { status: { in: ['Draft', 'DRAFT'] }, departmentId: deptCode } }),
         prisma.syllabus.count({ where: { status: { in: ['Submitted', 'PENDING_APPROVAL'] }, departmentId: deptCode } }),
@@ -104,13 +105,14 @@ export async function GET(req: NextRequest) {
         prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] }, departmentId: deptCode } }),
       ]);
 
-      const missingSyllabi = Math.max(0, totalCourses - approvedSyllabi);
+      const missingSyllabi = Math.max(0, totalSubjects - approvedSyllabi);
 
       return NextResponse.json({
         role: 'DepartmentHead',
         department: { id: deptCode, code: deptCode, name: deptName },
         stats: {
-          totalCourses,
+          totalSubjects,
+          totalCourses: totalSubjects, // Alias
           totalSyllabi,
           draftSyllabi,
           submittedSyllabi,
@@ -142,7 +144,7 @@ export async function GET(req: NextRequest) {
             orderBy: { updatedAt: 'desc' },
             take: 5,
             include: {
-              course: true,
+              subject: true,
               versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
             },
           }),
@@ -150,8 +152,10 @@ export async function GET(req: NextRequest) {
 
       const formattedSyllabi = (recentSyllabi as any[]).map((s: any) => ({
         ...s,
-        subject: s.course,
-        subjectId: s.courseId,
+        subject: s.subject,
+        course: s.subject, // Alias
+        subjectId: s.subjectId,
+        courseId: s.subjectId, // Alias
       }));
 
       return NextResponse.json({
@@ -170,12 +174,18 @@ export async function GET(req: NextRequest) {
       ? await prisma.enrollment.findMany({
           where: { studentId: studentIntId, status: 'ENROLLED' },
           include: {
-            course: {
+            student: { select: { fullName: true } },
+            classSection: {
               include: {
-                syllabi: {
-                  where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
-                  orderBy: { updatedAt: 'desc' },
-                  take: 1,
+                instructor: { select: { id: true, fullName: true } },
+                subject: {
+                  include: {
+                    syllabi: {
+                      where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
+                      orderBy: { updatedAt: 'desc' },
+                      take: 1,
+                    },
+                  },
                 },
               },
             },
@@ -183,21 +193,29 @@ export async function GET(req: NextRequest) {
         })
       : [];
 
-    const availableSyllabiCount = enrollments.filter((e: any) => e.course?.syllabi?.length > 0).length;
+    const availableSyllabiCount = enrollments.filter((e: any) => e.classSection?.subject?.syllabi?.length > 0).length;
 
     const formattedEnrollments = enrollments.map((e: any) => {
-      const deptCode = String(e.course.departmentId || '');
+      const cs = e.classSection;
+      const deptCode = String(cs?.subject?.departmentId || '');
+      const subjectData = {
+        ...cs?.subject,
+        professorName: cs?.instructor?.fullName || cs?.subject?.professorName || null,
+        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+      };
       return {
-        id: `${e.studentId}_${e.courseId}`,
+        id: e.id,
         studentId: e.studentId,
-        studentName: e.studentName,
-        courseId: e.courseId,
-        subjectId: e.courseId,
-        course: {
-          ...e.course,
-          department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
-        },
-        subject: e.course,
+        studentName: e.student?.fullName,
+        classSectionId: e.classSectionId,
+        subjectId: cs?.subjectId,
+        courseId: cs?.subjectId, // Alias
+        semester: cs?.semester,
+        academicYear: cs?.academicYear,
+        section: cs?.section,
+        instructor: cs?.instructor || null,
+        subject: subjectData,
+        course: subjectData, // Alias
       };
     });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getDepartmentName } from '@/lib/departments';
+import { enrollmentInclude, formatEnrollment } from '@/lib/enrollments';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,14 +31,15 @@ export async function GET(req: NextRequest) {
 
   let userEnrollments: any[] = [];
   if (userRecord.role === 'Student') {
-    userEnrollments = await prisma.enrollment.findMany({
+    const rawEnrollments = await prisma.enrollment.findMany({
       where: { studentId: userRecord.id, status: 'ENROLLED' },
-      include: { course: true },
+      include: enrollmentInclude,
     });
+    userEnrollments = rawEnrollments.map((e: any) => formatEnrollment(e));
   }
 
   const enrolledCodes = userEnrollments
-    .map((e) => e.course?.code)
+    .map((e) => e.subject?.code)
     .filter(Boolean)
     .join(', ');
 
@@ -54,6 +56,8 @@ export async function GET(req: NextRequest) {
       title: userRecord.academicRank || (userRecord.role === 'DepartmentHead' ? 'Department Chairperson' : null),
       academicRank: userRecord.academicRank || (userRecord.role === 'Educator' ? 'Faculty Member' : null),
       yearLevel: userRecord.yearLevel || (userRecord.role === 'Student' ? '1st Year' : null),
+      program: userRecord.program || null,
+      mustChangePassword: !!userRecord.mustChangePassword,
       enrolledSubjects: enrolledCodes,
       enrollments: userEnrollments,
     },

@@ -56,13 +56,21 @@ export async function POST(req: NextRequest) {
 
     if (matchedUser.accountStatus === 'PendingApproval') {
       return NextResponse.json({
-        error: 'Your account registration is currently pending approval by the Department Head or Administrator.',
+        error: 'Your account is still pending approval from your Department Head.',
       }, { status: 403 });
     }
 
-    if (matchedUser.accountStatus === 'Rejected' || matchedUser.accountStatus === 'Deactivated') {
+    if (matchedUser.accountStatus === 'Rejected') {
+      const reasonText = matchedUser.rejectionReason ? ` Reason: ${matchedUser.rejectionReason}` : '';
       return NextResponse.json({
-        error: `Your account is ${matchedUser.accountStatus.toLowerCase()}. Please contact the administrator.`,
+        error: `Your registration was rejected by your Department Head.${reasonText} Please contact your department office.`,
+        rejectionReason: matchedUser.rejectionReason || null,
+      }, { status: 403 });
+    }
+
+    if (matchedUser.accountStatus === 'Deactivated') {
+      return NextResponse.json({
+        error: 'Your account is deactivated. Please contact the department head or administrator.',
       }, { status: 403 });
     }
 
@@ -115,6 +123,7 @@ export async function POST(req: NextRequest) {
         role,
         departmentId: deptCode,
         departmentName: deptName,
+        mustChangePassword: !!matchedUser.mustChangePassword,
       },
     });
 

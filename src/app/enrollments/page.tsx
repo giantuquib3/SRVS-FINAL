@@ -12,20 +12,21 @@ import {
   AlertCircle,
   X,
   BookOpen,
-  ArrowLeft
+  ArrowLeft,
+  Trash2
 } from 'lucide-react';
 
 export default function EnrollmentsPage() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // Modal form state
   const [modalOpen, setModalOpen] = useState(false);
   const [studentId, setStudentId] = useState('');
-  const [courseId, setCourseId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
   const [semester, setSemester] = useState('1st Semester');
   const [academicYear, setAcademicYear] = useState('2026-2027');
   const [section, setSection] = useState('A');
@@ -33,19 +34,42 @@ export default function EnrollmentsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
 
+  const handleUnenroll = async (en: any) => {
+    const studentName = en.student?.fullName || en.studentName || en.studentId;
+    const subjCode = en.subject?.code || en.course?.code;
+    const targetSubjId = en.subjectId || en.courseId;
+    if (!confirm(`Are you sure you want to unenroll ${studentName} from [${subjCode}] (${en.semester}, ${en.academicYear})?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/enrollments?id=${en.id}&studentId=${en.studentId}&subjectId=${targetSubjId}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        await fetchEnrollments();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to unenroll student.');
+      }
+    } catch (err) {
+      alert('Network error un-enrolling student.');
+    }
+  };
+
   const fetchEnrollments = async () => {
     setLoading(true);
     try {
-      const [eRes, sRes, cRes, meRes] = await Promise.all([
+      const [eRes, sRes, subjRes, meRes] = await Promise.all([
         fetch('/api/enrollments').then((r) => r.json()),
         fetch('/api/students').then((r) => r.json()),
-        fetch('/api/courses').then((r) => r.json()),
+        fetch('/api/subjects').then((r) => r.json()),
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
       ]);
 
       setEnrollments(eRes.enrollments || []);
       setStudents(sRes.students || []);
-      setCourses(cRes.courses || []);
+      setSubjects(subjRes.subjects || subjRes.courses || []);
       if (meRes?.user) setCurrentUser(meRes.user);
     } catch (err) {
       console.error('Error loading enrollments data:', err);
@@ -69,7 +93,7 @@ export default function EnrollmentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentId,
-          courseId,
+          subjectId,
           semester,
           academicYear,
           section,
@@ -86,7 +110,7 @@ export default function EnrollmentsPage() {
 
       setModalOpen(false);
       setStudentId('');
-      setCourseId('');
+      setSubjectId('');
       await fetchEnrollments();
     } catch (err) {
       setModalError('Connection error.');
@@ -106,11 +130,14 @@ export default function EnrollmentsPage() {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               Student Records
             </span>
-            <span className="text-xs text-slate-500 font-medium">USJ-R Academic Enrollment</span>
+            <span className="text-xs text-slate-500 font-medium">USJ-R Academic Subjects Enrollment</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
-            Course Enrollment Registry
+            Subject Enrollment Registry
           </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Many-to-Many enrollment junction: Students enroll in academic subjects (Programming, Networking, Mathematics, etc.) with unique composite key enforcement.
+          </p>
         </div>
 
         {canManage && (
@@ -130,10 +157,10 @@ export default function EnrollmentsPage() {
           <div>
             <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
               <GraduationCap className="w-4 h-4 text-[#005A36]" />
-              <span>Active Enrollment Records</span>
+              <span>Active Subject Enrollment Records</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Determines syllabus access for authenticated students
+              Enforces single enrollment per subject across terms &bull; Governs student approved-syllabus access
             </p>
           </div>
           <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
@@ -141,7 +168,11 @@ export default function EnrollmentsPage() {
           </span>
         </div>
 
-        {enrollments.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12 text-slate-500 text-xs">
+            Loading enrollment records...
+          </div>
+        ) : enrollments.length === 0 ? (
           <div className="text-center py-12 text-slate-500 text-xs">
             No enrollment records currently in database.
           </div>
@@ -151,22 +182,24 @@ export default function EnrollmentsPage() {
               <thead>
                 <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
                   <th className="py-2.5 px-3">Student</th>
-                  <th className="py-2.5 px-3">Course / Subject</th>
+                  <th className="py-2.5 px-3">Academic Subject</th>
                   <th className="py-2.5 px-3">Department</th>
                   <th className="py-2.5 px-3">Term & AY</th>
                   <th className="py-2.5 px-3">Section</th>
                   <th className="py-2.5 px-3">Enrollment Status</th>
                   <th className="py-2.5 px-3">Mapped Syllabus</th>
+                  {canManage && <th className="py-2.5 px-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {enrollments.map((en) => {
-                  const activeSyllabus = en.course?.syllabi?.[0];
+                  const currentSubj = en.subject || en.course;
+                  const activeSyllabus = currentSubj?.activeSyllabus || currentSubj?.syllabi?.[0];
                   return (
                     <tr key={en.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3">
-                        <p className="font-bold text-slate-900">{en.student?.fullName}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">{en.student?.email}</p>
+                        <p className="font-bold text-slate-900">{en.student?.fullName || en.studentName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{en.student?.email || `ID: ${en.studentId}`}</p>
                         {en.student?.departmentCode && (
                           <div className="mt-1 flex items-center space-x-1">
                             <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-2xs">
@@ -179,18 +212,18 @@ export default function EnrollmentsPage() {
                         )}
                       </td>
                       <td className="py-3 px-3">
-                        <span className="font-bold text-[#005A36] mr-2">{en.course?.code}</span>
-                        <span className="text-slate-800">{en.course?.title}</span>
+                        <span className="font-bold text-[#005A36] mr-2">{currentSubj?.code}</span>
+                        <span className="text-slate-800 font-medium">{currentSubj?.title}</span>
                       </td>
                       <td className="py-3 px-3 text-slate-600">
                         <div className="space-y-0.5">
-                          {en.course?.department?.code && (
+                          {currentSubj?.department?.code && (
                             <span className="inline-block px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-bold font-mono border border-slate-200">
-                              {en.course.department.code}
+                              {currentSubj.department.code}
                             </span>
                           )}
                           <span className="block text-slate-700 text-xs font-medium">
-                            {en.course?.department?.name || '—'}
+                            {currentSubj?.department?.name || '—'}
                           </span>
                         </div>
                       </td>
@@ -217,6 +250,18 @@ export default function EnrollmentsPage() {
                           <span className="text-amber-700 italic text-[11px] font-semibold">Pending syllabus</span>
                         )}
                       </td>
+                      {canManage && (
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            onClick={() => handleUnenroll(en)}
+                            title="Unenroll student from this subject"
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 text-xs font-semibold transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Unenroll</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -231,7 +276,7 @@ export default function EnrollmentsPage() {
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white max-w-lg w-full p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4 text-slate-900">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="font-bold text-base text-[#005A36]">Enroll Student in Course</h2>
+              <h2 className="font-bold text-base text-[#005A36]">Enroll Student in Academic Subject</h2>
               <button
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
@@ -266,17 +311,17 @@ export default function EnrollmentsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Course / Subject</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Academic Subject</label>
                 <select
                   required
-                  value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                 >
-                  <option value="">-- Select Course --</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      [{c.code}] {c.title}
+                  <option value="">-- Select Academic Subject --</option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      [{s.code}] {s.title} ({s.departmentId || s.department?.code})
                     </option>
                   ))}
                 </select>

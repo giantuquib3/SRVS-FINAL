@@ -25,7 +25,7 @@ export async function POST(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true },
+      include: { subject: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
@@ -78,7 +78,7 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'SubmitSyllabusVersion',
       resultStatus: 'Success',
-      description: `Submitted syllabus [${syllabus.course.code}] Version ${versionNum} for review${remarksSummary}`,
+      description: `Submitted syllabus [${syllabus.subject.code}] Version ${versionNum} for review${remarksSummary}`,
       entityType: 'SyllabusVersion',
       entityId: String(syllabusVersion.id),
     });
@@ -92,15 +92,15 @@ export async function POST(
     for (const dh of deptHeads) {
       await createNotification(
         String(dh.id),
-        `Syllabus Submitted: ${syllabus.course.code}`,
-        `${user.fullName} submitted ${syllabus.course.code} (${syllabus.course.title}) v${versionNum} for approval.`,
+        `Syllabus Submitted: ${syllabus.subject.code}`,
+        `${user.fullName} submitted ${syllabus.subject.code} (${syllabus.subject.title}) v${versionNum} for approval.`,
         `/department/syllabus-approvals/${syllabusVersion.id}`
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: `Version ${versionNum} for ${syllabus.course.code} submitted for Department Head approval.`,
+      message: `Version ${versionNum} for ${syllabus.subject.code} submitted for Department Head approval.`,
       version: result.updatedVersion,
       syllabus: result.updatedSyllabus,
     });

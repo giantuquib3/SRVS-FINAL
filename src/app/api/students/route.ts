@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       }),
       prisma.enrollment.findMany({
         where: { status: 'ENROLLED' },
-        select: { studentId: true, courseId: true },
+        select: { studentId: true, classSection: { select: { subjectId: true } } },
       }),
     ]);
 
@@ -70,11 +70,11 @@ export async function GET(req: NextRequest) {
       if (!enrollmentMap.has(enr.studentId)) {
         enrollmentMap.set(enr.studentId, []);
       }
-      enrollmentMap.get(enr.studentId)!.push(enr.courseId);
+      enrollmentMap.get(enr.studentId)!.push(enr.classSection.subjectId);
     }
 
     const students = rawStudents.map((s) => {
-      const enrolledCourses = enrollmentMap.get(s.id) || [];
+      const enrolledSubjects = enrollmentMap.get(s.id) || [];
 
       return {
         id: s.id,
@@ -85,7 +85,8 @@ export async function GET(req: NextRequest) {
         departmentName: getDepartmentName(s.departmentId),
         yearLevel: s.yearLevel || '1st Year',
         accountStatus: s.accountStatus,
-        enrolledCourses,
+        enrolledSubjects,
+        enrolledCourses: enrolledSubjects, // Alias
       };
     });
 

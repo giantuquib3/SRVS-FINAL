@@ -16,7 +16,7 @@ export async function GET(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true },
+      include: { subject: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
@@ -32,10 +32,10 @@ export async function GET(
 
     const formattedSyllabus = {
       ...syllabus,
-      course: syllabus.course,
-      subject: syllabus.course,
-      courseId: syllabus.courseId,
-      subjectId: syllabus.courseId,
+      subject: syllabus.subject,
+      course: syllabus.subject,
+      subjectId: syllabus.subjectId,
+      courseId: syllabus.subjectId,
     };
 
     return NextResponse.json({ syllabus: formattedSyllabus, versions });

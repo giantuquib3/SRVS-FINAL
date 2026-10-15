@@ -1,0 +1,211 @@
+[
+  {
+    "studentId": 2022012701,
+    "studentName": "Carlos Reyes",
+    "subjectId": 10,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.487Z",
+    "updatedAt": "2026-09-18T05:28:32.487Z"
+  },
+  {
+    "studentId": 2022012701,
+    "studentName": "Carlos Reyes",
+    "subjectId": 11,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.633Z",
+    "updatedAt": "2026-09-18T05:28:32.633Z"
+  },
+  {
+    "studentId": 2022012702,
+    "studentName": "Andrea Santos",
+    "subjectId": 7,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.773Z",
+    "updatedAt": "2026-09-18T05:28:32.773Z"
+  },
+  {
+    "studentId": 2022012702,
+    "studentName": "Andrea Santos",
+    "subjectId": 8,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.912Z",
+    "updatedAt": "2026-09-18T05:28:32.912Z"
+  },
+  {
+    "studentId": 2022012703,
+    "studentName": "Joshua Lim",
+    "subjectId": 3,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.062Z",
+    "updatedAt": "2026-09-18T05:28:33.062Z"
+  },
+  {
+    "studentId": 2022012703,
+    "studentName": "Joshua Lim",
+    "subjectId": 4,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "B",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.371Z",
+    "updatedAt": "2026-09-18T05:28:33.371Z"
+  },
+  {
+    "studentId": 2022012704,
+    "studentName": "Maria Garcia",
+    "subjectId": 12,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.538Z",
+    "updatedAt": "2026-09-18T05:28:33.538Z"
+  },
+  {
+    "studentId": 2022012704,
+    "studentName": "Maria Garcia",
+    "subjectId": 13,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.635Z",
+    "updatedAt": "2026-09-18T05:28:33.635Z"
+  },
+  {
+    "studentId": 2022012705,
+    "studentName": "Paolo Tan",
+    "subjectId": 3,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.832Z",
+    "updatedAt": "2026-09-18T05:28:33.832Z"
+  },
+  {
+    "studentId": 2023010001,
+    "studentName": "Jane Doe",
+    "subjectId": 1,
+    "semester": "2nd Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:03.046Z",
+    "updatedAt": "2026-10-12T18:21:46.743Z"
+  },
+  {
+    "studentId": 2023010002,
+    "studentName": "John Smith",
+    "subjectId": 4,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "B",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:04.173Z",
+    "updatedAt": "2026-10-12T18:21:47.680Z"
+  },
+  {
+    "studentId": 2022012708,
+    "studentName": "Gian Carlo Tuquib",
+    "subjectId": 5,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:10:59.575Z",
+    "updatedAt": "2026-10-12T18:21:43.902Z"
+  },
+  {
+    "studentId": 2022012708,
+    "studentName": "Gian Carlo Tuquib",
+    "subjectId": 6,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:00.721Z",
+    "updatedAt": "2026-10-12T18:21:44.862Z"
+  },
+  {
+    "studentId": 2023010001,
+    "studentName": "Jane Doe",
+    "subjectId": 3,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:01.857Z",
+    "updatedAt": "2026-10-12T18:21:45.818Z"
+  },
+  {
+    "studentId": 2023010002,
+    "studentName": "John Smith",
+    "subjectId": 2,
+    "semester": "2nd Semester",
+    "academicYear": "2026-2027",
+    "section": "B",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:05.329Z",
+    "updatedAt": "2026-10-12T18:21:48.622Z"
+  },
+  {
+    "studentId": 2023020001,
+    "studentName": "Maria Santos",
+    "subjectId": 7,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:06.470Z",
+    "updatedAt": "2026-10-12T18:21:49.673Z"
+  },
+  {
+    "studentId": 2023030001,
+    "studentName": "Carlos Reyes",
+    "subjectId": 10,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:07.611Z",
+    "updatedAt": "2026-10-12T18:21:50.611Z"
+  },
+  {
+    "studentId": 2023030001,
+    "studentName": "Carlos Reyes",
+    "subjectId": 11,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "A",
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:08.760Z",
+    "updatedAt": "2026-10-12T18:21:51.548Z"
+  },
+  {
+    "studentId": 1000000001,
+    "studentName": "random user",
+    "subjectId": 3,
+    "semester": "1st Semester",
+    "academicYear": "2026-2027",
+    "section": "B",
+    "status": "ENROLLED",
+    "createdAt": "2026-10-12T18:29:05.255Z",
+    "updatedAt": "2026-10-12T18:29:05.255Z"
+  }
+]

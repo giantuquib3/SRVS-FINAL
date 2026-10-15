@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         list.map(async (dept: any) => {
           try {
             const [coursesCount, educatorsCount, studentsCount, deptHeadsCount, syllabiCount] = await Promise.all([
-              prisma.course.count({ where: { departmentId: dept.code } }),
+              prisma.subject.count({ where: { departmentId: dept.code } }),
               prisma.user.count({ where: { role: 'Educator', departmentId: dept.code } }),
               prisma.user.count({ where: { role: 'Student', departmentId: dept.code } }),
               prisma.user.count({ where: { role: 'DepartmentHead', departmentId: dept.code } }),

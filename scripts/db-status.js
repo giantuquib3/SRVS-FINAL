@@ -13,7 +13,8 @@ async function checkDatabase() {
       totalDeptHeads,
       totalEducators,
       totalStudents,
-      courses,
+      subjects,
+      classSections,
       enrollments,
       syllabi,
       versions,
@@ -25,7 +26,8 @@ async function checkDatabase() {
       prisma.user.count({ where: { role: 'DepartmentHead' } }),
       prisma.user.count({ where: { role: 'Educator' } }),
       prisma.user.count({ where: { role: 'Student' } }),
-      prisma.course.count(),
+      prisma.subject.count(),
+      prisma.classSection.count(),
       prisma.enrollment.count(),
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
@@ -41,15 +43,16 @@ async function checkDatabase() {
     console.log(`Roundtrip Latency: ${latency} ms`);
     console.log(`Connection Status: HEALTHY & ONLINE\n`);
 
-    console.log('Organized Relational Database Tables (7 Core Tables):');
+    console.log('Organized Relational Database Tables (8 Core Tables):');
     console.table({
-      'departments': { Records: totalDepts, PK_Type: 'String (Code: CPE, EE, CE, etc.)', Description: 'Academic Engineering Departments (Primary reference for departmentId)' },
-      'admin': { Records: totalUsers, PK_Type: 'INTEGER (University ID)', Description: `Master User Directory (admin): Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
-      'courses': { Records: courses, PK_Type: 'INTEGER (SERIAL)', Description: 'Curriculum Course Catalog linked to departments(id) & admin(id)' },
-      'enrollments': { Records: enrollments, PK_Type: 'Compound (studentId INT, courseId INT)', Description: 'Student enrollments with numeric StudentId (INT) & CourseId (INT)' },
-      'syllabi': { Records: syllabi, PK_Type: 'INTEGER (SERIAL)', Description: 'Master Syllabi linked to courses(id), admin(id), departments(id)' },
-      'syllabus_versions': { Records: versions, PK_Type: 'INTEGER (SERIAL)', Description: 'Immutable Revision History linked to syllabi(id) & admin(id)' },
-      'audit_logs': { Records: logs, PK_Type: 'INTEGER (SERIAL)', Description: 'Security & Audit Trail linked to admin(id)' },
+      'departments': { Records: totalDepts, PK_Type: 'String (Code: CPE, EE, CE, etc.)', Description: 'Academic Engineering Departments' },
+      'users': { Records: totalUsers, PK_Type: 'INTEGER (University ID)', Description: `Master User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
+      'subjects': { Records: subjects, PK_Type: 'INTEGER (SERIAL)', Description: 'Curriculum Catalog linked to departments(id)' },
+      'class_sections': { Records: classSections, PK_Type: 'INTEGER (SERIAL)', Description: 'Term Offerings (subject + term + section) linked to subjects(id) & users(id)' },
+      'enrollments': { Records: enrollments, PK_Type: 'INTEGER (SERIAL)', Description: 'Student enrollments linked to users(id) & class_sections(id)' },
+      'syllabi': { Records: syllabi, PK_Type: 'INTEGER (SERIAL)', Description: 'Master Syllabi linked to subjects(id), users(id), class_sections(id)' },
+      'syllabus_versions': { Records: versions, PK_Type: 'INTEGER (SERIAL)', Description: 'Revision History linked to syllabi(id) & users(id)' },
+      'audit_logs': { Records: logs, PK_Type: 'INTEGER (SERIAL)', Description: 'Security & Audit Trail linked to users(id)' },
     });
 
     const admin = await prisma.user.findFirst({

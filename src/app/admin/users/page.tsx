@@ -39,7 +39,7 @@ export default function UsersManagementPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState('Educator');
+  const [newRole, setNewRole] = useState('DepartmentHead');
   const [newDeptId, setNewDeptId] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -93,16 +93,19 @@ export default function UsersManagementPage() {
       return;
     }
 
-    if (newRole === 'Student') {
-      if (!/^\d{10}$/.test(cleanUsername)) {
-        setCreateError('Student Username / ID number must be exactly 10 digits (e.g. 2022012708).');
-        return;
-      }
-    } else {
-      if (!/^\d{5}$/.test(cleanUsername)) {
-        setCreateError('Admin, Faculty, and Department Head Username / ID numbers must be exactly 5 digits (e.g. 00000 or 10001).');
-        return;
-      }
+    if (newRole !== 'Admin' && newRole !== 'DepartmentHead') {
+      setCreateError('Administrators can only create Admin and Department Head accounts. Students and Faculty must self-register.');
+      return;
+    }
+
+    if (newRole === 'DepartmentHead' && !newDeptId) {
+      setCreateError('Please select a department for the Department Head account.');
+      return;
+    }
+
+    if (!/^\d{5}$/.test(cleanUsername) && !(newRole === 'Admin' && cleanUsername === '0')) {
+      setCreateError('Admin and Department Head Username / ID numbers must be 5 digits (or 0 for Super Admin).');
+      return;
     }
 
     const cleanEmail = newEmail.trim().toLowerCase();
@@ -523,6 +526,10 @@ export default function UsersManagementPage() {
             )}
 
             <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed">
+                <strong>Policy:</strong> Students and Faculty self-register through the public portal. Administrators provision <strong>Admin</strong> and <strong>Department Head</strong> accounts only.
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">System Role *</label>
@@ -534,21 +541,22 @@ export default function UsersManagementPage() {
                     }}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
                   >
-                    <option value="Admin">System Administrator (5-digit ID)</option>
                     <option value="DepartmentHead">Department Head (5-digit ID)</option>
-                    <option value="Educator">Educator (5-digit ID)</option>
-                    <option value="Student">Student (10-digit ID)</option>
+                    <option value="Admin">System Administrator (5-digit ID)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Department</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Department {newRole === 'DepartmentHead' ? '*' : '(Optional)'}
+                  </label>
                   <select
                     value={newDeptId}
                     onChange={(e) => setNewDeptId(e.target.value)}
+                    required={newRole === 'DepartmentHead'}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
                   >
-                    <option value="">-- None / Unassigned --</option>
+                    <option value="">{newRole === 'DepartmentHead' ? '-- Select Department * --' : '-- None / Unassigned --'}</option>
                     {departments.map((dept) => (
                       <option key={dept.id} value={dept.id}>
                         [{dept.code}] {dept.name}

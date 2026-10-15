@@ -29,14 +29,14 @@ export async function POST(
 
     let version = await prisma.syllabusVersion.findUnique({
       where: { id: versionOrSyllabusId },
-      include: { syllabus: { include: { course: true, instructor: true } } },
+      include: { syllabus: { include: { subject: true, instructor: true } } },
     });
 
     if (!version) {
       version = await prisma.syllabusVersion.findFirst({
         where: { syllabusId: versionOrSyllabusId },
         orderBy: { versionNumber: 'desc' },
-        include: { syllabus: { include: { course: true, instructor: true } } },
+        include: { syllabus: { include: { subject: true, instructor: true } } },
       });
     }
 
@@ -80,26 +80,26 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'RejectSyllabusVersion',
       resultStatus: 'Success',
-      description: `Returned for revision: [${syllabus.course.code}] v${version.versionNumber}. Reason: ${rejectionReason.trim()}`,
+      description: `Returned for revision: [${syllabus.subject.code}] v${version.versionNumber}. Reason: ${rejectionReason.trim()}`,
       entityType: 'SyllabusVersion',
       entityId: String(version.id),
     });
 
     await createNotification(
       String(syllabus.instructorId),
-      `Syllabus Returned for Revision: ${syllabus.course.code}`,
-      `Your ${syllabus.course.code} syllabus v${version.versionNumber} has been returned by ${user.fullName}. Remarks: "${rejectionReason.trim()}". Please revise and resubmit.`,
+      `Syllabus Returned for Revision: ${syllabus.subject.code}`,
+      `Your ${syllabus.subject.code} syllabus v${version.versionNumber} has been returned by ${user.fullName}. Remarks: "${rejectionReason.trim()}". Please revise and resubmit.`,
       `/syllabi/${syllabus.id}`
     );
 
     return NextResponse.json({
       success: true,
-      message: `Syllabus for ${syllabus.course.code} v${version.versionNumber} rejected with feedback sent to instructor.`,
+      message: `Syllabus for ${syllabus.subject.code} v${version.versionNumber} rejected with feedback sent to instructor.`,
       version: result.rejectedVersion,
       syllabus: result.updatedSyllabus,
     });
   } catch (error: any) {
-    console.error('Error rejecting syllabus version:', error);
+    console.error('Error rejecting syllabus:', error);
     return NextResponse.json({ error: 'Failed to reject syllabus: ' + error.message }, { status: 500 });
   }
 }

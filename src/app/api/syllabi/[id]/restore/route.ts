@@ -24,7 +24,7 @@ export async function POST(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true },
+      include: { subject: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
@@ -77,7 +77,7 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'RestoreVersion',
       resultStatus: 'Success',
-      description: `Restored syllabus [${syllabus.course.code}] to v${historicalVersion.versionNumber}, creating new v${newVersionNumber} [Draft]`,
+      description: `Restored syllabus [${syllabus.subject.code}] to v${historicalVersion.versionNumber}, creating new v${newVersionNumber} [Draft]`,
       entityType: 'Syllabus',
       entityId: String(syllabus.id),
     });

@@ -216,7 +216,7 @@ export default function LoginPage() {
           </button>
 
           <div className="text-center text-xs text-slate-600 pt-2 border-t border-slate-100">
-            <span>New user or faculty member? </span>
+            <span>New student or faculty? </span>
             <Link href="/register" className="text-[#005A36] hover:text-[#004529] font-bold underline underline-offset-4">
               Register here
             </Link>

@@ -19,7 +19,7 @@ export async function POST(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true },
+      include: { subject: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
@@ -57,7 +57,7 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'SubmitSyllabus',
       resultStatus: 'Success',
-      description: `Submitted syllabus for [${syllabus.course.code}] ${syllabus.course.title} for review${notesSummary}`,
+      description: `Submitted syllabus for [${syllabus.subject.code}] ${syllabus.subject.title} for review${notesSummary}`,
       entityType: 'Syllabus',
       entityId: String(syllabus.id),
     });
@@ -78,7 +78,7 @@ export async function POST(
       await createNotification(
         String(reviewer.id),
         'Syllabus Submitted for Review',
-        `${syllabus.course.code} was submitted by ${user.fullName} for review.`,
+        `${syllabus.subject.code} was submitted by ${user.fullName} for review.`,
         `/syllabi/${syllabus.id}`
       );
     }

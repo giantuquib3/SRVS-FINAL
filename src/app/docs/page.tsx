@@ -65,6 +65,11 @@ export default function SwaggerDocsPage() {
           layout: 'BaseLayout',
           docExpansion: 'list',
           defaultModelsExpandDepth: 1,
+          persistAuthorization: true,
+          requestInterceptor: (req: any) => {
+            req.credentials = 'include';
+            return req;
+          },
         });
       }
     };
@@ -119,47 +124,50 @@ export default function SwaggerDocsPage() {
         { name: 'academicRank', type: 'TEXT', nullable: true, desc: 'Chairperson, Professor, Instructor, etc.' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: '1st Year, 2nd Year, 3rd Year, 4th Year (Students)' },
         { name: 'accountStatus', type: 'TEXT', nullable: false, desc: 'Active | PendingApproval | Rejected | Deactivated' },
+        { name: 'mustChangePassword', type: 'BOOLEAN', nullable: true, desc: 'Default false. Set true for newly created accounts requiring password update upon first login.' },
+        { name: 'rejectionReason', type: 'TEXT', nullable: true, desc: 'Rejection reason provided by Department Head when rejecting a pending Student or Faculty registration.' },
+        { name: 'program', type: 'TEXT', nullable: true, desc: 'Academic degree program (e.g. BS Computer Engineering, BS Civil Engineering)' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Account creation date' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Account update date' },
       ],
     },
-    courses: {
-      name: 'courses',
-      description: 'Academic curriculum courses catalog managed by Department Heads and System Administrators with department-level data isolation.',
+    subjects: {
+      name: 'subjects',
+      description: 'Academic subjects curriculum catalog (e.g. Programming, Networking, Mathematics, etc.) managed by Department Heads and System Administrators with department-level data isolation.',
       badge: 'Academic Curriculum',
       pk: 'id (INTEGER SERIAL)',
       fks: [
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
       ],
       columns: [
-        { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Internal Primary Key (courseId)' },
-        { name: 'code', type: 'TEXT', nullable: false, desc: 'Course Code / courseCode (e.g. CPE101) [Unique]' },
-        { name: 'title', type: 'TEXT', nullable: false, desc: 'Descriptive Course Title' },
+        { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Internal Primary Key (subjectId)' },
+        { name: 'code', type: 'TEXT', nullable: false, desc: 'Subject Code / subjectCode (e.g. CPE101) [Unique]' },
+        { name: 'title', type: 'TEXT', nullable: false, desc: 'Descriptive Subject Title' },
         { name: 'description', type: 'TEXT', nullable: true, desc: 'Overview of topics and objectives' },
         { name: 'units', type: 'INTEGER', nullable: false, desc: 'Credit units (Default: 3)' },
         { name: 'lecHours', type: 'INTEGER', nullable: false, desc: 'Lecture hours per week' },
         { name: 'labHours', type: 'INTEGER', nullable: false, desc: 'Laboratory hours per week' },
-        { name: 'prerequisite', type: 'TEXT', nullable: true, desc: 'Required prerequisite courses' },
+        { name: 'prerequisite', type: 'TEXT', nullable: true, desc: 'Required prerequisite subjects' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: 'Target academic year level' },
         { name: 'semester', type: 'TEXT', nullable: true, desc: '1st Semester | 2nd Semester | Summer' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
-        { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Faculty/Professor responsible for course syllabus' },
-        { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Course creation date' },
-        { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Course modification date' },
+        { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Faculty/Professor responsible for subject syllabus' },
+        { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject creation date' },
+        { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject modification date' },
       ],
     },
     enrollments: {
       name: 'enrollments',
-      description: 'Student course enrollments with composite primary key (studentId, courseId). Direct connection to student user record in users table and course.',
+      description: 'Many-to-many junction connecting students in users table and academic subjects. Enforces that one student can enroll in multiple distinct subjects, one subject can have multiple students, and no student may enroll in the same subject more than once across all terms.',
       badge: 'Student Records',
-      pk: '(studentId INT, courseId INT) — Composite Primary Key',
+      pk: '(studentId INT, subjectId INT) — Composite Primary Key',
       fks: [
         { col: 'studentId', target: 'users.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
-        { col: 'courseId', target: 'courses.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
+        { col: 'subjectId', target: 'subjects.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
       ],
       columns: [
         { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Student University ID)' },
-        { name: 'courseId', type: 'INTEGER', nullable: false, desc: 'FK -> courses.id' },
+        { name: 'subjectId', type: 'INTEGER', nullable: false, desc: 'FK -> subjects.id' },
         { name: 'studentName', type: 'TEXT', nullable: false, desc: 'Cached student full name' },
         { name: 'semester', type: 'TEXT', nullable: false, desc: 'Semester of enrollment' },
         { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'e.g. 2026-2027' },
@@ -171,23 +179,23 @@ export default function SwaggerDocsPage() {
     },
     syllabi: {
       name: 'syllabi',
-      description: 'Master syllabus records governing course offerings, revision cycles, and Department Head reviews.',
+      description: 'Master syllabus records governing subject offerings, revision cycles, and Department Head reviews.',
       badge: 'Syllabus Lifecycle',
       pk: 'id (INTEGER SERIAL)',
       fks: [
-        { col: 'courseId', target: 'courses.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
+        { col: 'subjectId', target: 'subjects.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
         { col: 'instructorId', target: 'users.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE RESTRICT ON UPDATE CASCADE' },
         { col: 'reviewedByUserId', target: 'users.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
         { name: 'id', type: 'INTEGER (SERIAL)', nullable: false, desc: 'Primary Key' },
-        { name: 'courseId', type: 'INTEGER', nullable: false, desc: 'FK -> courses.id' },
+        { name: 'subjectId', type: 'INTEGER', nullable: false, desc: 'FK -> subjects.id' },
         { name: 'instructorId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Educator/DeptHead)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id' },
         { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'Target academic year' },
         { name: 'semester', type: 'TEXT', nullable: false, desc: 'Target semester' },
-        { name: 'section', type: 'TEXT', nullable: false, desc: 'Course section' },
+        { name: 'section', type: 'TEXT', nullable: false, desc: 'Subject section' },
         { name: 'status', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED' },
         { name: 'currentVersionNumber', type: 'INTEGER', nullable: false, desc: 'Active approved version number' },
         { name: 'reviewerRemarks', type: 'TEXT', nullable: true, desc: 'Feedback comments from Department Head' },
@@ -449,7 +457,7 @@ export default function SwaggerDocsPage() {
                         <span>Dedicated Departments</span>
                       </div>
                       <p className="text-[11px] text-amber-800 mt-1">
-                        Table <code className="bg-amber-100 px-1 rounded">departments</code> with String PK <code className="bg-amber-100 px-1 rounded">id</code>. Enforces foreign key constraints on <code className="bg-amber-100 px-1 rounded">admin.departmentId</code>, <code className="bg-amber-100 px-1 rounded">courses.departmentId</code>, and <code className="bg-amber-100 px-1 rounded">syllabi.departmentId</code>.
+                        Table <code className="bg-amber-100 px-1 rounded">departments</code> with String PK <code className="bg-amber-100 px-1 rounded">id</code>. Enforces foreign key constraints on <code className="bg-amber-100 px-1 rounded">admin.departmentId</code>, <code className="bg-amber-100 px-1 rounded">subjects.departmentId</code>, and <code className="bg-amber-100 px-1 rounded">syllabi.departmentId</code>.
                       </p>
                     </div>
 
@@ -487,8 +495,8 @@ export default function SwaggerDocsPage() {
         │                                                       │ 1:N
         ▼                                                       ▼
 ┌────────────────────────────────┐       1:N Student   ┌────────────────────────────────┐
-│            courses             │ <────────────────── │          enrollments           │
-│  PK: id INTEGER (SERIAL)       │                     │  PK: (studentId, courseId) INT │
+│            subjects            │ <────────────────── │          enrollments           │
+│  PK: id INTEGER (SERIAL)       │                     │  PK: (studentId, subjectId) INT│
 │  code (UNIQUE), title, units   │                     │  studentName, semester, status │
 │  FK: departmentId -> dept.id   │                     └────────────────────────────────┘
 │  professorName (TEXT)          │                              ▲
@@ -498,7 +506,7 @@ export default function SwaggerDocsPage() {
 ┌────────────────────────────────┐                              │
 │            syllabi             │ ─── FK: instructorId ────────┤
 │  PK: id INTEGER (SERIAL)       │ ─── FK: reviewedByUserId ────┤
-│  FK: courseId -> courses.id    │                              │
+│  FK: subjectId -> subjects.id  │                              │
 │  FK: departmentId -> dept.id   │                              │
 └────────────────────────────────┘                              │
         │ 1:N                                                   │

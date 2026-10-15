@@ -27,14 +27,14 @@ export async function POST(
     // Try to find as SyllabusVersion id first, then as Syllabus id
     let version = await prisma.syllabusVersion.findUnique({
       where: { id: versionOrSyllabusId },
-      include: { syllabus: { include: { course: true, instructor: true } } },
+      include: { syllabus: { include: { subject: true, instructor: true } } },
     });
 
     if (!version) {
       version = await prisma.syllabusVersion.findFirst({
         where: { syllabusId: versionOrSyllabusId },
         orderBy: { versionNumber: 'desc' },
-        include: { syllabus: { include: { course: true, instructor: true } } },
+        include: { syllabus: { include: { subject: true, instructor: true } } },
       });
     }
 
@@ -57,7 +57,7 @@ export async function POST(
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.syllabus.updateMany({
-        where: { courseId: syllabus.courseId, id: { not: syllabus.id }, status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] } },
+        where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] } },
         data: { status: 'ARCHIVED' },
       });
 
@@ -79,26 +79,26 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'ApproveSyllabusVersion',
       resultStatus: 'Success',
-      description: `Approved [${syllabus.course.code}] v${version.versionNumber} for ${syllabus.semester}, AY ${syllabus.academicYear}`,
+      description: `Approved [${syllabus.subject.code}] v${version.versionNumber} for ${syllabus.semester}, AY ${syllabus.academicYear}`,
       entityType: 'SyllabusVersion',
       entityId: String(version.id),
     });
 
     await createNotification(
       String(syllabus.instructorId),
-      `Syllabus Approved: ${syllabus.course.code}`,
-      `Your ${syllabus.course.code} syllabus v${version.versionNumber} has been approved by ${user.fullName}. It is now active.`,
+      `Syllabus Approved: ${syllabus.subject.code}`,
+      `Your ${syllabus.subject.code} syllabus v${version.versionNumber} has been approved by ${user.fullName}. It is now active.`,
       `/syllabi/${syllabus.id}`
     );
 
     return NextResponse.json({
       success: true,
-      message: `Syllabus for ${syllabus.course.code} v${version.versionNumber} approved and is now the active version.`,
+      message: `Syllabus for ${syllabus.subject.code} v${version.versionNumber} approved and is now the active version.`,
       version: result.approvedVersion,
       syllabus: result.updatedSyllabus,
     });
   } catch (error: any) {
-    console.error('Error approving syllabus version:', error);
+    console.error('Error approving syllabus:', error);
     return NextResponse.json({ error: 'Failed to approve syllabus: ' + error.message }, { status: 500 });
   }
 }

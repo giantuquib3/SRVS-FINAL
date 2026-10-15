@@ -14,11 +14,12 @@ export async function GET(req?: NextRequest) {
       deptHeadsCount,
       educatorsCount,
       studentsCount,
-      coursesCount,
+      subjectsCount,
       syllabiCount,
       versionsCount,
       auditLogsCount,
       enrollmentsCount,
+      classSectionsCount,
     ] = await Promise.all([
       prisma.department.count(),
       prisma.user.count(),
@@ -26,11 +27,12 @@ export async function GET(req?: NextRequest) {
       prisma.user.count({ where: { role: 'DepartmentHead' } }),
       prisma.user.count({ where: { role: 'Educator' } }),
       prisma.user.count({ where: { role: 'Student' } }),
-      prisma.course.count(),
+      prisma.subject.count(),
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
       prisma.auditLog.count(),
       prisma.enrollment.count(),
+      prisma.classSection.count(),
     ]);
 
     const adminUser = await prisma.user.findFirst({
@@ -53,22 +55,33 @@ export async function GET(req?: NextRequest) {
         department_heads: deptHeadsCount,
         educators: educatorsCount,
         students: studentsCount,
-        courses: coursesCount,
+        subjects: subjectsCount,
+        courses: subjectsCount, // Backwards-compatible alias
         syllabi: syllabiCount,
         syllabus_versions: versionsCount,
         enrollments: enrollmentsCount,
+        class_sections: classSectionsCount,
         audit_logs: auditLogsCount,
       },
-      seededAdmin: adminUser ? { ...adminUser, role: 'Admin' } : null,
+      models: {
+        Department: departmentsCount,
+        User: usersCount,
+        Subject: subjectsCount,
+        Course: subjectsCount, // Backwards-compatible alias
+        ClassSection: classSectionsCount,
+        Syllabus: syllabiCount,
+        SyllabusVersion: versionsCount,
+        Enrollment: enrollmentsCount,
+        AuditLog: auditLogsCount,
+      },
+      adminUser,
     });
   } catch (error: any) {
-    const latencyMs = Date.now() - startTime;
     return NextResponse.json(
       {
-        status: 'unhealthy',
-        database: 'PostgreSQL',
-        latencyMs: `${latencyMs}ms`,
-        error: error.message || 'Failed to query database.',
+        status: 'error',
+        message: error.message,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );

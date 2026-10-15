@@ -43,7 +43,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 export async function getSessionFromRequest(req: NextRequest): Promise<SessionUser | null> {
-  const token = req.cookies.get('srvs_token')?.value;
+  let token = req.cookies.get('srvs_token')?.value;
+  if (!token) {
+    const authHeader = req.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    }
+  }
   if (!token) return null;
   return await verifyToken(token);
 }

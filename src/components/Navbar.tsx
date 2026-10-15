@@ -133,7 +133,7 @@ export default function Navbar() {
       return [
         { label: 'Sign In', href: '/login', icon: LogIn },
         { label: 'Register Account', href: '/register', icon: UserPlus },
-        { label: 'Browse Courses', href: '/courses', icon: BookOpen },
+        { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
       ];
     }
 
@@ -142,7 +142,7 @@ export default function Navbar() {
         return [
           { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
           { label: 'Syllabus Approvals', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Courses Management', href: '/courses', icon: BookOpen },
+          { label: 'Subjects Management', href: '/subjects', icon: BookOpen },
           { label: 'Student Enrollments', href: '/enrollments', icon: GraduationCap },
           { label: 'User Management', href: '/admin/users', icon: Users },
           { label: 'System Audit Logs', href: '/admin/audit-logs', icon: History },
@@ -151,24 +151,24 @@ export default function Navbar() {
         return [
           { label: 'Dept Dashboard', href: '/dept/dashboard', icon: LayoutDashboard },
           { label: 'Syllabus Approvals', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Courses Catalog', href: '/courses', icon: BookOpen },
+          { label: 'Subjects Catalog', href: '/subjects', icon: BookOpen },
           { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
           { label: 'Enrollments Tracking', href: '/enrollments', icon: GraduationCap },
         ];
       case 'Educator':
         return [
           { label: 'Faculty Dashboard', href: '/educator/dashboard', icon: LayoutDashboard },
-          { label: 'Courses & Catalog', href: '/courses', icon: BookOpen },
+          { label: 'Subjects & Catalog', href: '/subjects', icon: BookOpen },
           { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
         ];
       case 'Student':
         return [
           { label: 'My Enrolled Syllabi', href: '/student/dashboard', icon: GraduationCap },
-          { label: 'Browse Courses', href: '/courses', icon: BookOpen },
+          { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
         ];
       default:
         return [
-          { label: 'Browse Courses', href: '/courses', icon: BookOpen },
+          { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
         ];
     }
   };

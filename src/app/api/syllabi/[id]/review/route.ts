@@ -25,7 +25,7 @@ export async function POST(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true, instructor: true },
+      include: { subject: true, instructor: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
@@ -42,7 +42,7 @@ export async function POST(
     const updated = await prisma.$transaction(async (tx) => {
       if (action === 'Approve') {
         await tx.syllabus.updateMany({
-          where: { courseId: syllabus.courseId, id: { not: syllabus.id }, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
+          where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
           data: { status: 'ARCHIVED' },
         });
       }
@@ -70,17 +70,17 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: action === 'Approve' ? 'ApproveSyllabus' : 'RejectSyllabus',
       resultStatus: 'Success',
-      description: `${action}d syllabus for [${syllabus.course.code}] ${syllabus.course.title}${remarks ? ` – "${remarks}"` : ''}`,
+      description: `${action}d syllabus for [${syllabus.subject.code}] ${syllabus.subject.title}${remarks ? ` – "${remarks}"` : ''}`,
       entityType: 'Syllabus',
       entityId: String(syllabus.id),
     });
 
     await createNotification(
       String(syllabus.instructorId),
-      `Syllabus ${targetStatus}: ${syllabus.course.code}`,
+      `Syllabus ${targetStatus}: ${syllabus.subject.code}`,
       action === 'Approve'
-        ? `Your syllabus for ${syllabus.course.code} has been approved and published to students.`
-        : `Your syllabus for ${syllabus.course.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
+        ? `Your syllabus for ${syllabus.subject.code} has been approved and published to students.`
+        : `Your syllabus for ${syllabus.subject.code} was rejected. Feedback: "${remarks || 'Please revise and resubmit.'}"`,
       `/syllabi/${syllabus.id}`
     );
 

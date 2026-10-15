@@ -18,15 +18,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get('status') || 'SUBMITTED';
     const departmentParam = searchParams.get('departmentId');
-    const courseIdParam = searchParams.get('courseId');
-    const courseCodeParam = searchParams.get('courseCode');
+    const subjectIdParam = searchParams.get('subjectId') || searchParams.get('courseId');
+    const subjectCodeParam = searchParams.get('subjectCode') || searchParams.get('courseCode');
     const instructorParam = searchParams.get('instructorId') || searchParams.get('idNumber');
     const syllabusIdParam = searchParams.get('syllabusId');
 
     const where: any = {};
     let deptInfo: { id: string; code: string; name: string } | null = null;
 
-    // Department Isolation (Requirement 21)
+    // Department Isolation
     if (user.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode) return NextResponse.json({ approvals: [], stats: { pending: 0, approved: 0, rejected: 0, total: 0 } });
@@ -54,14 +54,14 @@ export async function GET(req: NextRequest) {
       const sId = parseInt(syllabusIdParam, 10);
       if (!isNaN(sId)) where.syllabusId = sId;
     }
-    if (courseIdParam) {
-      const parsedCourseId = parseInt(courseIdParam, 10);
-      if (!isNaN(parsedCourseId)) {
-        where.syllabus = { ...(where.syllabus || {}), courseId: parsedCourseId };
+    if (subjectIdParam) {
+      const parsedSubjectId = parseInt(subjectIdParam, 10);
+      if (!isNaN(parsedSubjectId)) {
+        where.syllabus = { ...(where.syllabus || {}), subjectId: parsedSubjectId };
       }
     }
-    if (courseCodeParam) {
-      where.syllabus = { ...(where.syllabus || {}), course: { code: courseCodeParam.trim().toUpperCase() } };
+    if (subjectCodeParam) {
+      where.syllabus = { ...(where.syllabus || {}), subject: { code: subjectCodeParam.trim().toUpperCase() } };
     }
     if (instructorParam) {
       const parsedInstId = parseInt(instructorParam, 10);
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       include: {
         syllabus: {
           include: {
-            course: true,
+            subject: true,
             instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
           },
         },
@@ -85,6 +85,20 @@ export async function GET(req: NextRequest) {
 
     const formatted = versions.map((v: any) => {
       const sDept = v.syllabus.departmentId;
+      const subjData = {
+        id: v.syllabus.subject.id,
+        code: v.syllabus.subject.code,
+        title: v.syllabus.subject.title,
+        units: v.syllabus.subject.units,
+        departmentId: v.syllabus.subject.departmentId,
+        professorName: v.syllabus.subject.professorName || null,
+        department: {
+          id: v.syllabus.subject.departmentId,
+          code: v.syllabus.subject.departmentId,
+          name: getDepartmentName(v.syllabus.subject.departmentId),
+        },
+      };
+
       return {
         id: v.id,
         versionNumber: v.versionNumber,
@@ -104,25 +118,16 @@ export async function GET(req: NextRequest) {
         content: v.content,
         syllabus: {
           id: v.syllabus.id,
+          subjectId: v.syllabus.subjectId,
+          courseId: v.syllabus.subjectId, // Alias
           academicYear: v.syllabus.academicYear,
           semester: v.syllabus.semester,
           section: v.syllabus.section,
           status: v.syllabus.status,
           departmentId: sDept,
           department: { id: sDept, code: sDept, name: getDepartmentName(sDept) },
-          course: {
-            id: v.syllabus.course.id,
-            code: v.syllabus.course.code,
-            title: v.syllabus.course.title,
-            units: v.syllabus.course.units,
-            departmentId: v.syllabus.course.departmentId,
-            professorName: v.syllabus.course.professorName || null,
-            department: {
-              id: v.syllabus.course.departmentId,
-              code: v.syllabus.course.departmentId,
-              name: getDepartmentName(v.syllabus.course.departmentId),
-            },
-          },
+          subject: subjData,
+          course: subjData, // Alias
           instructor: v.syllabus.instructor
             ? {
                 id: v.syllabus.instructor.id,
@@ -156,8 +161,8 @@ export async function GET(req: NextRequest) {
 async function handleReviewAction(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads may approve or reject syllabi.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may approve or reject syllabi.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -172,19 +177,20 @@ async function handleReviewAction(req: NextRequest) {
 
     const version = await prisma.syllabusVersion.findUnique({
       where: { id: parsedVersionId },
-      include: { syllabus: { include: { course: true } } },
+      include: { syllabus: { include: { subject: true } } },
     });
     if (!version) return NextResponse.json({ error: 'Syllabus version not found.' }, { status: 404 });
 
-    // Department Isolation (Requirement 21)
-    const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-    if (deptCode && version.syllabus.departmentId.toUpperCase() !== deptCode) {
-      return NextResponse.json({
-        error: `Forbidden: You may only review syllabi within your assigned department (${deptCode}).`,
-      }, { status: 403 });
+    // Department Isolation
+    if (user.role === 'DepartmentHead') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (!deptCode || version.syllabus.departmentId.toUpperCase() !== deptCode) {
+        return NextResponse.json({
+          error: `Forbidden: You may only review syllabi within your assigned department (${deptCode || 'None'}).`,
+        }, { status: 403 });
+      }
     }
 
-    // Reviewer identity strictly derived from authenticated session (Requirement 10)
     const currentUserIdInt = parseInt(user.id, 10) || 0;
     const isApprove = action.toLowerCase() === 'approve';
     const isReject = action.toLowerCase() === 'reject';
@@ -210,10 +216,10 @@ async function handleReviewAction(req: NextRequest) {
       });
 
       if (isApprove) {
-        // Archive previously active versions for this course
+        // Archive previously active versions for this subject
         await tx.syllabus.updateMany({
           where: {
-            courseId: version.syllabus.courseId,
+            subjectId: version.syllabus.subjectId,
             id: { not: version.syllabusId },
             status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
           },
@@ -257,7 +263,7 @@ async function handleReviewAction(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: isApprove ? 'ApproveSyllabus' : (isReject ? 'RejectSyllabus' : 'ReviewSyllabus'),
       resultStatus: 'Success',
-      description: `${action} syllabus v${version.versionNumber} for [${version.syllabus.course.code}]${remarks ? ` – Remarks: ${remarks}` : ''}`,
+      description: `${action} syllabus v${version.versionNumber} for [${version.syllabus.subject.code}]${remarks ? ` – Remarks: ${remarks}` : ''}`,
       entityType: 'Syllabus',
       entityId: String(version.syllabusId),
     });

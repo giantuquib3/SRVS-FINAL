@@ -22,13 +22,13 @@ import {
 
 export default function NewSyllabusPage() {
   const router = useRouter();
-  const [courses, setCourses] = useState<any[]>([]);
-  const [loadingCourses, setLoadingCourses] = useState(true);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   // Form state
-  const [courseId, setCourseId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
   const [semester, setSemester] = useState('1st Semester');
   const [academicYear, setAcademicYear] = useState('2026-2027');
   const [section, setSection] = useState('A');
@@ -55,22 +55,22 @@ export default function NewSyllabusPage() {
   } | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // Load courses and current user dynamically
+  // Load subjects and current user dynamically
   useEffect(() => {
     Promise.all([
-      fetch('/api/courses').then((r) => r.json()),
+      fetch('/api/subjects').then((r) => r.json()),
       fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([cData, uData]) => {
-        if (cData?.courses) setCourses(cData.courses);
+      .then(([sData, uData]) => {
+        if (sData?.subjects || sData?.courses) setSubjects(sData.subjects || sData.courses);
         if (uData?.user) setCurrentUser(uData.user);
       })
-      .catch(() => setError('Failed to load courses from database.'))
-      .finally(() => setLoadingCourses(false));
+      .catch(() => setError('Failed to load academic subjects from database.'))
+      .finally(() => setLoadingSubjects(false));
   }, []);
 
-  const handleCourseChange = (selectedId: string) => {
-    setCourseId(selectedId);
+  const handleSubjectChange = (selectedId: string) => {
+    setSubjectId(selectedId);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,8 +152,8 @@ export default function NewSyllabusPage() {
   const handleSave = async (submitForApproval: boolean, directApprove: boolean = false) => {
     setError('');
 
-    if (!courseId) {
-      setError('Please select a course for this syllabus.');
+    if (!subjectId) {
+      setError('Please select an academic subject for this syllabus.');
       return;
     }
 
@@ -165,7 +165,8 @@ export default function NewSyllabusPage() {
     setSubmitting(true);
 
     const payload = {
-      courseId,
+      subjectId,
+      courseId: subjectId, // Alias for backward compatibility
       academicYear,
       semester,
       section: section || 'A',
@@ -331,26 +332,26 @@ export default function NewSyllabusPage() {
         <div className="space-y-4">
           <h2 className="text-sm font-bold text-[#005A36] uppercase tracking-wider flex items-center space-x-2 border-b border-slate-100 pb-2">
             <BookOpen className="w-4 h-4 text-[#005A36]" />
-            <span>1. Course & Academic Period</span>
+            <span>1. Academic Subject & Term Period</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="sm:col-span-1">
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Course / Subject *
+                Academic Subject *
               </label>
-              {loadingCourses ? (
-                <div className="text-xs text-slate-500 py-2">Loading courses...</div>
+              {loadingSubjects ? (
+                <div className="text-xs text-slate-500 py-2">Loading academic subjects...</div>
               ) : (
                 <select
-                  value={courseId}
-                  onChange={(e) => handleCourseChange(e.target.value)}
+                  value={subjectId}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                 >
-                  <option value="">-- Select Course --</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      [{c.code}] {c.title}
+                  <option value="">-- Select Academic Subject --</option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      [{s.code}] {s.title}
                     </option>
                   ))}
                 </select>

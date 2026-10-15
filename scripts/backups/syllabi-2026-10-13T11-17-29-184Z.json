@@ -1,0 +1,19 @@
+[
+  {
+    "id": 13,
+    "subjectId": 3,
+    "instructorId": 10002,
+    "departmentId": "CPE",
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "status": "APPROVED",
+    "currentVersionNumber": 1,
+    "reviewerRemarks": "Curriculum outcomes approved for AY 2026-2027.",
+    "submittedAt": "2026-10-05T14:42:24.518Z",
+    "reviewedAt": "2026-10-05T14:42:31.916Z",
+    "reviewedByUserId": 10001,
+    "createdAt": "2026-10-05T14:42:20.984Z",
+    "updatedAt": "2026-10-05T14:42:33.288Z"
+  }
+]

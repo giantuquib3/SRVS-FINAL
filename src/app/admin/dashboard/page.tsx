@@ -184,7 +184,7 @@ export default function AdminDashboard() {
                 <Users className="w-4 h-4 text-[#005A36]" />
                 <span>User Approval Queue</span>
               </h2>
-              <p className="text-xs text-slate-500">Pending faculty and student registrations</p>
+              <p className="text-xs text-slate-500">Pending student registrations</p>
             </div>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               {pendingUsers.length} Pending

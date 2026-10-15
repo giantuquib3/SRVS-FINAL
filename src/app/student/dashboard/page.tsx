@@ -83,11 +83,11 @@ export default function StudentDashboard() {
 
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <Link
-            href="/courses"
+            href="/subjects"
             className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-1.5"
           >
             <Compass className="w-3.5 h-3.5 text-[#FEF08A]" />
-            <span>Browse Courses</span>
+            <span>Browse Subjects</span>
           </Link>
           <button
             onClick={fetchStudentData}
@@ -149,11 +149,11 @@ export default function StudentDashboard() {
               Authorized courses linked to your student account
             </span>
             <Link
-              href="/courses"
+              href="/subjects"
               className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#005A36] bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 transition-colors flex items-center space-x-1.5 shadow-2xs"
             >
               <Compass className="w-3.5 h-3.5 text-[#005A36]" />
-              <span>Browse All Courses</span>
+              <span>Browse All Subjects</span>
             </Link>
           </div>
         </div>
@@ -163,15 +163,15 @@ export default function StudentDashboard() {
             <BookOpen className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-base font-bold text-slate-700">No Enrolled Subjects Yet</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              You are not currently enrolled in any subjects. When the Department Head or Administrator enrolls you, your course syllabi will appear here automatically.
+              You are not currently enrolled in any subjects. When the Department Head or Administrator enrolls you, your subject syllabi will appear here automatically.
             </p>
             <div className="pt-3">
               <Link
-                href="/courses"
+                href="/subjects"
                 className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all"
               >
                 <Compass className="w-4 h-4 text-[#FEF08A]" />
-                <span>Browse Course Catalog</span>
+                <span>Browse Subject Catalog</span>
               </Link>
             </div>
           </div>

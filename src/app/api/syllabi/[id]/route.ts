@@ -18,7 +18,7 @@ export async function GET(
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
       include: {
-        course: true,
+        subject: true,
         instructor: { select: { id: true, fullName: true, email: true, academicRank: true } },
         versions: { orderBy: { versionNumber: 'desc' } },
       },
@@ -29,12 +29,12 @@ export async function GET(
 
     const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
 
-    // Department Head: strictly scoped to own department (Requirement 21)
+    // Department Head: strictly scoped to own department
     if (user.role === 'DepartmentHead' && userDeptCode && userDeptCode !== syllabus.departmentId.toUpperCase()) {
       return NextResponse.json({ error: 'Access denied: Department Heads may only view syllabi within their assigned department.' }, { status: 403 });
     }
 
-    // Student: must be approved, in own department, and enrolled in the course
+    // Student: must be approved, in own department, and enrolled in the subject
     if (user.role === 'Student') {
       if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
         return NextResponse.json({ error: 'Students can only view active, approved syllabi.' }, { status: 403 });
@@ -45,11 +45,11 @@ export async function GET(
       const studentIntId = parseInt(user.id, 10);
       const enrollment = !isNaN(studentIntId)
         ? await prisma.enrollment.findFirst({
-            where: { studentId: studentIntId, courseId: syllabus.courseId, status: 'ENROLLED' },
+            where: { studentId: studentIntId, status: 'ENROLLED', classSection: { subjectId: syllabus.subjectId } },
           })
         : null;
       if (!enrollment) {
-        return NextResponse.json({ error: 'Access restricted: You can only view syllabi for courses you are actively enrolled in.' }, { status: 403 });
+        return NextResponse.json({ error: 'Access restricted: You can only view syllabi for subjects you are actively enrolled in.' }, { status: 403 });
       }
     }
 
@@ -64,9 +64,24 @@ export async function GET(
       (user.role === 'Educator' && currentUserIdInt === syllabus.instructorId);
 
     const deptCode = syllabus.departmentId;
+    const subjectData = {
+      id: syllabus.subject.id,
+      code: syllabus.subject.code,
+      title: syllabus.subject.title,
+      units: syllabus.subject.units,
+      departmentId: syllabus.subject.departmentId,
+      professorName: syllabus.subject.professorName || null,
+      department: {
+        id: syllabus.subject.departmentId,
+        code: syllabus.subject.departmentId,
+        name: getDepartmentName(syllabus.subject.departmentId),
+      },
+    };
+
     const formatted = {
       id: syllabus.id,
-      courseId: syllabus.courseId,
+      subjectId: syllabus.subjectId,
+      courseId: syllabus.subjectId, // Alias
       instructorId: syllabus.instructorId,
       departmentId: deptCode,
       academicYear: syllabus.academicYear,
@@ -81,19 +96,8 @@ export async function GET(
       createdAt: syllabus.createdAt,
       updatedAt: syllabus.updatedAt,
       department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
-      course: {
-        id: syllabus.course.id,
-        code: syllabus.course.code,
-        title: syllabus.course.title,
-        units: syllabus.course.units,
-        departmentId: syllabus.course.departmentId,
-        professorName: syllabus.course.professorName || null,
-        department: {
-          id: syllabus.course.departmentId,
-          code: syllabus.course.departmentId,
-          name: getDepartmentName(syllabus.course.departmentId),
-        },
-      },
+      subject: subjectData,
+      course: subjectData, // Alias
       instructor: syllabus.instructor
         ? {
             id: syllabus.instructor.id,
@@ -126,7 +130,7 @@ export async function PATCH(
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
       include: {
-        course: true,
+        subject: true,
         versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
       },
     });
@@ -163,7 +167,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'A change summary is required for revision history tracking.' }, { status: 400 });
     }
 
-    // PDF only validation (Requirement 9)
+    // PDF only validation
     if (fileUrl && fileType && fileType.toUpperCase() !== 'PDF') {
       return NextResponse.json({ error: 'Invalid file format. The SRVS system accepts PDF documents only (.pdf).' }, { status: 400 });
     }
@@ -171,7 +175,6 @@ export async function PATCH(
     const latestVersion = syllabus.versions[0];
     const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
 
-    // Workflow enforcement (Requirement 11): No directApprove bypass. Revisions start as Draft or Submitted.
     const isDraft = saveAsDraft === true && submitForApproval === false;
     const versionStatus = isDraft ? 'Draft' : 'Submitted';
     const now = new Date();
@@ -228,7 +231,7 @@ export async function PATCH(
       userDisplayName: user.fullName,
       actionType: 'CreateRevision',
       resultStatus: 'Success',
-      description: `Created syllabus revision v${newVersionNumber} for [${syllabus.course.code}] ${syllabus.course.title} (${versionStatus})`,
+      description: `Created syllabus revision v${newVersionNumber} for [${syllabus.subject.code}] ${syllabus.subject.title} (${versionStatus})`,
       entityType: 'SyllabusVersion',
       entityId: String(result.newVersion.id),
     });
@@ -266,12 +269,12 @@ export async function DELETE(
 
     const syllabus = await prisma.syllabus.findUnique({
       where: { id: syllabusId },
-      include: { course: true },
+      include: { subject: true },
     });
 
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
 
-    // Department Isolation (Requirement 21)
+    // Department Isolation
     if (user.role === 'DepartmentHead') {
       const userDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!userDept || syllabus.departmentId.toUpperCase() !== userDept) {
@@ -286,7 +289,7 @@ export async function DELETE(
       userDisplayName: user.fullName,
       actionType: 'DeleteSyllabus',
       resultStatus: 'Success',
-      description: `Deleted syllabus ID ${syllabusId} for course [${syllabus.course.code}]`,
+      description: `Deleted syllabus ID ${syllabusId} for subject [${syllabus.subject.code}]`,
       entityType: 'Syllabus',
       entityId: String(syllabusId),
     });
