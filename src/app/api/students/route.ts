@@ -59,9 +59,9 @@ export async function GET(req: NextRequest) {
           createdAt: true,
         },
       }),
-      prisma.enrollment.findMany({
+      prisma.studentSubject.findMany({
         where: { status: 'ENROLLED' },
-        select: { studentId: true, classSection: { select: { subjectId: true } } },
+        select: { studentId: true, subjectId: true },
       }),
     ]);
 
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       if (!enrollmentMap.has(enr.studentId)) {
         enrollmentMap.set(enr.studentId, []);
       }
-      enrollmentMap.get(enr.studentId)!.push(enr.classSection.subjectId);
+      enrollmentMap.get(enr.studentId)!.push(enr.subjectId);
     }
 
     const students = rawStudents.map((s) => {

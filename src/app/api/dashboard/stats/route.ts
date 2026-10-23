@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { getDepartmentName } from '@/lib/departments';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
         prisma.user.count({ where: { accountStatus: 'PendingApproval' } }),
         prisma.subject.count(),
         prisma.syllabus.count(),
-        prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] } } }),
+        prisma.syllabus.count({ where: { status: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] } } }),
         prisma.auditLog.findMany({
           orderBy: { createdAt: 'desc' },
           take: 8,
@@ -95,14 +96,14 @@ export async function GET(req: NextRequest) {
       ] = await Promise.all([
         prisma.subject.count({ where: { departmentId: deptCode } }),
         prisma.syllabus.count({ where: { departmentId: deptCode } }),
-        prisma.syllabus.count({ where: { status: { in: ['Draft', 'DRAFT'] }, departmentId: deptCode } }),
-        prisma.syllabus.count({ where: { status: { in: ['Submitted', 'PENDING_APPROVAL'] }, departmentId: deptCode } }),
-        prisma.syllabus.count({ where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] }, departmentId: deptCode } }),
-        prisma.syllabus.count({ where: { status: { in: ['Rejected', 'REJECTED'] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.DRAFT, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.APPROVED, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.REJECTED, departmentId: deptCode } }),
         prisma.user.count({ where: { role: 'Educator', departmentId: deptCode } }),
         prisma.user.count({ where: { role: 'Student', departmentId: deptCode } }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval', departmentId: deptCode } }),
-        prisma.syllabus.count({ where: { status: { in: ['PENDING_APPROVAL', 'Submitted'] }, departmentId: deptCode } }),
+        prisma.syllabus.count({ where: { status: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] }, departmentId: deptCode } }),
       ]);
 
       const missingSyllabi = Math.max(0, totalSubjects - approvedSyllabi);
@@ -135,10 +136,10 @@ export async function GET(req: NextRequest) {
       const [totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount, recentSyllabi] =
         await Promise.all([
           prisma.syllabus.count({ where: { instructorId: educatorIntId } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Draft', 'DRAFT'] } } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Submitted', 'PENDING_APPROVAL'] } } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: ['Rejected', 'REJECTED'] } } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.DRAFT } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] } } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.APPROVED } }),
+          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.REJECTED } }),
           prisma.syllabus.findMany({
             where: { instructorId: educatorIntId },
             orderBy: { updatedAt: 'desc' },
@@ -171,21 +172,16 @@ export async function GET(req: NextRequest) {
 
     const studentIntId = parseInt(currentUserId, 10);
     const enrollments = !isNaN(studentIntId)
-      ? await prisma.enrollment.findMany({
+      ? await prisma.studentSubject.findMany({
           where: { studentId: studentIntId, status: 'ENROLLED' },
           include: {
             student: { select: { fullName: true } },
-            classSection: {
+            subject: {
               include: {
-                instructor: { select: { id: true, fullName: true } },
-                subject: {
-                  include: {
-                    syllabi: {
-                      where: { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
-                      orderBy: { updatedAt: 'desc' },
-                      take: 1,
-                    },
-                  },
+                syllabi: {
+                  where: { status: SYLLABUS_STATUS.APPROVED },
+                  orderBy: { updatedAt: 'desc' },
+                  take: 1,
                 },
               },
             },
@@ -193,27 +189,25 @@ export async function GET(req: NextRequest) {
         })
       : [];
 
-    const availableSyllabiCount = enrollments.filter((e: any) => e.classSection?.subject?.syllabi?.length > 0).length;
+    const availableSyllabiCount = enrollments.filter((e: any) => e.subject?.syllabi?.length > 0).length;
 
     const formattedEnrollments = enrollments.map((e: any) => {
-      const cs = e.classSection;
-      const deptCode = String(cs?.subject?.departmentId || '');
+      const deptCode = String(e.subject?.departmentId || '');
       const subjectData = {
-        ...cs?.subject,
-        professorName: cs?.instructor?.fullName || cs?.subject?.professorName || null,
+        ...e.subject,
+        professorName: e.subject?.professorName || null,
         department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
       };
       return {
         id: e.id,
         studentId: e.studentId,
         studentName: e.student?.fullName,
-        classSectionId: e.classSectionId,
-        subjectId: cs?.subjectId,
-        courseId: cs?.subjectId, // Alias
-        semester: cs?.semester,
-        academicYear: cs?.academicYear,
-        section: cs?.section,
-        instructor: cs?.instructor || null,
+        subjectId: e.subjectId,
+        courseId: e.subjectId, // Alias
+        status: e.status,
+        academicYear: e.academicYear,
+        semester: e.semester,
+        createdAt: e.createdAt,
         subject: subjectData,
         course: subjectData, // Alias
       };

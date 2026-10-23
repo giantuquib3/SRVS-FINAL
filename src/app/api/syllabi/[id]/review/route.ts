@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { createNotification } from '@/lib/notifications';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export async function POST(
   req: NextRequest,
@@ -42,7 +43,7 @@ export async function POST(
     const updated = await prisma.$transaction(async (tx) => {
       if (action === 'Approve') {
         await tx.syllabus.updateMany({
-          where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } },
+          where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: SYLLABUS_STATUS.APPROVED },
           data: { status: 'ARCHIVED' },
         });
       }

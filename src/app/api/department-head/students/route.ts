@@ -74,17 +74,17 @@ export async function GET(req: NextRequest) {
         rejectionReason: true,
         createdAt: true,
         updatedAt: true,
-        enrollments: {
+        studentSubjects: {
           where: { status: 'ENROLLED' },
           select: {
-            classSection: { select: { subject: { select: { code: true, title: true } } } },
+            subject: { select: { code: true, title: true } },
           },
         },
       },
     });
 
     const formatted = students.map((s: any) => {
-      const subjectCodes = (s.enrollments || []).map((e: any) => e.classSection?.subject?.code).filter(Boolean);
+      const subjectCodes = (s.studentSubjects || []).map((ss: any) => ss.subject?.code).filter(Boolean);
       return {
         id: s.id,
         idNumber: s.id,

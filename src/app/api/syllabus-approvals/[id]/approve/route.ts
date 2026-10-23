@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { createNotification } from '@/lib/notifications';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,7 @@ export async function POST(
       }
     }
 
-    if (!['PENDING_APPROVAL', 'SUBMITTED', 'Submitted'].includes(version.approvalStatus)) {
+    if (version.approvalStatus !== SYLLABUS_STATUS.SUBMITTED && version.approvalStatus !== SYLLABUS_STATUS.UNDER_REVIEW) {
       return NextResponse.json({ error: `Cannot approve: Version is in '${version.approvalStatus}' status.` }, { status: 400 });
     }
 
@@ -57,7 +58,7 @@ export async function POST(
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.syllabus.updateMany({
-        where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] } },
+        where: { subjectId: syllabus.subjectId, id: { not: syllabus.id }, status: SYLLABUS_STATUS.APPROVED },
         data: { status: 'ARCHIVED' },
       });
 

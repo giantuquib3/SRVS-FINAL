@@ -119,11 +119,11 @@ export default function SwaggerDocsPage() {
         { name: 'email', type: 'TEXT', nullable: false, desc: 'Institutional USJ-R email (Unique)' },
         { name: 'passwordHash', type: 'TEXT', nullable: false, desc: 'Bcrypt hashed password' },
         { name: 'fullName', type: 'TEXT', nullable: false, desc: 'Full institutional name' },
-        { name: 'role', type: 'TEXT', nullable: false, desc: 'Enum: Admin | DepartmentHead | Educator | Student' },
+        { name: 'role', type: 'TEXT', nullable: false, desc: 'Admin | DepartmentHead | Educator | Student (CHECK constraint)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: true, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
         { name: 'academicRank', type: 'TEXT', nullable: true, desc: 'Chairperson, Professor, Instructor, etc.' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: '1st Year, 2nd Year, 3rd Year, 4th Year (Students)' },
-        { name: 'accountStatus', type: 'TEXT', nullable: false, desc: 'Active | PendingApproval | Rejected | Deactivated' },
+        { name: 'accountStatus', type: 'TEXT', nullable: false, desc: 'Active | PendingApproval | Rejected | Deactivated (CHECK constraint)' },
         { name: 'mustChangePassword', type: 'BOOLEAN', nullable: true, desc: 'Default false. Set true for newly created accounts requiring password update upon first login.' },
         { name: 'rejectionReason', type: 'TEXT', nullable: true, desc: 'Rejection reason provided by Department Head when rejecting a pending Student or Faculty registration.' },
         { name: 'program', type: 'TEXT', nullable: true, desc: 'Academic degree program (e.g. BS Computer Engineering, BS Civil Engineering)' },
@@ -149,32 +149,32 @@ export default function SwaggerDocsPage() {
         { name: 'labHours', type: 'INTEGER', nullable: false, desc: 'Laboratory hours per week' },
         { name: 'prerequisite', type: 'TEXT', nullable: true, desc: 'Required prerequisite subjects' },
         { name: 'yearLevel', type: 'TEXT', nullable: true, desc: 'Target academic year level' },
-        { name: 'semester', type: 'TEXT', nullable: true, desc: '1st Semester | 2nd Semester | Summer' },
+        { name: 'semester', type: 'TEXT', nullable: true, desc: '1st Semester | 2nd Semester | Summer (CHECK constraint)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
-        { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Faculty/Professor responsible for subject syllabus' },
+        { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Instructor / subject coordinator shown with the subject' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject creation date' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject modification date' },
       ],
     },
-    enrollments: {
-      name: 'enrollments',
-      description: 'Many-to-many junction connecting students in users table and academic subjects. Enforces that one student can enroll in multiple distinct subjects, one subject can have multiple students, and no student may enroll in the same subject more than once across all terms.',
+    student_subjects: {
+      name: 'student_subjects',
+      description: 'Many-to-many junction table between students (users) and subjects. One student can be associated with many subjects, one subject can have many students, and UNIQUE (studentId, subjectId) prevents the same student from being enrolled in a subject twice. Student names and subject titles are not stored here — they are read from users.fullName and subjects.title via joins. A trigger (student_subjects_enforce_rules) allows only users with role Student. Row level security blocks the public Supabase REST API.',
       badge: 'Student Records',
-      pk: '(studentId INT, subjectId INT) — Composite Primary Key',
+      pk: 'id (INTEGER IDENTITY) — UNIQUE (studentId, subjectId) [uq_student_subjects]',
       fks: [
-        { col: 'studentId', target: 'users.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
-        { col: 'subjectId', target: 'subjects.id', rule: 'ON DELETE CASCADE ON UPDATE CASCADE' },
+        { col: 'studentId', target: 'users.id', rule: 'fk_student_subjects_student — ON DELETE NO ACTION' },
+        { col: 'subjectId', target: 'subjects.id', rule: 'fk_student_subjects_subject — ON DELETE NO ACTION (a subject with students cannot be deleted)' },
+        { col: 'enrolledById', target: 'users.id', rule: 'fk_student_subjects_enrolled_by — ON DELETE SET NULL' },
       ],
       columns: [
-        { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Student University ID)' },
-        { name: 'subjectId', type: 'INTEGER', nullable: false, desc: 'FK -> subjects.id' },
-        { name: 'studentName', type: 'TEXT', nullable: false, desc: 'Cached student full name' },
-        { name: 'semester', type: 'TEXT', nullable: false, desc: 'Semester of enrollment' },
-        { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'e.g. 2026-2027' },
-        { name: 'section', type: 'TEXT', nullable: false, desc: 'Class section (e.g. A, B)' },
-        { name: 'status', type: 'TEXT', nullable: false, desc: 'ENROLLED | COMPLETED | DROPPED' },
-        { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Enrollment timestamp' },
-        { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Status update timestamp' },
+        { name: 'id', type: 'INTEGER (IDENTITY)', nullable: false, desc: 'Primary Key (enrollment id)' },
+        { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (role Student); name via users.fullName' },
+        { name: 'subjectId', type: 'INTEGER', nullable: false, desc: 'FK -> subjects.id; code / title via subjects' },
+        { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Enrollment timestamp (Default: CURRENT_TIMESTAMP)' },
+        { name: 'status', type: 'TEXT', nullable: false, desc: 'ENROLLED | COMPLETED | DROPPED (Default: ENROLLED, CHECK constraint). Only ENROLLED grants approved-syllabus access' },
+        { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'School year the student takes the subject, e.g. 2026-2027 (CHECK: YYYY-YYYY)' },
+        { name: 'semester', type: 'TEXT', nullable: false, desc: '1st Semester | 2nd Semester | Summer (CHECK constraint)' },
+        { name: 'enrolledById', type: 'INTEGER', nullable: true, desc: 'FK -> users.id: Admin / Department Head / Student who created the enrollment (NULL = unknown)' },
       ],
     },
     syllabi: {
@@ -194,9 +194,9 @@ export default function SwaggerDocsPage() {
         { name: 'instructorId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Educator/DeptHead)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: false, desc: 'FK -> departments.id' },
         { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'Target academic year' },
-        { name: 'semester', type: 'TEXT', nullable: false, desc: 'Target semester' },
+        { name: 'semester', type: 'TEXT', nullable: false, desc: '1st Semester | 2nd Semester | Summer (CHECK constraint)' },
         { name: 'section', type: 'TEXT', nullable: false, desc: 'Subject section' },
-        { name: 'status', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED' },
+        { name: 'status', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED (CHECK constraint)' },
         { name: 'currentVersionNumber', type: 'INTEGER', nullable: false, desc: 'Active approved version number' },
         { name: 'reviewerRemarks', type: 'TEXT', nullable: true, desc: 'Feedback comments from Department Head' },
         { name: 'submittedAt', type: 'TIMESTAMP', nullable: true, desc: 'Submission for review timestamp' },
@@ -224,8 +224,8 @@ export default function SwaggerDocsPage() {
         { name: 'editorId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (Editor/Author)' },
         { name: 'changeSummary', type: 'TEXT', nullable: false, desc: 'User explanation of modifications' },
         { name: 'changeType', type: 'TEXT', nullable: false, desc: 'Create | Edit | Submit | Approve | Reject | Restore' },
-        { name: 'statusAtSave', type: 'TEXT', nullable: false, desc: 'Status at snapshot creation' },
-        { name: 'approvalStatus', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED' },
+        { name: 'statusAtSave', type: 'TEXT', nullable: false, desc: 'Status at snapshot creation: DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED (CHECK constraint)' },
+        { name: 'approvalStatus', type: 'TEXT', nullable: false, desc: 'DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | ARCHIVED (CHECK constraint)' },
         { name: 'content', type: 'JSONB', nullable: false, desc: 'Complete immutable content payload' },
         { name: 'fileName', type: 'TEXT', nullable: true, desc: 'Uploaded file original name' },
         { name: 'fileUrl', type: 'TEXT', nullable: true, desc: 'Hosted file storage path' },
@@ -494,13 +494,15 @@ export default function SwaggerDocsPage() {
         │ 1:N                         1:N              └────────────────────────────────┘
         │                                                       │ 1:N
         ▼                                                       ▼
-┌────────────────────────────────┐       1:N Student   ┌────────────────────────────────┐
-│            subjects            │ <────────────────── │          enrollments           │
-│  PK: id INTEGER (SERIAL)       │                     │  PK: (studentId, subjectId) INT│
-│  code (UNIQUE), title, units   │                     │  studentName, semester, status │
-│  FK: departmentId -> dept.id   │                     └────────────────────────────────┘
-│  professorName (TEXT)          │                              ▲
-└────────────────────────────────┘                              │
+┌────────────────────────────────┐       1:N           ┌────────────────────────────────┐
+│            subjects            │ <────────────────── │        student_subjects        │
+│  PK: id INTEGER (SERIAL)       │                     │  PK: id INTEGER (IDENTITY)     │
+│  code (UNIQUE), title, units   │                     │  FK: studentId -> users.id     │
+│  FK: departmentId -> dept.id   │                     │  FK: subjectId -> subjects.id  │
+│  professorName (TEXT)          │                     │  UNIQUE(studentId, subjectId)  │
+└────────────────────────────────┘                     │  status, academicYear, semester│
+                                                       │  FK: enrolledById -> users.id  │
+                                                       └────────────────────────────────┘
         │ 1:N                                                   │
         ▼                                                       │
 ┌────────────────────────────────┐                              │

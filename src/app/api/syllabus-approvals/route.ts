@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getDepartmentName } from '@/lib/departments';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,13 +41,13 @@ export async function GET(req: NextRequest) {
 
     if (statusParam && statusParam !== 'ALL') {
       if (statusParam === 'APPROVED') {
-        where.approvalStatus = { in: ['APPROVED', 'Approved'] };
+        where.approvalStatus = SYLLABUS_STATUS.APPROVED;
       } else if (statusParam === 'REJECTED') {
-        where.approvalStatus = { in: ['REJECTED', 'Rejected'] };
+        where.approvalStatus = SYLLABUS_STATUS.REJECTED;
       } else if (statusParam === 'UNDER_REVIEW') {
-        where.approvalStatus = { in: ['UNDER_REVIEW', 'Under Review'] };
+        where.approvalStatus = SYLLABUS_STATUS.UNDER_REVIEW;
       } else {
-        where.approvalStatus = { in: ['SUBMITTED', 'PENDING_APPROVAL', 'Submitted', 'submitted', 'UNDER_REVIEW', 'Under Review'] };
+        where.approvalStatus = { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] };
       }
     }
 
@@ -142,9 +143,9 @@ export async function GET(req: NextRequest) {
 
     const statsWhere: any = where.syllabus ? { syllabus: where.syllabus } : {};
     const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['SUBMITTED', 'PENDING_APPROVAL', 'Submitted', 'submitted', 'UNDER_REVIEW', 'Under Review'] } } }),
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['APPROVED', 'Approved'] } } }),
-      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: ['REJECTED', 'Rejected'] } } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] } } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: SYLLABUS_STATUS.APPROVED } }),
+      prisma.syllabusVersion.count({ where: { ...statsWhere, approvalStatus: SYLLABUS_STATUS.REJECTED } }),
     ]);
 
     return NextResponse.json({
@@ -221,7 +222,7 @@ async function handleReviewAction(req: NextRequest) {
           where: {
             subjectId: version.syllabus.subjectId,
             id: { not: version.syllabusId },
-            status: { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] },
+            status: SYLLABUS_STATUS.APPROVED,
           },
           data: { status: 'ARCHIVED' },
         });

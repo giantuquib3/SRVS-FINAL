@@ -198,7 +198,7 @@ export default function StudentDashboard() {
                         </span>
                       </div>
                       <span className="text-xs px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">
-                        Section {item.section}
+                        {subject.yearLevel || '1st Year'}
                       </span>
                     </div>
 
@@ -231,7 +231,7 @@ export default function StudentDashboard() {
                       <span>•</span>
                       <span className="flex items-center space-x-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{item.semester}, {item.academicYear}</span>
+                        <span>{item.semester || subject.semester || '1st Semester'}{item.academicYear ? `, ${item.academicYear}` : ''}</span>
                       </span>
                     </div>
                   </div>

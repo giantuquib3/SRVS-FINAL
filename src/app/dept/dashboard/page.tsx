@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   Info
 } from 'lucide-react';
+import { isPendingReview, syllabusStatusLabel } from '@/lib/status';
 
 export default function DeptHeadDashboard() {
   const [data, setData] = useState<any>(null);
@@ -1260,14 +1261,14 @@ export default function DeptHeadDashboard() {
                         {activeSyllabus ? (
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                              activeSyllabus.status === 'Approved'
+                              activeSyllabus.status === 'APPROVED'
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : activeSyllabus.status === 'Submitted'
+                                : isPendingReview(activeSyllabus.status)
                                 ? 'bg-sky-50 text-sky-800 border-sky-200'
                                 : 'bg-amber-50 text-amber-800 border-amber-200'
                             }`}
                           >
-                            {activeSyllabus.status}
+                            {syllabusStatusLabel(activeSyllabus.status)}
                           </span>
                         ) : (
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">

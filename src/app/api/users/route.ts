@@ -72,11 +72,11 @@ export async function GET(req: NextRequest) {
           updatedAt: true,
         },
       }),
-      prisma.enrollment.findMany({
+      prisma.studentSubject.findMany({
         where: { status: 'ENROLLED' },
         select: {
           studentId: true,
-          classSection: { select: { subject: { select: { code: true } } } },
+          subject: { select: { code: true } },
         },
       }),
       prisma.user.count({
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
       if (!enrollmentMap.has(enr.studentId)) {
         enrollmentMap.set(enr.studentId, []);
       }
-      const code = enr.classSection?.subject?.code;
+      const code = enr.subject?.code;
       if (code && !enrollmentMap.get(enr.studentId)!.includes(code)) {
         enrollmentMap.get(enr.studentId)!.push(code);
       }

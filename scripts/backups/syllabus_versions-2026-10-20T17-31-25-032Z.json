@@ -1,0 +1,31 @@
+[
+  {
+    "id": 18,
+    "syllabusId": 13,
+    "versionNumber": 1,
+    "editorId": 10002,
+    "changeSummary": "Initial syllabus drafting (Version 1)",
+    "changeType": "Create",
+    "statusAtSave": "DRAFT",
+    "approvalStatus": "APPROVED",
+    "content": {
+      "topics": [],
+      "schedule": "",
+      "references": [],
+      "gradingSystem": [],
+      "learningOutcomes": [],
+      "courseDescription": "Foundations of Computer Programming in C/C++"
+    },
+    "fileName": null,
+    "fileUrl": null,
+    "fileType": "PDF",
+    "fileSize": null,
+    "submittedById": null,
+    "submittedAt": null,
+    "reviewedById": 10001,
+    "reviewedAt": "2026-10-05T14:42:31.916Z",
+    "rejectionReason": null,
+    "createdAt": "2026-10-05T14:42:21.249Z",
+    "updatedAt": "2026-10-05T14:42:32.777Z"
+  }
+]

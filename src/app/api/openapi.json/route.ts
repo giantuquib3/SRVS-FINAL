@@ -76,7 +76,7 @@ const openApiSpec = {
     },
     {
       "name": "5. Enrollments",
-      "description": "Student course enrollments with composite primary keys allowing multiple course enrollments per student."
+      "description": "Student ⟷ subject enrollments stored in the student_subjects junction table (many-to-many: one student, many subjects; one subject, many students). Each student can be enrolled in a subject only once (UNIQUE studentId + subjectId)."
     },
     {
       "name": "6. Syllabus Management",
@@ -3029,8 +3029,8 @@ const openApiSpec = {
         "tags": [
           "5. Enrollments"
         ],
-        "summary": "List Academic Subject Enrollments",
-        "description": "Retrieve subject enrollments. Students only see their own enrollments; Department Heads see enrollments for subjects in their department.",
+        "summary": "List Student–Subject Enrollments",
+        "description": "Lists rows of the student_subjects junction table joined with the student (users) and subject (subjects), including the subject's latest APPROVED syllabus. Students only see their own enrollments; Department Heads see enrollments for subjects in their department; Administrators see all; Educators are forbidden. Student names come from users.fullName and subject titles from subjects.title (neither is stored on student_subjects). Returns status = ENROLLED unless ?status= is given.",
         "operationId": "getEnrollments",
         "parameters": [
           {
@@ -3040,48 +3040,51 @@ const openApiSpec = {
               "type": "integer",
               "example": 2022012708
             },
-            "description": "10-digit numeric Student ID"
+            "description": "Student ID (ignored for Students — they always see their own). Alias: idNumber"
           },
           {
             "name": "subjectId",
             "in": "query",
             "schema": {
               "type": "integer",
-              "example": 1
+              "example": 3
             },
-            "description": "Subject primary key ID"
+            "description": "Subject primary key (subjects.id). Alias: courseId"
           },
           {
             "name": "subjectCode",
             "in": "query",
             "schema": {
               "type": "string",
-              "example": "CPE101"
+              "example": "CPE301"
             },
-            "description": "Subject code filter"
+            "description": "Subject code. Alias: courseCode"
           },
           {
-            "name": "courseId",
+            "name": "status",
             "in": "query",
             "schema": {
-              "type": "integer"
+              "type": "string",
+              "enum": [
+                "ENROLLED",
+                "COMPLETED",
+                "DROPPED",
+                "ALL"
+              ],
+              "default": "ENROLLED"
             },
-            "description": "Backwards-compatibility alias for subjectId"
-          },
-          {
-            "name": "courseCode",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Backwards-compatibility alias for subjectCode"
+            "description": "Enrollment status filter; ALL returns every status"
           },
           {
             "name": "semester",
             "in": "query",
             "schema": {
               "type": "string",
-              "example": "1st Semester"
+              "enum": [
+                "1st Semester",
+                "2nd Semester",
+                "Summer"
+              ]
             }
           },
           {
@@ -3091,19 +3094,11 @@ const openApiSpec = {
               "type": "string",
               "example": "2026-2027"
             }
-          },
-          {
-            "name": "section",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "A"
-            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of student course enrollments.",
+            "description": "List of enrollments.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3124,32 +3119,72 @@ const openApiSpec = {
                 "example": {
                   "enrollments": [
                     {
-                      "id": "2022012708_1",
+                      "id": 21,
                       "studentId": 2022012708,
-                      "studentName": "Gian Carlo",
-                      "courseId": 1,
-                      "semester": "1st Semester",
-                      "academicYear": "2026-2027",
-                      "section": "A",
+                      "studentName": "Gian Carlo Tuquib",
+                      "subjectId": 3,
+                      "courseId": 3,
                       "status": "ENROLLED",
-                      "createdAt": "2026-09-01T08:00:00.000Z",
+                      "academicYear": "2026-2027",
+                      "semester": "1st Semester",
+                      "enrolledById": 10001,
+                      "enrolledBy": {
+                        "id": 10001,
+                        "fullName": "Engr. CPE Chairperson",
+                        "role": "DepartmentHead"
+                      },
+                      "createdAt": "2026-10-23T08:00:00.000Z",
                       "student": {
                         "id": 2022012708,
                         "idNumber": 2022012708,
-                        "fullName": "Gian Carlo",
-                        "email": "gian@usjr.edu.ph"
+                        "fullName": "Gian Carlo Tuquib",
+                        "email": "gian.tuquib@usjr.edu.ph",
+                        "departmentId": "CPE",
+                        "yearLevel": "3rd Year"
                       },
-                      "course": {
-                        "id": 1,
-                        "code": "CPE101",
-                        "title": "Computer Engineering as a Discipline",
+                      "subject": {
+                        "id": 3,
+                        "code": "CPE301",
+                        "title": "Computer Architecture and Organization",
                         "units": 3,
                         "departmentId": "CPE",
-                        "professorName": "Engr. Alan Turing"
+                        "professorName": "Dr. Alan Turing",
+                        "department": {
+                          "id": "CPE",
+                          "code": "CPE",
+                          "name": "Computer Engineering Department"
+                        },
+                        "activeSyllabus": {
+                          "id": 1,
+                          "status": "APPROVED",
+                          "academicYear": "2026-2027",
+                          "semester": "1st Semester",
+                          "currentVersionNumber": 2
+                        }
                       }
                     }
                   ],
                   "total": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role not permitted to list enrollments (e.g. Educator).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3160,8 +3195,8 @@ const openApiSpec = {
         "tags": [
           "5. Enrollments"
         ],
-        "summary": "Enroll Student in Academic Subject",
-        "description": "Enroll a student into an academic subject. Enforces a many-to-many relationship with composite primary key (studentId, subjectId). A student may enroll in multiple different subjects, and multiple students can enroll in the same subject. Duplicate enrollment in the same subject is strictly forbidden across all semesters, academic years, and sections.",
+        "summary": "Enroll Student in a Subject",
+        "description": "Creates a student_subjects row. A student may be enrolled in many subjects and a subject may have many students, but the same student can be enrolled in a given subject only once (checked by the API and enforced by the uq_student_subjects UNIQUE constraint). The student must exist and have role Student (also enforced by a database trigger); the subject must exist (foreign keys). Students can only enroll themselves; Department Heads only within their own department; Educators are forbidden. The session user is recorded as enrolledById.",
         "operationId": "createEnrollment",
         "requestBody": {
           "required": true,
@@ -3169,61 +3204,65 @@ const openApiSpec = {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "studentId",
-                  "subjectId"
-                ],
                 "properties": {
                   "studentId": {
                     "type": "integer",
                     "example": 2022012708,
-                    "description": "10-digit Student University ID"
+                    "description": "Student University ID (users.id). Required for Admin/DepartmentHead; ignored for Students (the session user is used). Alias: idNumber"
                   },
                   "subjectId": {
                     "type": "integer",
-                    "example": 1,
-                    "description": "Subject ID referencing subjects.id"
-                  },
-                  "courseId": {
-                    "type": "integer",
-                    "example": 1,
-                    "description": "Backwards-compatibility alias for subjectId"
+                    "example": 3,
+                    "description": "Subject ID (subjects.id). Alias: courseId"
                   },
                   "subjectCode": {
                     "type": "string",
-                    "example": "CPE101"
+                    "example": "CPE301",
+                    "description": "Alternative to subjectId. Alias: courseCode"
                   },
-                  "courseCode": {
+                  "status": {
                     "type": "string",
-                    "example": "CPE101"
-                  },
-                  "semester": {
-                    "type": "string",
-                    "example": "1st Semester"
+                    "enum": [
+                      "ENROLLED",
+                      "COMPLETED",
+                      "DROPPED"
+                    ],
+                    "example": "ENROLLED",
+                    "description": "Default ENROLLED. Students may only create ENROLLED records.",
+                    "default": "ENROLLED"
                   },
                   "academicYear": {
                     "type": "string",
-                    "example": "2026-2027"
+                    "pattern": "^\\d{4}-\\d{4}$",
+                    "example": "2026-2027",
+                    "description": "School year the student takes the subject (CHECK: YYYY-YYYY).",
+                    "default": "2026-2027"
                   },
-                  "section": {
+                  "semester": {
                     "type": "string",
-                    "example": "A"
+                    "enum": [
+                      "1st Semester",
+                      "2nd Semester",
+                      "Summer"
+                    ],
+                    "example": "1st Semester",
+                    "default": "1st Semester"
                   }
                 }
               },
               "example": {
                 "studentId": 2022012708,
-                "courseId": 1,
+                "subjectId": 3,
                 "semester": "1st Semester",
                 "academicYear": "2026-2027",
-                "section": "A"
+                "status": "ENROLLED"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Student enrolled successfully.",
+            "description": "Student enrolled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3241,28 +3280,41 @@ const openApiSpec = {
                 "example": {
                   "success": true,
                   "enrollment": {
-                    "id": "2022012708_1",
+                    "id": 21,
                     "studentId": 2022012708,
-                    "studentName": "Gian Carlo",
-                    "courseId": 1,
-                    "semester": "1st Semester",
-                    "academicYear": "2026-2027",
-                    "section": "A",
+                    "studentName": "Gian Carlo Tuquib",
+                    "subjectId": 3,
+                    "courseId": 3,
                     "status": "ENROLLED",
-                    "createdAt": "2026-09-29T10:00:00.000Z",
+                    "academicYear": "2026-2027",
+                    "semester": "1st Semester",
+                    "enrolledById": 10001,
+                    "enrolledBy": {
+                      "id": 10001,
+                      "fullName": "Engr. CPE Chairperson",
+                      "role": "DepartmentHead"
+                    },
+                    "createdAt": "2026-10-23T08:00:00.000Z",
                     "student": {
                       "id": 2022012708,
                       "idNumber": 2022012708,
-                      "fullName": "Gian Carlo",
-                      "email": "gian@usjr.edu.ph"
+                      "fullName": "Gian Carlo Tuquib",
+                      "email": "gian.tuquib@usjr.edu.ph",
+                      "departmentId": "CPE",
+                      "yearLevel": "3rd Year"
                     },
-                    "course": {
-                      "id": 1,
-                      "code": "CPE101",
-                      "title": "Computer Engineering as a Discipline",
+                    "subject": {
+                      "id": 3,
+                      "code": "CPE301",
+                      "title": "Computer Architecture and Organization",
                       "units": 3,
                       "departmentId": "CPE",
-                      "professorName": "Engr. Alan Turing"
+                      "professorName": "Dr. Alan Turing",
+                      "department": {
+                        "id": "CPE",
+                        "code": "CPE",
+                        "name": "Computer Engineering Department"
+                      }
                     }
                   }
                 }
@@ -3270,13 +3322,222 @@ const openApiSpec = {
             }
           },
           "400": {
-            "description": "Missing or invalid studentId or courseId."
+            "description": "Missing/invalid studentId, invalid status / academicYear / semester, or the user is not a Student.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "User Dr. Alan Turing (ID: 10001) has role \"DepartmentHead\". Only users whose role is \"Student\" may be enrolled in subjects."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Department Head attempted to enroll outside their department."
+            "description": "Role not permitted, or department isolation violated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Student or subject not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Subject not found. Please provide a valid subjectId or subjectCode."
+                }
+              }
+            }
           },
           "409": {
-            "description": "Student is already enrolled in this course."
+            "description": "The student is already enrolled in this subject.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "Gian Carlo Tuquib is already enrolled in [CPE301] Computer Architecture and Organization."
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "5. Enrollments"
+        ],
+        "summary": "Update Enrollment Status / Term",
+        "description": "Changes the status (e.g. mark COMPLETED or DROPPED), academic year or semester of one enrollment. Admin or Department Head (own department only). The change is written to the audit log. studentId and subjectId cannot be changed — delete and re-create the enrollment instead.",
+        "operationId": "updateEnrollment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "example": 21,
+                    "description": "student_subjects.id"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ENROLLED",
+                      "COMPLETED",
+                      "DROPPED"
+                    ],
+                    "example": "ENROLLED",
+                    "description": "Enrollment status (CHECK constraint). Only ENROLLED gives the student access to the approved syllabus."
+                  },
+                  "academicYear": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{4}$",
+                    "example": "2026-2027",
+                    "description": "School year the student takes the subject (CHECK: YYYY-YYYY)."
+                  },
+                  "semester": {
+                    "type": "string",
+                    "enum": [
+                      "1st Semester",
+                      "2nd Semester",
+                      "Summer"
+                    ],
+                    "example": "1st Semester"
+                  }
+                }
+              },
+              "example": {
+                "id": 21,
+                "status": "COMPLETED"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enrollment updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "enrollment": {
+                      "$ref": "#/components/schemas/Enrollment"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "enrollment": {
+                    "id": 21,
+                    "studentId": 2022012708,
+                    "studentName": "Gian Carlo Tuquib",
+                    "subjectId": 3,
+                    "courseId": 3,
+                    "status": "COMPLETED",
+                    "academicYear": "2026-2027",
+                    "semester": "1st Semester",
+                    "enrolledById": 10001,
+                    "enrolledBy": {
+                      "id": 10001,
+                      "fullName": "Engr. CPE Chairperson",
+                      "role": "DepartmentHead"
+                    },
+                    "createdAt": "2026-10-23T08:00:00.000Z",
+                    "student": {
+                      "id": 2022012708,
+                      "idNumber": 2022012708,
+                      "fullName": "Gian Carlo Tuquib",
+                      "email": "gian.tuquib@usjr.edu.ph",
+                      "departmentId": "CPE",
+                      "yearLevel": "3rd Year"
+                    },
+                    "subject": {
+                      "id": 3,
+                      "code": "CPE301",
+                      "title": "Computer Architecture and Organization",
+                      "units": 3,
+                      "departmentId": "CPE",
+                      "professorName": "Dr. Alan Turing",
+                      "department": {
+                        "id": "CPE",
+                        "code": "CPE",
+                        "name": "Computer Engineering Department"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing id, nothing to update, or an invalid status / academicYear / semester.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin / Department Head, or the subject belongs to another department.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Enrollment not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -3285,48 +3546,49 @@ const openApiSpec = {
           "5. Enrollments"
         ],
         "summary": "Unenroll Student from Subject",
-        "description": "Removes an enrollment record by studentId and subjectId.",
+        "description": "Deletes a student_subjects row, identified by its id or by studentId + subjectId/subjectCode. Students may only remove their own enrollments; Department Heads only within their department. The action is recorded in the audit log.",
         "operationId": "deleteEnrollment",
         "parameters": [
-          {
-            "name": "studentId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 2022012708
-            }
-          },
-          {
-            "name": "subjectId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 1
-            }
-          },
-          {
-            "name": "courseId",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Backwards-compatibility alias for subjectId"
-          },
           {
             "name": "id",
             "in": "query",
             "schema": {
-              "type": "string",
-              "example": "2022012708_1"
+              "type": "integer",
+              "example": 21
             },
-            "description": "Composite enrollment key"
+            "description": "Enrollment primary key (student_subjects.id) — preferred"
+          },
+          {
+            "name": "studentId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "example": 2022012708
+            },
+            "description": "Student ID (ignored for Students). Alias: idNumber"
+          },
+          {
+            "name": "subjectId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "example": 3
+            },
+            "description": "Subject ID. Alias: courseId"
+          },
+          {
+            "name": "subjectCode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "CPE301"
+            },
+            "description": "Subject code. Alias: courseCode"
           }
         ],
         "responses": {
           "200": {
-            "description": "Student unenrolled successfully.",
+            "description": "Student unenrolled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3348,8 +3610,45 @@ const openApiSpec = {
               }
             }
           },
+          "400": {
+            "description": "Neither an enrollment id nor studentId + subjectId/subjectCode was provided.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to manage this enrollment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "Enrollment record not found."
+            "description": "Enrollment not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3410,11 +3709,12 @@ const openApiSpec = {
             "schema": {
               "type": "string",
               "enum": [
-                "Draft",
-                "Submitted",
-                "Under Review",
-                "Approved",
-                "Rejected",
+                "DRAFT",
+                "SUBMITTED",
+                "UNDER_REVIEW",
+                "APPROVED",
+                "REJECTED",
+                "ARCHIVED",
                 "ALL"
               ]
             }
@@ -4440,10 +4740,9 @@ const openApiSpec = {
               "type": "string",
               "enum": [
                 "SUBMITTED",
-                "PENDING_APPROVAL",
+                "UNDER_REVIEW",
                 "APPROVED",
                 "REJECTED",
-                "UNDER_REVIEW",
                 "ALL"
               ],
               "default": "SUBMITTED"
@@ -6368,37 +6667,32 @@ const openApiSpec = {
       },
       "Enrollment": {
         "type": "object",
+        "description": "A student_subjects row (UNIQUE studentId + subjectId) returned with the joined student and subject.",
         "properties": {
           "id": {
-            "type": "string",
-            "example": "2022012708_1",
-            "description": "Composite enrollment key (studentId_courseId)"
+            "type": "integer",
+            "example": 21,
+            "description": "student_subjects.id"
           },
           "studentId": {
             "type": "integer",
             "example": 2022012708,
-            "description": "10-digit student ID number"
+            "description": "FK → users.id (fk_student_subjects_student)"
           },
           "studentName": {
             "type": "string",
-            "example": "Gian Carlo"
+            "example": "Gian Carlo Tuquib",
+            "description": "From users.fullName via join (not stored)"
+          },
+          "subjectId": {
+            "type": "integer",
+            "example": 3,
+            "description": "FK → subjects.id (fk_student_subjects_subject)"
           },
           "courseId": {
             "type": "integer",
-            "example": 1,
-            "description": "Internal database course ID"
-          },
-          "semester": {
-            "type": "string",
-            "example": "1st Semester"
-          },
-          "academicYear": {
-            "type": "string",
-            "example": "2026-2027"
-          },
-          "section": {
-            "type": "string",
-            "example": "A"
+            "example": 3,
+            "description": "Backwards-compatibility alias for subjectId"
           },
           "status": {
             "type": "string",
@@ -6407,29 +6701,62 @@ const openApiSpec = {
               "COMPLETED",
               "DROPPED"
             ],
-            "example": "ENROLLED"
+            "example": "ENROLLED",
+            "description": "Enrollment status (CHECK constraint). Only ENROLLED gives the student access to the approved syllabus."
           },
-          "student": {
-            "$ref": "#/components/schemas/UserProfile"
+          "academicYear": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{4}$",
+            "example": "2026-2027",
+            "description": "School year the student takes the subject (CHECK: YYYY-YYYY)."
           },
-          "course": {
-            "$ref": "#/components/schemas/Course"
+          "semester": {
+            "type": "string",
+            "enum": [
+              "1st Semester",
+              "2nd Semester",
+              "Summer"
+            ],
+            "example": "1st Semester"
+          },
+          "enrolledById": {
+            "type": "integer",
+            "nullable": true,
+            "example": 10001,
+            "description": "FK → users.id (fk_student_subjects_enrolled_by): who created the enrollment"
+          },
+          "enrolledBy": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "fullName": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
           },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "subjectId": {
-            "type": "integer",
-            "example": 1,
-            "description": "Primary subject foreign key (subjects.id)"
+          "student": {
+            "$ref": "#/components/schemas/UserProfile"
           },
           "subject": {
             "$ref": "#/components/schemas/Subject"
+          },
+          "course": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Subject"
+              }
+            ],
+            "description": "Backwards-compatibility alias for subject"
           }
         }
       },
@@ -6476,15 +6803,14 @@ const openApiSpec = {
           "status": {
             "type": "string",
             "enum": [
-              "Draft",
-              "Submitted",
-              "Under Review",
-              "Approved",
-              "Rejected",
-              "ACTIVE",
+              "DRAFT",
+              "SUBMITTED",
+              "UNDER_REVIEW",
+              "APPROVED",
+              "REJECTED",
               "ARCHIVED"
             ],
-            "example": "Approved"
+            "example": "APPROVED"
           },
           "currentVersionNumber": {
             "type": "integer",
@@ -6547,15 +6873,14 @@ const openApiSpec = {
           "approvalStatus": {
             "type": "string",
             "enum": [
-              "Draft",
-              "Submitted",
-              "Under Review",
-              "Approved",
-              "Rejected",
+              "DRAFT",
+              "SUBMITTED",
+              "UNDER_REVIEW",
               "APPROVED",
-              "REJECTED"
+              "REJECTED",
+              "ARCHIVED"
             ],
-            "example": "Approved"
+            "example": "APPROVED"
           },
           "statusAtSave": {
             "type": "string",

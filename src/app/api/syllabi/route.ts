@@ -3,25 +3,18 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getDepartmentName } from '@/lib/departments';
-import { findOrCreateClassSection } from '@/lib/enrollments';
+import { SYLLABUS_STATUS, SEMESTERS, DEFAULT_ACADEMIC_YEAR, DEFAULT_SEMESTER, DEFAULT_SECTION, parseSyllabusStatusParam } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
 function applyStatusFilter(where: any, status: string | null) {
-  if (!status || status === 'ALL') return;
-  const sUpper = status.toUpperCase();
-  if (sUpper === 'ACTIVE' || sUpper === 'APPROVED') {
-    where.status = { in: ['ACTIVE', 'Active', 'Approved', 'APPROVED'] };
-  } else if (sUpper === 'DRAFT') {
-    where.status = { in: ['DRAFT', 'Draft'] };
-  } else if (sUpper === 'SUBMITTED' || sUpper === 'PENDING_APPROVAL' || sUpper === 'PENDING') {
-    where.status = { in: ['PENDING_APPROVAL', 'Submitted', 'submitted', 'UNDER_REVIEW', 'Under Review'] };
-  } else if (sUpper === 'UNDER_REVIEW') {
-    where.status = { in: ['UNDER_REVIEW', 'Under Review'] };
-  } else if (sUpper === 'REJECTED') {
-    where.status = { in: ['REJECTED', 'Rejected'] };
+  if (!status || status.toUpperCase() === 'ALL') return;
+  const canonical = parseSyllabusStatusParam(status);
+  if (canonical === SYLLABUS_STATUS.SUBMITTED) {
+    // "Pending" includes syllabi that a reviewer has already picked up
+    where.status = { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] };
   } else {
-    where.status = status;
+    where.status = canonical ?? status;
   }
 }
 
@@ -43,20 +36,20 @@ export async function GET(req: NextRequest) {
 
     // Department-Level Data Isolation
     if (user?.role === 'Student') {
-      where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
+      where.status = SYLLABUS_STATUS.APPROVED;
       const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!studentDept) return NextResponse.json({ syllabi: [] });
       where.departmentId = studentDept;
 
       // Show only syllabi for subjects the student is enrolled in
       const studentIntId = parseInt(user.id, 10);
-      const enrollments = !isNaN(studentIntId)
-        ? await prisma.enrollment.findMany({
+      const studentSubjects = !isNaN(studentIntId)
+        ? await prisma.studentSubject.findMany({
             where: { studentId: studentIntId, status: 'ENROLLED' },
-            select: { classSection: { select: { subjectId: true } } },
+            select: { subjectId: true },
           })
         : [];
-      const enrolledSubjectIds = Array.from(new Set(enrollments.map((e: any) => e.classSection.subjectId)));
+      const enrolledSubjectIds = studentSubjects.map((ss: any) => ss.subjectId);
       if (enrolledSubjectIds.length === 0) return NextResponse.json({ syllabi: [] });
       where.subjectId = { in: enrolledSubjectIds };
 
@@ -77,7 +70,7 @@ export async function GET(req: NextRequest) {
       if (departmentId) where.departmentId = String(departmentId).trim().toUpperCase();
 
     } else {
-      where.status = { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] };
+      where.status = SYLLABUS_STATUS.APPROVED;
     }
 
     if (semester) where.semester = semester;
@@ -305,38 +298,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Link the syllabus to its class section (subject + term + section), creating it if needed
-    const classSection = await findOrCreateClassSection({
-      subjectId: subject.id,
-      academicYear,
-      semester,
-      section: section || 'A',
-      instructorId: instructorIdInt,
-    });
+    // Academic term this syllabus is for
+    const termAcademicYear = String(academicYear || DEFAULT_ACADEMIC_YEAR).trim();
+    const termSemester = String(semester || DEFAULT_SEMESTER).trim();
+    const termSection = String(section || DEFAULT_SECTION).trim().toUpperCase();
+    if (!(SEMESTERS as readonly string[]).includes(termSemester)) {
+      return NextResponse.json({ error: `Invalid semester "${termSemester}". Allowed: ${SEMESTERS.join(', ')}.` }, { status: 400 });
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const syllabus = await tx.syllabus.create({
         data: {
           subjectId: subject.id,
-          classSectionId: classSection.id,
           instructorId: instructorIdInt,
           departmentId: subject.departmentId,
-          academicYear: classSection.academicYear,
-          semester: classSection.semester,
-          section: classSection.section,
+          academicYear: termAcademicYear,
+          semester: termSemester,
+          section: termSection,
           status: initialStatus,
           currentVersionNumber: 1,
           submittedAt: isDraft ? null : now,
         },
       });
-
-      // Assign the syllabus author as the section instructor if none is set yet
-      if (!classSection.instructorId) {
-        await tx.classSection.update({
-          where: { id: classSection.id },
-          data: { instructorId: instructorIdInt },
-        });
-      }
 
       const version = await tx.syllabusVersion.create({
         data: {

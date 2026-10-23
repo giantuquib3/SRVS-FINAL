@@ -1,0 +1,145 @@
+[
+  {
+    "id": 1,
+    "subjectId": 3,
+    "instructorId": 10002,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 2,
+    "subjectId": 1,
+    "instructorId": 10004,
+    "academicYear": "2026-2027",
+    "semester": "2nd Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 3,
+    "subjectId": 2,
+    "instructorId": 10001,
+    "academicYear": "2026-2027",
+    "semester": "2nd Semester",
+    "section": "B",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 5,
+    "subjectId": 3,
+    "instructorId": 10002,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "B",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 6,
+    "subjectId": 4,
+    "instructorId": 10004,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "B",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 7,
+    "subjectId": 5,
+    "instructorId": 10001,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 8,
+    "subjectId": 6,
+    "instructorId": 10002,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 9,
+    "subjectId": 7,
+    "instructorId": 10006,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 10,
+    "subjectId": 8,
+    "instructorId": 10003,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 11,
+    "subjectId": 10,
+    "instructorId": 10008,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 12,
+    "subjectId": 11,
+    "instructorId": 10005,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 13,
+    "subjectId": 12,
+    "instructorId": 10010,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  },
+  {
+    "id": 14,
+    "subjectId": 13,
+    "instructorId": 10007,
+    "academicYear": "2026-2027",
+    "semester": "1st Semester",
+    "section": "A",
+    "capacity": 40,
+    "createdAt": "2026-10-13T11:17:18.448Z",
+    "updatedAt": "2026-10-13T11:17:18.448Z"
+  }
+]

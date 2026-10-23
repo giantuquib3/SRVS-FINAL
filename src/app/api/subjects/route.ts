@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,13 +64,13 @@ export async function GET(req: NextRequest) {
     let enrolledCodes: string[] = [];
     if (user?.role === 'Student') {
       const studentIntId = parseInt(user.id, 10);
-      const enrollments = !isNaN(studentIntId)
-        ? await prisma.enrollment.findMany({
+      const studentSubjects = !isNaN(studentIntId)
+        ? await prisma.studentSubject.findMany({
             where: { studentId: studentIntId, status: 'ENROLLED' },
-            select: { classSection: { select: { subject: { select: { code: true } } } } },
+            select: { subject: { select: { code: true } } },
           })
         : [];
-      enrolledCodes = enrollments.map((e: any) => e.classSection?.subject?.code?.toUpperCase()).filter(Boolean);
+      enrolledCodes = studentSubjects.map((ss: any) => ss.subject?.code?.toUpperCase()).filter(Boolean);
     }
 
     const includeStudentsParam = searchParams.get('includeStudents');
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
       orderBy: { code: 'asc' },
       include: {
         syllabi: {
-          where: user?.role === 'Student' ? { status: { in: ['Approved', 'APPROVED', 'ACTIVE', 'Active'] } } : undefined,
+          where: user?.role === 'Student' ? { status: SYLLABUS_STATUS.APPROVED } : undefined,
           orderBy: { updatedAt: 'desc' },
           select: {
             id: true,
@@ -91,64 +92,55 @@ export async function GET(req: NextRequest) {
             instructor: { select: { id: true, fullName: true } },
           },
         },
-        classSections: {
-          orderBy: [{ academicYear: 'desc' }, { semester: 'desc' }, { section: 'asc' }],
-          include: {
-            instructor: { select: { id: true, fullName: true } },
-            _count: { select: { enrollments: { where: { status: 'ENROLLED' } } } },
-            ...(shouldIncludeStudents ? {
-              enrollments: {
-                where: { status: 'ENROLLED' },
+        ...(shouldIncludeStudents ? {
+          studentSubjects: {
+            where: { status: 'ENROLLED' },
+            orderBy: { studentId: 'asc' },
+            select: {
+              id: true,
+              studentId: true,
+              status: true,
+              academicYear: true,
+              semester: true,
+              createdAt: true,
+              student: {
                 select: {
                   id: true,
-                  studentId: true,
-                  status: true,
-                  student: {
-                    select: {
-                      id: true,
-                      fullName: true,
-                      email: true,
-                      departmentId: true,
-                      yearLevel: true,
-                    },
-                  },
+                  fullName: true,
+                  email: true,
+                  departmentId: true,
+                  yearLevel: true,
                 },
               },
-            } : {}),
+            },
           },
-        },
-        _count: { select: { syllabi: true } },
+        } : {}),
+        _count: { select: { syllabi: true, studentSubjects: { where: { status: 'ENROLLED' } } } },
       },
     });
 
     const formatted = subjects.map((s: any) => {
       const deptCode = String(s.departmentId || '');
       const isEnrolled = user?.role === 'Student' ? enrolledCodes.includes(s.code.toUpperCase()) : true;
-      const sections = s.classSections || [];
       const assignedProf =
-        sections.find((cs: any) => cs.instructor)?.instructor?.fullName ||
         s.professorName ||
         s.syllabi?.[0]?.instructor?.fullName ||
         null;
       const enrolledStudents = shouldIncludeStudents
-        ? sections.flatMap((cs: any) =>
-            (cs.enrollments || []).map((enr: any) => ({
-              enrollmentId: enr.id,
-              classSectionId: cs.id,
-              studentId: enr.studentId,
-              idNumber: enr.studentId,
-              fullName: enr.student?.fullName,
-              studentName: enr.student?.fullName,
-              email: enr.student?.email,
-              departmentId: enr.student?.departmentId,
-              yearLevel: enr.student?.yearLevel,
-              semester: cs.semester,
-              academicYear: cs.academicYear,
-              section: cs.section,
-              instructorName: cs.instructor?.fullName || null,
-              status: enr.status,
-            }))
-          )
+        ? (s.studentSubjects || []).map((ss: any) => ({
+            enrollmentId: ss.id,
+            studentId: ss.studentId,
+            idNumber: ss.studentId,
+            fullName: ss.student?.fullName,
+            studentName: ss.student?.fullName,
+            email: ss.student?.email,
+            departmentId: ss.student?.departmentId,
+            yearLevel: ss.student?.yearLevel,
+            status: ss.status,
+            academicYear: ss.academicYear,
+            semester: ss.semester,
+            enrolledAt: ss.createdAt,
+          }))
         : undefined;
       return {
         id: s.id,
@@ -165,17 +157,7 @@ export async function GET(req: NextRequest) {
         professorName: assignedProf,
         department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
         isEnrolled,
-        enrolledCount: sections.reduce((sum: number, cs: any) => sum + (cs._count?.enrollments ?? 0), 0),
-        classSections: sections.map((cs: any) => ({
-          id: cs.id,
-          academicYear: cs.academicYear,
-          semester: cs.semester,
-          section: cs.section,
-          capacity: cs.capacity,
-          instructorId: cs.instructorId,
-          instructor: cs.instructor,
-          enrolledCount: cs._count?.enrollments ?? 0,
-        })),
+        enrolledCount: s._count?.studentSubjects ?? 0,
         enrolledStudents,
         syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
         createdAt: s.createdAt,
@@ -438,6 +420,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({
         error: `Department Heads may only delete subjects within their assigned department (${user.departmentId.toUpperCase()}).`,
       }, { status: 403 });
+    }
+
+    // student_subjects references subjects with ON DELETE NO ACTION: never remove associations implicitly
+    const associatedStudents = await prisma.studentSubject.count({ where: { subjectId: subject.id } });
+    if (associatedStudents > 0) {
+      return NextResponse.json({
+        error: `Cannot delete [${subject.code}]: ${associatedStudents} enrollment record(s) still reference it (any status). Remove them first.`,
+      }, { status: 409 });
     }
 
     await prisma.subject.delete({ where: { id: subject.id } });

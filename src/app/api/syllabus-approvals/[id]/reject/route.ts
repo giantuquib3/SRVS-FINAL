@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { createNotification } from '@/lib/notifications';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,7 @@ export async function POST(
       }
     }
 
-    if (!['PENDING_APPROVAL', 'SUBMITTED', 'Submitted'].includes(version.approvalStatus)) {
+    if (version.approvalStatus !== SYLLABUS_STATUS.SUBMITTED && version.approvalStatus !== SYLLABUS_STATUS.UNDER_REVIEW) {
       return NextResponse.json({ error: `Cannot reject: Version is in '${version.approvalStatus}' status.` }, { status: 400 });
     }
 

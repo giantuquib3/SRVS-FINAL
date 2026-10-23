@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { getDepartmentName } from '@/lib/departments';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,7 @@ export async function GET(
     }
 
     const previousApprovedVersion = await prisma.syllabusVersion.findFirst({
-      where: { syllabusId: version.syllabusId, approvalStatus: { in: ['APPROVED', 'Approved'] }, versionNumber: { lt: version.versionNumber } },
+      where: { syllabusId: version.syllabusId, approvalStatus: SYLLABUS_STATUS.APPROVED, versionNumber: { lt: version.versionNumber } },
       orderBy: { versionNumber: 'desc' },
     });
 

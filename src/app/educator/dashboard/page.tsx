@@ -16,6 +16,7 @@ import {
   Sparkles,
   PlusCircle
 } from 'lucide-react';
+import { isPendingReview, syllabusStatusLabel } from '@/lib/status';
 
 export default function EducatorDashboard() {
   const [data, setData] = useState<any>(null);
@@ -66,6 +67,7 @@ export default function EducatorDashboard() {
 
   const filteredSyllabi = syllabi.filter((s) => {
     if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'SUBMITTED') return isPendingReview(s.status);
     return s.status === statusFilter;
   });
 
@@ -130,9 +132,9 @@ export default function EducatorDashboard() {
         </button>
 
         <button
-          onClick={() => setStatusFilter('Draft')}
+          onClick={() => setStatusFilter('DRAFT')}
           className={`p-4 rounded-2xl text-left transition-all cursor-pointer border shadow-sm ${
-            statusFilter === 'Draft'
+            statusFilter === 'DRAFT'
               ? 'border-amber-600 bg-amber-50/50 ring-2 ring-amber-600/30'
               : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
@@ -142,9 +144,9 @@ export default function EducatorDashboard() {
         </button>
 
         <button
-          onClick={() => setStatusFilter('Submitted')}
+          onClick={() => setStatusFilter('SUBMITTED')}
           className={`p-4 rounded-2xl text-left transition-all cursor-pointer border shadow-sm ${
-            statusFilter === 'Submitted'
+            statusFilter === 'SUBMITTED'
               ? 'border-sky-600 bg-sky-50/50 ring-2 ring-sky-600/30'
               : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
@@ -154,9 +156,9 @@ export default function EducatorDashboard() {
         </button>
 
         <button
-          onClick={() => setStatusFilter('Approved')}
+          onClick={() => setStatusFilter('APPROVED')}
           className={`p-4 rounded-2xl text-left transition-all cursor-pointer border shadow-sm ${
-            statusFilter === 'Approved'
+            statusFilter === 'APPROVED'
               ? 'border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-600/30'
               : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
@@ -166,9 +168,9 @@ export default function EducatorDashboard() {
         </button>
 
         <button
-          onClick={() => setStatusFilter('Rejected')}
+          onClick={() => setStatusFilter('REJECTED')}
           className={`p-4 rounded-2xl text-left transition-all cursor-pointer border shadow-sm ${
-            statusFilter === 'Rejected'
+            statusFilter === 'REJECTED'
               ? 'border-rose-600 bg-rose-50/50 ring-2 ring-rose-600/30'
               : 'bg-white border-slate-200 hover:border-slate-300'
           }`}
@@ -187,7 +189,7 @@ export default function EducatorDashboard() {
               <span>My Course Syllabi</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Showing {filteredSyllabi.length} syllabi {statusFilter !== 'ALL' && `filtered by: ${statusFilter}`}
+              Showing {filteredSyllabi.length} syllabi {statusFilter !== 'ALL' && `filtered by: ${syllabusStatusLabel(statusFilter)}`}
             </p>
           </div>
         </div>
@@ -235,16 +237,16 @@ export default function EducatorDashboard() {
                     <td className="py-3 px-3">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                          s.status === 'Approved'
+                          s.status === 'APPROVED'
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : s.status === 'Submitted'
+                            : isPendingReview(s.status)
                             ? 'bg-sky-50 text-sky-800 border-sky-200'
-                            : s.status === 'Rejected'
+                            : s.status === 'REJECTED'
                             ? 'bg-rose-50 text-rose-700 border-rose-200'
                             : 'bg-amber-50 text-amber-800 border-amber-200'
                         }`}
                       >
-                        {s.status}
+                        {syllabusStatusLabel(s.status)}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right space-x-1.5">
@@ -256,7 +258,7 @@ export default function EducatorDashboard() {
                         <span>View</span>
                       </Link>
 
-                      {s.status !== 'Submitted' && (
+                      {!isPendingReview(s.status) && (
                         <Link
                           href={`/syllabi/${s.id}/edit`}
                           className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] transition-colors"
@@ -274,7 +276,7 @@ export default function EducatorDashboard() {
                         <span>Versions</span>
                       </Link>
 
-                      {s.status === 'Draft' && (
+                      {s.status === 'DRAFT' && (
                         <button
                           onClick={() => handleSubmitSyllabus(s.id)}
                           disabled={submittingId === s.id}

@@ -1,6 +1,6 @@
 /**
  * SRVS Full Database Seed Script
- * Seeds: Departments, Admin, DepartmentHeads, Educators, Students, Courses, Enrollments, AuditLog
+ * Seeds: Departments, Admin, DepartmentHeads, Educators, Students, Subjects, Student Subjects, AuditLog
  * All users go into the unified `users` table with integer IDs.
  */
 
@@ -130,64 +130,30 @@ async function main() {
     console.log(`   ✓ Subject: [${s.code}] ${s.title} (ID: ${subject.id}, ${s.departmentId})`);
   }
 
-  // ─── 6. CLASS SECTIONS & ENROLLMENTS ──────────────────────────────────────────
-  console.log('\n6. Seeding Class Sections & Enrollments...');
-  const userList = await prisma.user.findMany({ select: { id: true, fullName: true } });
-  const userByName = Object.fromEntries(userList.map(u => [u.fullName.toLowerCase().trim(), u.id]));
-
+  // ─── 6. STUDENT ↔ SUBJECT ENROLLMENTS (student_subjects) ─────────────────────
+  console.log('\n6. Seeding Student Subjects...');
   const enrollmentDefs = [
-    { studentId: 2022012708, studentName: 'Gian Carlo Tuquib', subjectCode: 'CPE301', semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2022012708, studentName: 'Gian Carlo Tuquib', subjectCode: 'CPE401', semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2023010001, studentName: 'Jane Doe',          subjectCode: 'CPE101', semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2023010001, studentName: 'Jane Doe',          subjectCode: 'CPE102', semester: '2nd Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2023010002, studentName: 'John Smith',        subjectCode: 'CPE201', semester: '1st Semester', academicYear: '2026-2027', section: 'B' },
-    { studentId: 2023010002, studentName: 'John Smith',        subjectCode: 'CPE202', semester: '2nd Semester', academicYear: '2026-2027', section: 'B' },
-    { studentId: 2023020001, studentName: 'Maria Santos',      subjectCode: 'EE101',  semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2023030001, studentName: 'Carlos Reyes',      subjectCode: 'CE101',  semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
-    { studentId: 2023030001, studentName: 'Carlos Reyes',      subjectCode: 'CE201',  semester: '1st Semester', academicYear: '2026-2027', section: 'A' },
+    { studentId: 2022012708, studentName: 'Gian Carlo Tuquib', subjectCode: 'CPE301', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2022012708, studentName: 'Gian Carlo Tuquib', subjectCode: 'CPE401', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2023010001, studentName: 'Jane Doe',          subjectCode: 'CPE101', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2023010001, studentName: 'Jane Doe',          subjectCode: 'CPE102', semester: '2nd Semester', academicYear: '2026-2027' },
+    { studentId: 2023010002, studentName: 'John Smith',        subjectCode: 'CPE201', semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2023010002, studentName: 'John Smith',        subjectCode: 'CPE202', semester: '2nd Semester', academicYear: '2026-2027' },
+    { studentId: 2023020001, studentName: 'Maria Santos',      subjectCode: 'EE101',  semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2023030001, studentName: 'Carlos Reyes',      subjectCode: 'CE101',  semester: '1st Semester', academicYear: '2026-2027' },
+    { studentId: 2023030001, studentName: 'Carlos Reyes',      subjectCode: 'CE201',  semester: '1st Semester', academicYear: '2026-2027' },
   ];
 
   for (const e of enrollmentDefs) {
     const subjectId = subjectMap[e.subjectCode];
     if (!subjectId) continue;
-    const subj = subjectDefs.find(s => s.code === e.subjectCode);
-    const instructorId = subj?.professorName ? userByName[subj.professorName.toLowerCase().trim()] || null : null;
-
-    const classSection = await prisma.classSection.upsert({
-      where: {
-        subjectId_academicYear_semester_section: {
-          subjectId,
-          academicYear: e.academicYear,
-          semester: e.semester,
-          section: e.section,
-        },
-      },
-      update: { instructorId },
-      create: {
-        subjectId,
-        academicYear: e.academicYear,
-        semester: e.semester,
-        section: e.section,
-        capacity: 40,
-        instructorId,
-      },
+    const row = await prisma.studentSubject.upsert({
+      where: { studentId_subjectId: { studentId: e.studentId, subjectId } },
+      update: { semester: e.semester, academicYear: e.academicYear },
+      // Seeded by the System Administrator (users.id = 0)
+      create: { studentId: e.studentId, subjectId, semester: e.semester, academicYear: e.academicYear, status: 'ENROLLED', enrolledById: 0 },
     });
-
-    await prisma.enrollment.upsert({
-      where: {
-        studentId_classSectionId: {
-          studentId: e.studentId,
-          classSectionId: classSection.id,
-        },
-      },
-      update: { status: 'ENROLLED' },
-      create: {
-        studentId: e.studentId,
-        classSectionId: classSection.id,
-        status: 'ENROLLED',
-      },
-    });
-    console.log(`   ✓ Enrollment: Student ${e.studentId} (${e.studentName}) → ${e.subjectCode} Sec ${e.section} (Section ID: ${classSection.id})`);
+    console.log(`   ✓ Enrollment: Student ${e.studentId} (${e.studentName}) → ${e.subjectCode} (ID: ${row.id})`);
   }
 
   // ─── 7. AUDIT LOG ENTRY ──────────────────────────────────────────────────────
@@ -208,7 +174,7 @@ async function main() {
   console.log('\n\n========= SEED COMPLETE =========');
   const userCount      = await prisma.user.count();
   const subjectCount   = await prisma.subject.count();
-  const enrollCount    = await prisma.enrollment.count();
+  const enrollCount    = await prisma.studentSubject.count();
   const auditCount     = await prisma.auditLog.count();
 
   const byRole = await prisma.user.groupBy({ by: ['role'], _count: { _all: true } });

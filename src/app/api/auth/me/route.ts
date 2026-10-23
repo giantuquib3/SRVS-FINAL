@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getDepartmentName } from '@/lib/departments';
-import { enrollmentInclude, formatEnrollment } from '@/lib/enrollments';
+import { studentSubjectInclude, formatStudentSubject } from '@/lib/enrollments';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
 
   let userEnrollments: any[] = [];
   if (userRecord.role === 'Student') {
-    const rawEnrollments = await prisma.enrollment.findMany({
+    const rows = await prisma.studentSubject.findMany({
       where: { studentId: userRecord.id, status: 'ENROLLED' },
-      include: enrollmentInclude,
+      include: studentSubjectInclude,
     });
-    userEnrollments = rawEnrollments.map((e: any) => formatEnrollment(e));
+    userEnrollments = rows.map((r: any) => formatStudentSubject(r));
   }
 
   const enrolledCodes = userEnrollments

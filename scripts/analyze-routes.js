@@ -1,5 +1,4 @@
 const fs = require('fs');
-const path = require('path');
 
 function inspectFile(filePath) {
   const code = fs.readFileSync(filePath, 'utf8');

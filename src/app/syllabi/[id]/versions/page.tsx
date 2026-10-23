@@ -23,6 +23,7 @@ import {
   FileUp
 } from 'lucide-react';
 import * as Diff from 'diff';
+import { isPendingReview } from '@/lib/status';
 
 export default function VersionHistoryPage() {
   const params = useParams();
@@ -317,7 +318,7 @@ export default function VersionHistoryPage() {
             <tbody className="divide-y divide-slate-100">
               {versions.map((v: any) => {
                 const isCurrent = v.versionNumber === syllabus.currentVersionNumber;
-                const isPending = v.approvalStatus === 'PENDING_APPROVAL';
+                const isPending = isPendingReview(v.approvalStatus);
                 const isApproved = v.approvalStatus === 'APPROVED';
                 const isDraft = v.approvalStatus === 'DRAFT';
                 const isRejected = v.approvalStatus === 'REJECTED';

@@ -18,8 +18,7 @@ export async function GET(req?: NextRequest) {
       syllabiCount,
       versionsCount,
       auditLogsCount,
-      enrollmentsCount,
-      classSectionsCount,
+      studentSubjectsCount,
     ] = await Promise.all([
       prisma.department.count(),
       prisma.user.count(),
@@ -31,8 +30,7 @@ export async function GET(req?: NextRequest) {
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
       prisma.auditLog.count(),
-      prisma.enrollment.count(),
-      prisma.classSection.count(),
+      prisma.studentSubject.count(),
     ]);
 
     const adminUser = await prisma.user.findFirst({
@@ -59,8 +57,8 @@ export async function GET(req?: NextRequest) {
         courses: subjectsCount, // Backwards-compatible alias
         syllabi: syllabiCount,
         syllabus_versions: versionsCount,
-        enrollments: enrollmentsCount,
-        class_sections: classSectionsCount,
+        student_subjects: studentSubjectsCount,
+        enrollments: studentSubjectsCount, // Backwards-compatible alias
         audit_logs: auditLogsCount,
       },
       models: {
@@ -68,10 +66,9 @@ export async function GET(req?: NextRequest) {
         User: usersCount,
         Subject: subjectsCount,
         Course: subjectsCount, // Backwards-compatible alias
-        ClassSection: classSectionsCount,
         Syllabus: syllabiCount,
         SyllabusVersion: versionsCount,
-        Enrollment: enrollmentsCount,
+        StudentSubject: studentSubjectsCount,
         AuditLog: auditLogsCount,
       },
       adminUser,

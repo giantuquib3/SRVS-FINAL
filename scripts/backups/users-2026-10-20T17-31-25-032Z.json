@@ -1,0 +1,162 @@
+[
+  {
+    "id": 1000000001,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 11111,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012701,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012702,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012703,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012704,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 0,
+    "role": "Admin",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10001,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10003,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10005,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10007,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10002,
+    "role": "Educator",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10004,
+    "role": "Educator",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10006,
+    "role": "Educator",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10008,
+    "role": "Educator",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 10010,
+    "role": "Educator",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012708,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2023010001,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2023010002,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2023020001,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2023030001,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022010099,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 2022012705,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 99999,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012709,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 99003,
+    "role": "DepartmentHead",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 2022012700,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 2026999001,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 2026999002,
+    "role": "Student",
+    "accountStatus": "PendingApproval"
+  },
+  {
+    "id": 2026999003,
+    "role": "Student",
+    "accountStatus": "Active"
+  },
+  {
+    "id": 99002,
+    "role": "Admin",
+    "accountStatus": "Deactivated"
+  },
+  {
+    "id": 99001,
+    "role": "Educator",
+    "accountStatus": "Active"
+  }
+]

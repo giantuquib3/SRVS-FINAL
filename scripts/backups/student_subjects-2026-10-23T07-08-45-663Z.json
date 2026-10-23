@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "studentId": 1000000001,
+    "subjectId": 3,
+    "createdAt": "2026-10-12T18:29:05.255Z"
+  },
+  {
+    "id": 2,
+    "studentId": 2022012701,
+    "subjectId": 10,
+    "createdAt": "2026-09-18T05:28:32.487Z"
+  },
+  {
+    "id": 3,
+    "studentId": 2022012701,
+    "subjectId": 11,
+    "createdAt": "2026-09-18T05:28:32.633Z"
+  },
+  {
+    "id": 4,
+    "studentId": 2022012702,
+    "subjectId": 7,
+    "createdAt": "2026-09-18T05:28:32.773Z"
+  },
+  {
+    "id": 5,
+    "studentId": 2022012702,
+    "subjectId": 8,
+    "createdAt": "2026-09-18T05:28:32.912Z"
+  },
+  {
+    "id": 6,
+    "studentId": 2022012703,
+    "subjectId": 3,
+    "createdAt": "2026-09-18T05:28:33.062Z"
+  },
+  {
+    "id": 7,
+    "studentId": 2022012703,
+    "subjectId": 4,
+    "createdAt": "2026-09-18T05:28:33.371Z"
+  },
+  {
+    "id": 8,
+    "studentId": 2022012704,
+    "subjectId": 12,
+    "createdAt": "2026-09-18T05:28:33.538Z"
+  },
+  {
+    "id": 9,
+    "studentId": 2022012704,
+    "subjectId": 13,
+    "createdAt": "2026-09-18T05:28:33.635Z"
+  },
+  {
+    "id": 10,
+    "studentId": 2022012705,
+    "subjectId": 3,
+    "createdAt": "2026-09-18T05:28:33.832Z"
+  },
+  {
+    "id": 11,
+    "studentId": 2022012708,
+    "subjectId": 3,
+    "createdAt": "2026-10-13T11:34:53.601Z"
+  },
+  {
+    "id": 12,
+    "studentId": 2022012708,
+    "subjectId": 5,
+    "createdAt": "2026-09-30T17:10:59.575Z"
+  },
+  {
+    "id": 13,
+    "studentId": 2022012708,
+    "subjectId": 6,
+    "createdAt": "2026-09-30T17:11:00.721Z"
+  },
+  {
+    "id": 14,
+    "studentId": 2023010001,
+    "subjectId": 1,
+    "createdAt": "2026-09-30T17:11:03.046Z"
+  },
+  {
+    "id": 15,
+    "studentId": 2023010001,
+    "subjectId": 3,
+    "createdAt": "2026-09-30T17:11:01.857Z"
+  },
+  {
+    "id": 16,
+    "studentId": 2023010002,
+    "subjectId": 2,
+    "createdAt": "2026-09-30T17:11:05.329Z"
+  },
+  {
+    "id": 17,
+    "studentId": 2023010002,
+    "subjectId": 4,
+    "createdAt": "2026-09-30T17:11:04.173Z"
+  },
+  {
+    "id": 18,
+    "studentId": 2023020001,
+    "subjectId": 7,
+    "createdAt": "2026-09-30T17:11:06.470Z"
+  },
+  {
+    "id": 19,
+    "studentId": 2023030001,
+    "subjectId": 10,
+    "createdAt": "2026-09-30T17:11:07.611Z"
+  },
+  {
+    "id": 20,
+    "studentId": 2023030001,
+    "subjectId": 11,
+    "createdAt": "2026-09-30T17:11:08.760Z"
+  }
+]

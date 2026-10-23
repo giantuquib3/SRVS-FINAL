@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getDepartmentName } from '@/lib/departments';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export async function GET(
 
     // Student: must be approved, in own department, and enrolled in the subject
     if (user.role === 'Student') {
-      if (syllabus.status !== 'Approved' && syllabus.status !== 'ACTIVE') {
+      if (syllabus.status !== SYLLABUS_STATUS.APPROVED) {
         return NextResponse.json({ error: 'Students can only view active, approved syllabi.' }, { status: 403 });
       }
       if (!userDeptCode || syllabus.departmentId.toUpperCase() !== userDeptCode) {
@@ -44,11 +45,11 @@ export async function GET(
       }
       const studentIntId = parseInt(user.id, 10);
       const enrollment = !isNaN(studentIntId)
-        ? await prisma.enrollment.findFirst({
-            where: { studentId: studentIntId, status: 'ENROLLED', classSection: { subjectId: syllabus.subjectId } },
+        ? await prisma.studentSubject.findUnique({
+            where: { studentId_subjectId: { studentId: studentIntId, subjectId: syllabus.subjectId } },
           })
         : null;
-      if (!enrollment) {
+      if (!enrollment || enrollment.status !== 'ENROLLED') {
         return NextResponse.json({ error: 'Access restricted: You can only view syllabi for subjects you are actively enrolled in.' }, { status: 403 });
       }
     }
@@ -176,7 +177,7 @@ export async function PATCH(
     const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
 
     const isDraft = saveAsDraft === true && submitForApproval === false;
-    const versionStatus = isDraft ? 'Draft' : 'Submitted';
+    const versionStatus = isDraft ? SYLLABUS_STATUS.DRAFT : SYLLABUS_STATUS.SUBMITTED;
     const now = new Date();
 
     const contentSnapshot = {
@@ -189,7 +190,7 @@ export async function PATCH(
     };
 
     const priorApprovedVersion = await prisma.syllabusVersion.findFirst({
-      where: { syllabusId: syllabus.id, approvalStatus: { in: ['Approved', 'APPROVED'] } },
+      where: { syllabusId: syllabus.id, approvalStatus: SYLLABUS_STATUS.APPROVED },
     });
 
     const result = await prisma.$transaction(async (tx) => {
@@ -213,7 +214,7 @@ export async function PATCH(
       });
 
       // Keep active status if prior version was approved while new revision is pending review
-      const newSyllabusStatus = priorApprovedVersion ? 'ACTIVE' : (isDraft ? 'Draft' : 'Submitted');
+      const newSyllabusStatus = priorApprovedVersion ? SYLLABUS_STATUS.APPROVED : versionStatus;
 
       const updatedSyllabus = await tx.syllabus.update({
         where: { id: syllabus.id },

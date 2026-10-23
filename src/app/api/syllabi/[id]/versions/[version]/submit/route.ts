@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { createNotification } from '@/lib/notifications';
+import { SYLLABUS_STATUS } from '@/lib/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export async function POST(
     if (syllabusVersion.approvalStatus === 'APPROVED') {
       return NextResponse.json({ error: `Version ${versionNum} is already approved.` }, { status: 400 });
     }
-    if (syllabusVersion.approvalStatus === 'PENDING_APPROVAL' || syllabusVersion.approvalStatus === 'SUBMITTED') {
+    if (syllabusVersion.approvalStatus === SYLLABUS_STATUS.SUBMITTED || syllabusVersion.approvalStatus === SYLLABUS_STATUS.UNDER_REVIEW) {
       return NextResponse.json({ error: `Version ${versionNum} is already pending review.` }, { status: 400 });
     }
 

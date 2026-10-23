@@ -29,21 +29,21 @@ export default function EnrollmentsPage() {
   const [subjectId, setSubjectId] = useState('');
   const [semester, setSemester] = useState('1st Semester');
   const [academicYear, setAcademicYear] = useState('2026-2027');
-  const [section, setSection] = useState('A');
   const [status, setStatus] = useState('ENROLLED');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
 
   const handleUnenroll = async (en: any) => {
     const studentName = en.student?.fullName || en.studentName || en.studentId;
     const subjCode = en.subject?.code || en.course?.code;
-    const targetSubjId = en.subjectId || en.courseId;
-    if (!confirm(`Are you sure you want to unenroll ${studentName} from [${subjCode}] (${en.semester}, ${en.academicYear})?`)) {
+    if (!confirm(`Are you sure you want to unenroll ${studentName} from [${subjCode}]?`)) {
       return;
     }
     try {
       const res = await fetch(
-        `/api/enrollments?id=${en.id}&studentId=${en.studentId}&subjectId=${targetSubjId}`,
+        `/api/enrollments?id=${en.id}`,
         { method: 'DELETE' }
       );
       if (res.ok) {
@@ -61,7 +61,7 @@ export default function EnrollmentsPage() {
     setLoading(true);
     try {
       const [eRes, sRes, subjRes, meRes] = await Promise.all([
-        fetch('/api/enrollments').then((r) => r.json()),
+        fetch('/api/enrollments?status=ALL').then((r) => r.json()),
         fetch('/api/students').then((r) => r.json()),
         fetch('/api/subjects').then((r) => r.json()),
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
@@ -82,6 +82,28 @@ export default function EnrollmentsPage() {
     fetchEnrollments();
   }, []);
 
+  const handleStatusChange = async (en: any, newStatus: string) => {
+    if (newStatus === en.status) return;
+    setUpdatingId(en.id);
+    try {
+      const res = await fetch('/api/enrollments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: en.id, status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to update enrollment status.');
+      } else {
+        setEnrollments((prev) => prev.map((row) => (row.id === en.id ? data.enrollment : row)));
+      }
+    } catch (err) {
+      alert('Network error updating enrollment status.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const handleEnrollStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError('');
@@ -91,14 +113,7 @@ export default function EnrollmentsPage() {
       const res = await fetch('/api/enrollments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId,
-          subjectId,
-          semester,
-          academicYear,
-          section,
-          status,
-        }),
+        body: JSON.stringify({ studentId, subjectId, semester, academicYear, status }),
       });
 
       const data = await res.json();
@@ -120,6 +135,12 @@ export default function EnrollmentsPage() {
   };
 
   const canManage = currentUser?.role === 'Admin' || currentUser?.role === 'DepartmentHead';
+  const visibleEnrollments = statusFilter === 'ALL' ? enrollments : enrollments.filter((en) => en.status === statusFilter);
+  const statusBadge: Record<string, string> = {
+    ENROLLED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    COMPLETED: 'bg-sky-50 text-sky-800 border-sky-200',
+    DROPPED: 'bg-rose-50 text-rose-700 border-rose-200',
+  };
 
   return (
     <div className="space-y-8">
@@ -136,7 +157,7 @@ export default function EnrollmentsPage() {
             Subject Enrollment Registry
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Many-to-Many enrollment junction: Students enroll in academic subjects (Programming, Networking, Mathematics, etc.) with unique composite key enforcement.
+            Many-to-many student_subjects table: each student can take many subjects, each subject can have many students, and a student can be enrolled in a subject only once.
           </p>
         </div>
 
@@ -160,19 +181,32 @@ export default function EnrollmentsPage() {
               <span>Active Subject Enrollment Records</span>
             </h2>
             <p className="text-xs text-slate-500">
-              Enforces single enrollment per subject across terms &bull; Governs student approved-syllabus access
+              One record per student per subject &bull; Only ENROLLED students can view the subject's approved syllabus
             </p>
           </div>
-          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-            {enrollments.length} Total Records
-          </span>
+          <div className="flex items-center space-x-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filter by enrollment status"
+              className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-[#005A36]"
+            >
+              <option value="ALL">All statuses</option>
+              <option value="ENROLLED">Enrolled</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="DROPPED">Dropped</option>
+            </select>
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
+              {visibleEnrollments.length} of {enrollments.length} Records
+            </span>
+          </div>
         </div>
 
         {loading ? (
           <div className="text-center py-12 text-slate-500 text-xs">
             Loading enrollment records...
           </div>
-        ) : enrollments.length === 0 ? (
+        ) : visibleEnrollments.length === 0 ? (
           <div className="text-center py-12 text-slate-500 text-xs">
             No enrollment records currently in database.
           </div>
@@ -185,14 +219,14 @@ export default function EnrollmentsPage() {
                   <th className="py-2.5 px-3">Academic Subject</th>
                   <th className="py-2.5 px-3">Department</th>
                   <th className="py-2.5 px-3">Term & AY</th>
-                  <th className="py-2.5 px-3">Section</th>
-                  <th className="py-2.5 px-3">Enrollment Status</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Enrolled By / On</th>
                   <th className="py-2.5 px-3">Mapped Syllabus</th>
                   {canManage && <th className="py-2.5 px-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {enrollments.map((en) => {
+                {visibleEnrollments.map((en) => {
                   const currentSubj = en.subject || en.course;
                   const activeSyllabus = currentSubj?.activeSyllabus || currentSubj?.syllabi?.[0];
                   return (
@@ -230,13 +264,30 @@ export default function EnrollmentsPage() {
                       <td className="py-3 px-3 text-slate-600">
                         {en.semester}, {en.academicYear}
                       </td>
-                      <td className="py-3 px-3 font-bold text-slate-700">
-                        {en.section}
-                      </td>
                       <td className="py-3 px-3">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {en.status}
-                        </span>
+                        {canManage ? (
+                          <select
+                            value={en.status}
+                            disabled={updatingId === en.id}
+                            onChange={(e) => handleStatusChange(en, e.target.value)}
+                            aria-label={`Enrollment status for ${en.student?.fullName || en.studentName}`}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer focus:outline-none ${statusBadge[en.status] || ''}`}
+                          >
+                            <option value="ENROLLED">ENROLLED</option>
+                            <option value="COMPLETED">COMPLETED</option>
+                            <option value="DROPPED">DROPPED</option>
+                          </select>
+                        ) : (
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge[en.status] || ''}`}>
+                            {en.status}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-slate-600">
+                        <p className="font-medium text-slate-700">{en.enrolledBy?.fullName || '—'}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {en.createdAt ? new Date(en.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </p>
                       </td>
                       <td className="py-3 px-3">
                         {activeSyllabus ? (
@@ -327,9 +378,9 @@ export default function EnrollmentsPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Semester / Term</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Semester</label>
                   <select
                     value={semester}
                     onChange={(e) => setSemester(e.target.value)}
@@ -337,33 +388,21 @@ export default function EnrollmentsPage() {
                   >
                     <option value="1st Semester">1st Semester</option>
                     <option value="2nd Semester">2nd Semester</option>
-                    <option value="Summer Term">Summer Term</option>
+                    <option value="Summer">Summer</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Academic Year</label>
                   <input
                     type="text"
+                    required
+                    pattern="\d{4}-\d{4}"
+                    title="Format: YYYY-YYYY, e.g. 2026-2027"
                     value={academicYear}
                     onChange={(e) => setAcademicYear(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Section</label>
-                  <input
-                    type="text"
-                    value={section}
-                    onChange={(e) => setSection(e.target.value)}
-                    placeholder="Section code"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
-                  />
-                </div>
-
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
                   <select

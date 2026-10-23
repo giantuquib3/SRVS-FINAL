@@ -23,6 +23,7 @@ import {
   XCircle,
   ExternalLink
 } from 'lucide-react';
+import { isPendingReview, syllabusStatusLabel } from '@/lib/status';
 
 export default function SyllabusViewerPage() {
   const params = useParams();
@@ -102,8 +103,7 @@ export default function SyllabusViewerPage() {
     currentVersion?.approvalStatus === 'DRAFT' ||
     currentVersion?.approvalStatus === 'REJECTED' ||
     syllabus.status === 'DRAFT' ||
-    syllabus.status === 'Draft' ||
-    syllabus.status === 'Rejected';
+    syllabus.status === 'REJECTED';
 
   const handleSubmitForApproval = async () => {
     if (!currentVersion) return;
@@ -206,7 +206,7 @@ export default function SyllabusViewerPage() {
       )}
 
       {/* Reviewer Feedback Notice if Rejected */}
-      {(syllabus.status === 'Rejected' || currentVersion?.approvalStatus === 'REJECTED') && (currentVersion?.rejectionReason || syllabus.reviewerRemarks) && (
+      {(syllabus.status === 'REJECTED' || currentVersion?.approvalStatus === 'REJECTED') && (currentVersion?.rejectionReason || syllabus.reviewerRemarks) && (
         <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
           <div className="font-bold flex items-center justify-between text-rose-700">
             <div className="flex items-center space-x-1.5">
@@ -253,16 +253,16 @@ export default function SyllabusViewerPage() {
             </span>
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                (currentVersion?.approvalStatus === 'APPROVED' || syllabus.status === 'ACTIVE' || syllabus.status === 'Approved')
+                (currentVersion?.approvalStatus === 'APPROVED' || syllabus.status === 'APPROVED')
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : currentVersion?.approvalStatus === 'PENDING_APPROVAL'
+                  : isPendingReview(currentVersion?.approvalStatus)
                   ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : currentVersion?.approvalStatus === 'REJECTED' || syllabus.status === 'Rejected'
+                  : currentVersion?.approvalStatus === 'REJECTED' || syllabus.status === 'REJECTED'
                   ? 'bg-rose-50 text-rose-700 border-rose-200'
                   : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}
             >
-              Approval Status: {(currentVersion?.approvalStatus || syllabus.status).replace('_', ' ')}
+              Approval Status: {syllabusStatusLabel(currentVersion?.approvalStatus || syllabus.status)}
             </span>
           </div>
         </div>

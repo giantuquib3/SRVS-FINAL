@@ -19,6 +19,7 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
+import { isPendingReview } from '@/lib/status';
 
 export default function SyllabusApprovalsPage() {
   const [approvals, setApprovals] = useState<any[]>([]);
@@ -237,7 +238,7 @@ export default function SyllabusApprovalsPage() {
                       })
                     : '—';
 
-                  const isPending = item.approvalStatus === 'PENDING_APPROVAL';
+                  const isPending = isPendingReview(item.approvalStatus);
                   const isApproved = item.approvalStatus === 'APPROVED';
                   const isRejected = item.approvalStatus === 'REJECTED';
 

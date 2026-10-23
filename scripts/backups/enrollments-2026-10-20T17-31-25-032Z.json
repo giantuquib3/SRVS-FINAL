@@ -1,0 +1,162 @@
+[
+  {
+    "studentId": 2022012701,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.487Z",
+    "updatedAt": "2026-09-18T05:28:32.487Z",
+    "classSectionId": 11,
+    "id": 1
+  },
+  {
+    "studentId": 2022012701,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.633Z",
+    "updatedAt": "2026-09-18T05:28:32.633Z",
+    "classSectionId": 12,
+    "id": 2
+  },
+  {
+    "studentId": 2022012702,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.773Z",
+    "updatedAt": "2026-09-18T05:28:32.773Z",
+    "classSectionId": 9,
+    "id": 3
+  },
+  {
+    "studentId": 2022012702,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:32.912Z",
+    "updatedAt": "2026-09-18T05:28:32.912Z",
+    "classSectionId": 10,
+    "id": 4
+  },
+  {
+    "studentId": 2022012703,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.062Z",
+    "updatedAt": "2026-09-18T05:28:33.062Z",
+    "classSectionId": 1,
+    "id": 5
+  },
+  {
+    "studentId": 2022012703,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.371Z",
+    "updatedAt": "2026-09-18T05:28:33.371Z",
+    "classSectionId": 6,
+    "id": 6
+  },
+  {
+    "studentId": 2022012704,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.538Z",
+    "updatedAt": "2026-09-18T05:28:33.538Z",
+    "classSectionId": 13,
+    "id": 7
+  },
+  {
+    "studentId": 2022012704,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.635Z",
+    "updatedAt": "2026-09-18T05:28:33.635Z",
+    "classSectionId": 14,
+    "id": 8
+  },
+  {
+    "studentId": 2022012705,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-18T05:28:33.832Z",
+    "updatedAt": "2026-09-18T05:28:33.832Z",
+    "classSectionId": 1,
+    "id": 9
+  },
+  {
+    "studentId": 2023010001,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:03.046Z",
+    "updatedAt": "2026-10-12T18:21:46.743Z",
+    "classSectionId": 2,
+    "id": 10
+  },
+  {
+    "studentId": 2023010002,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:04.173Z",
+    "updatedAt": "2026-10-12T18:21:47.680Z",
+    "classSectionId": 6,
+    "id": 11
+  },
+  {
+    "studentId": 2022012708,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:10:59.575Z",
+    "updatedAt": "2026-10-12T18:21:43.902Z",
+    "classSectionId": 7,
+    "id": 12
+  },
+  {
+    "studentId": 2022012708,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:00.721Z",
+    "updatedAt": "2026-10-12T18:21:44.862Z",
+    "classSectionId": 8,
+    "id": 13
+  },
+  {
+    "studentId": 2023010001,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:01.857Z",
+    "updatedAt": "2026-10-12T18:21:45.818Z",
+    "classSectionId": 1,
+    "id": 14
+  },
+  {
+    "studentId": 2023010002,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:05.329Z",
+    "updatedAt": "2026-10-12T18:21:48.622Z",
+    "classSectionId": 3,
+    "id": 15
+  },
+  {
+    "studentId": 2023020001,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:06.470Z",
+    "updatedAt": "2026-10-12T18:21:49.673Z",
+    "classSectionId": 9,
+    "id": 16
+  },
+  {
+    "studentId": 2023030001,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:07.611Z",
+    "updatedAt": "2026-10-12T18:21:50.611Z",
+    "classSectionId": 11,
+    "id": 17
+  },
+  {
+    "studentId": 2023030001,
+    "status": "ENROLLED",
+    "createdAt": "2026-09-30T17:11:08.760Z",
+    "updatedAt": "2026-10-12T18:21:51.548Z",
+    "classSectionId": 12,
+    "id": 18
+  },
+  {
+    "studentId": 1000000001,
+    "status": "ENROLLED",
+    "createdAt": "2026-10-12T18:29:05.255Z",
+    "updatedAt": "2026-10-12T18:29:05.255Z",
+    "classSectionId": 5,
+    "id": 19
+  },
+  {
+    "studentId": 2022012708,
+    "status": "ENROLLED",
+    "createdAt": "2026-10-13T11:34:53.601Z",
+    "updatedAt": "2026-10-13T11:34:53.601Z",
+    "classSectionId": 1,
+    "id": 20
+  }
+]

@@ -24,6 +24,7 @@ import {
   X,
   ExternalLink
 } from 'lucide-react';
+import { isPendingReview } from '@/lib/status';
 
 export default function SyllabusReviewPage() {
   const params = useParams();
@@ -174,7 +175,7 @@ export default function SyllabusReviewPage() {
   const content = version.content || {};
   const prevContent = previousApprovedVersion?.content || {};
 
-  const isPending = version.approvalStatus === 'PENDING_APPROVAL';
+  const isPending = isPendingReview(version.approvalStatus);
   const isApproved = version.approvalStatus === 'APPROVED';
   const isRejected = version.approvalStatus === 'REJECTED';
 
