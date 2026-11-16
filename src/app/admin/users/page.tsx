@@ -371,11 +371,11 @@ export default function UsersManagementPage() {
                     <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
                       <span>{u.email}</span>
                     </div>
-                    {roleFilter !== 'Student' && u.role === 'Student' && u.enrolledSubjects && (
+                    {roleFilter !== 'Student' && u.role === 'Student' && (Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.length > 0 : Boolean(u.enrolledSubjects)) && (
                       <div className="mt-1 flex items-center space-x-1 text-[10px]">
                         <span className="text-slate-500 font-semibold">Enrolled:</span>
                         <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          {u.enrolledSubjects}
+                          {Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.join(', ') : u.enrolledSubjects}
                         </span>
                       </div>
                     )}
@@ -398,15 +398,15 @@ export default function UsersManagementPage() {
                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                         All Departments (Admin)
                       </span>
-                    ) : (u.departmentCode || u.department?.code) ? (
+                    ) : (u.departmentCode || u.departmentId || u.department?.code) ? (
                       <div className="space-y-0.5">
                         <div className="flex items-center space-x-1.5">
                           <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-2xs">
-                            [{u.departmentCode || u.department?.code}]
+                            [{u.departmentCode || u.departmentId || u.department?.code}]
                           </span>
                         </div>
                         <span className="text-slate-600 text-[11px] font-medium block">
-                          {u.departmentName || u.department?.name || `${u.departmentCode} Department`}
+                          {u.departmentName || u.department?.name || `${u.departmentCode || u.departmentId} Department`}
                         </span>
                       </div>
                     ) : (
@@ -415,14 +415,14 @@ export default function UsersManagementPage() {
                   </td>
                   {roleFilter === 'Student' && (
                     <td className="py-3 px-3">
-                      {u.enrolledSubjects ? (
+                      {(Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.length > 0 : Boolean(u.enrolledSubjects)) ? (
                         <div className="flex flex-wrap gap-1">
-                          {u.enrolledSubjects.split(',').map((code: string) => (
+                          {(Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects : String(u.enrolledSubjects).split(',')).map((code: string) => (
                             <span
-                              key={code.trim()}
+                              key={String(code).trim()}
                               className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs"
                             >
-                              {code.trim()}
+                              {String(code).trim()}
                             </span>
                           ))}
                         </div>
