@@ -22,7 +22,6 @@ import { DEPARTMENTS } from '@/lib/departments';
 export default function RegisterPage() {
   const router = useRouter();
   const [departments, setDepartments] = useState<any[]>(DEPARTMENTS);
-  const [accountType, setAccountType] = useState<'Student' | 'Faculty'>('Student');
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -58,16 +57,9 @@ export default function RegisterPage() {
     setError('');
 
     const cleanId = formData.idNumber.trim();
-    if (accountType === 'Student') {
-      if (!/^\d{10}$/.test(cleanId)) {
-        setError('Student ID number must be exactly 10 digits (e.g., 2022012708).');
-        return;
-      }
-    } else {
-      if (!/^\d{5}$/.test(cleanId)) {
-        setError('Faculty ID number must be exactly 5 digits (e.g., 12345).');
-        return;
-      }
+    if (!/^\d{5}$/.test(cleanId)) {
+      setError('Faculty ID number must be exactly 5 digits (e.g., 10018).');
+      return;
     }
 
     const cleanEmail = formData.email.trim().toLowerCase();
@@ -84,7 +76,6 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const endpoint = accountType === 'Student' ? '/api/auth/register/student' : '/api/auth/register/faculty';
       const fullName = `${formData.firstName.trim()} ${formData.lastName.trim()}`;
 
       const payload: any = {
@@ -95,14 +86,11 @@ export default function RegisterPage() {
         idNumber: cleanId,
         password: formData.password,
         departmentId: formData.departmentId,
-        role: accountType,
+        role: 'Faculty',
+        academicRank: 'Faculty',
       };
 
-      if (accountType === 'Faculty') {
-        payload.academicRank = 'Faculty';
-      }
-
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/auth/register/faculty', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -184,42 +172,9 @@ export default function RegisterPage() {
             )}
 
             <form onSubmit={handleSubmit} className="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              {/* Account Type Selector (Student vs Faculty) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">Select Account Type *</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccountType('Student');
-                      setFormData({ ...formData, idNumber: '' });
-                    }}
-                    className={`py-2.5 px-3 rounded-xl border flex items-center justify-center space-x-2 font-bold text-xs transition-all cursor-pointer ${
-                      accountType === 'Student'
-                        ? 'bg-[#005A36] border-[#005A36] text-white shadow-sm'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <GraduationCap className="w-4 h-4" />
-                    <span>Student</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccountType('Faculty');
-                      setFormData({ ...formData, idNumber: '' });
-                    }}
-                    className={`py-2.5 px-3 rounded-xl border flex items-center justify-center space-x-2 font-bold text-xs transition-all cursor-pointer ${
-                      accountType === 'Faculty'
-                        ? 'bg-[#005A36] border-[#005A36] text-white shadow-sm'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Briefcase className="w-4 h-4" />
-                    <span>Faculty / Educator</span>
-                  </button>
-                </div>
+              <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center space-x-2.5 text-xs text-[#005A36]">
+                <Briefcase className="w-4 h-4 shrink-0" />
+                <span className="font-bold">Faculty Account Self-Registration</span>
               </div>
 
               {/* Department Selection */}
@@ -240,46 +195,14 @@ export default function RegisterPage() {
                 </select>
               </div>
 
-              {/* Username (ID Number) */}
+              {/* Faculty ID Number */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center space-x-1.5">
-                    <label htmlFor="register-id-number" className="block text-xs font-bold text-slate-700">
-                      {accountType === 'Student' ? 'Student ID Number *' : 'Faculty ID Number *'}
-                    </label>
-
-                    {/* "i" tooltip: ID number format rules */}
-                    <span className="relative inline-flex group">
-                      <button
-                        type="button"
-                        id="register-id-info"
-                        aria-label="ID number format information"
-                        aria-describedby="register-id-tooltip"
-                        className="w-4 h-4 rounded-full bg-[#005A36] text-[#FEF08A] flex items-center justify-center hover:bg-[#004529] focus:outline-none focus:ring-2 focus:ring-[#C99700] focus:ring-offset-1 transition-colors cursor-help"
-                      >
-                        <Info className="w-3 h-3" />
-                      </button>
-                      <span
-                        id="register-id-tooltip"
-                        role="tooltip"
-                        className="pointer-events-none invisible opacity-0 translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:visible group-focus-within:opacity-100 group-focus-within:translate-y-0 transition-all duration-150 absolute left-1/2 -translate-x-1/2 top-6 z-20 w-56 rounded-xl bg-slate-900 text-white text-[11px] leading-relaxed p-2.5 shadow-xl text-center"
-                      >
-                        <span className="block font-bold text-[#FEF08A] mb-0.5">
-                          {accountType === 'Student' ? 'Student ID Format' : 'Faculty ID Format'}
-                        </span>
-                        <span className="text-slate-200">
-                          {accountType === 'Student' ? (
-                            <>Must be exactly <strong>10 digits</strong> (e.g., 2022012708).</>
-                          ) : (
-                            <>Must be exactly <strong>5 digits</strong> (e.g., 12345).</>
-                          )}
-                        </span>
-                        <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-slate-900" />
-                      </span>
-                    </span>
-                  </div>
+                  <label htmlFor="register-id-number" className="block text-xs font-bold text-slate-700">
+                    Faculty ID Number *
+                  </label>
                   <span className="text-[10px] text-slate-500 font-semibold font-mono">
-                    {accountType === 'Student' ? '10 digits' : '5 digits'}
+                    5 digits (e.g. 10018)
                   </span>
                 </div>
                 <div className="relative">
@@ -290,10 +213,10 @@ export default function RegisterPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     required
-                    maxLength={accountType === 'Student' ? 10 : 5}
+                    maxLength={5}
                     value={formData.idNumber}
                     onChange={(e) => setFormData({ ...formData, idNumber: e.target.value.replace(/\D/g, '') })}
-                    placeholder={accountType === 'Student' ? 'e.g. 2022012708' : 'e.g. 12345'}
+                    placeholder="e.g. 10018"
                     className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
                   />
                 </div>
@@ -324,32 +247,6 @@ export default function RegisterPage() {
                   />
                 </div>
               </div>
-
-              {/* Faculty Academic Rank (automatically labeled as Faculty, non-editable) */}
-              {accountType === 'Faculty' && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-slate-700">Academic Rank / Title</label>
-                    <span className="text-[10px] text-[#005A36] font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Standard
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <Briefcase className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="text"
-                      readOnly
-                      tabIndex={-1}
-                      value="Faculty"
-                      aria-label="Academic Rank / Title"
-                      className="w-full bg-slate-100 border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 font-semibold cursor-not-allowed select-none focus:outline-none"
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Newly registered educators are automatically designated with the initial rank of <strong>Faculty</strong>.
-                  </p>
-                </div>
-              )}
 
               {/* Institutional Email */}
               <div>
@@ -393,7 +290,7 @@ export default function RegisterPage() {
                   <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 ) : (
                   <>
-                    <span>Submit {accountType} Registration</span>
+                    <span>Submit Faculty Registration</span>
                     <ArrowRight className="w-4 h-4 text-[#FEF08A]" />
                   </>
                 )}

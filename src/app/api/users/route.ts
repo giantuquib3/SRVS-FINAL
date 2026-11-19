@@ -30,16 +30,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Department Isolation: Dept Heads can only see their own department's users (Requirement 21)
+    // Department Isolation: Dept Heads can only see their own department's Faculty
     if (user.role === 'DepartmentHead') {
       const deptCode = String(user.departmentId || '').toUpperCase();
       if (!deptCode) return NextResponse.json({ users: [], total: 0 });
       where.departmentId = deptCode;
-      // DeptHeads can only see Educators and Students, not Admins
-      where.role = { in: ['Educator', 'Student'] };
+      where.role = { in: ['Educator', 'Faculty'] };
     }
 
-    if (role) where.role = role;
+    if (role) {
+      where.role = role === 'Faculty' || role === 'Educator' ? { in: ['Educator', 'Faculty'] } : role;
+    }
     if (status) where.accountStatus = status;
     if (deptParam && user.role === 'Admin') where.departmentId = deptParam;
 
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
     const isDeptHead = user.role === 'DepartmentHead';
     const deptHeadDept = isDeptHead && user.departmentId ? String(user.departmentId).toUpperCase() : null;
 
-    const [users, allEnrollments, totalCount, deptHeadsCount, educatorsCount, studentsCount, adminsCount] = await Promise.all([
+    const [users, allSubjects, totalCount, deptHeadsCount, deansCount, registrarVpCount, educatorsCount, adminsCount, passwordResetCount] = await Promise.all([
       prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -67,57 +68,65 @@ export async function GET(req: NextRequest) {
           departmentId: true,
           accountStatus: true,
           academicRank: true,
-          yearLevel: true,
+          mustChangePassword: true,
           createdAt: true,
           updatedAt: true,
         },
       }),
-      prisma.studentSubject.findMany({
-        where: { status: 'ENROLLED' },
+      prisma.subject.findMany({
         select: {
-          studentId: true,
-          subject: { select: { code: true } },
+          code: true,
+          departmentId: true,
+          professorName: true,
         },
+        orderBy: { code: 'asc' },
       }),
       prisma.user.count({
-        where: isDeptHead ? { departmentId: deptHeadDept, role: { in: ['Educator', 'Student'] } } : undefined,
+        where: isDeptHead ? { departmentId: deptHeadDept, role: { in: ['Educator', 'Faculty'] } } : undefined,
       }),
       prisma.user.count({
         where: { role: 'DepartmentHead', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
       }),
       prisma.user.count({
-        where: { role: 'Educator', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
+        where: { role: 'Dean', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
       }),
       prisma.user.count({
-        where: { role: 'Student', ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
+        where: { role: { in: ['Registrar', 'VPAcademics'] } },
+      }),
+      prisma.user.count({
+        where: { role: { in: ['Educator', 'Faculty'] }, ...(isDeptHead ? { departmentId: deptHeadDept } : {}) },
       }),
       prisma.user.count({
         where: { role: 'Admin' },
       }),
+      prisma.user.count({
+        where: { mustChangePassword: true },
+      }),
     ]);
-
-    const enrollmentMap = new Map<number, string[]>();
-    for (const enr of allEnrollments) {
-      if (!enrollmentMap.has(enr.studentId)) {
-        enrollmentMap.set(enr.studentId, []);
-      }
-      const code = enr.subject?.code;
-      if (code && !enrollmentMap.get(enr.studentId)!.includes(code)) {
-        enrollmentMap.get(enr.studentId)!.push(code);
-      }
-    }
 
     const counts = {
       total: totalCount,
       deptHeads: deptHeadsCount,
+      deans: isDeptHead ? 0 : deansCount,
+      registrarVp: isDeptHead ? 0 : registrarVpCount,
       educators: educatorsCount,
-      students: studentsCount,
       admins: isDeptHead ? 0 : adminsCount,
+      passwordResets: isDeptHead ? 0 : passwordResetCount,
     };
 
     const formatted = users.map((u: any) => {
-      const studentIntId = typeof u.id === 'number' ? u.id : parseInt(String(u.id), 10);
-      const studentSubjects = !isNaN(studentIntId) ? enrollmentMap.get(studentIntId) || [] : [];
+      const assignedSubjects =
+        u.role === 'Educator' || u.role === 'Faculty'
+          ? allSubjects
+              .filter(
+                (s: any) =>
+                  s.professorName &&
+                  u.fullName &&
+                  s.professorName.trim().toLowerCase() === u.fullName.trim().toLowerCase() &&
+                  (!u.departmentId || s.departmentId === u.departmentId)
+              )
+              .map((s: any) => s.code)
+          : [];
 
       return {
         id: u.id,
@@ -129,9 +138,9 @@ export async function GET(req: NextRequest) {
         departmentName: getDepartmentName(u.departmentId),
         accountStatus: u.accountStatus,
         academicRank: u.academicRank,
-        yearLevel: u.yearLevel,
-        enrolledSubjects: studentSubjects,
-        enrolledCourses: studentSubjects, // Alias
+        mustChangePassword: !!u.mustChangePassword,
+        assignedSubjects,
+        assignedCourses: assignedSubjects,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       };
@@ -161,21 +170,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'idNumber, email, fullName, role, and password are required.' }, { status: 400 });
     }
 
+    const normalizedRole = role === 'Faculty' ? 'Educator' : role;
+    const allowedRoles = ['Admin', 'Registrar', 'VPAcademics', 'Dean', 'DepartmentHead', 'Educator'];
+    if (!allowedRoles.includes(normalizedRole)) {
+      return NextResponse.json(
+        { error: 'Invalid role. Allowed roles: Admin, Registrar, VPAcademics, Dean, DepartmentHead, Faculty/Educator.' },
+        { status: 400 }
+      );
+    }
+
     // Role restrictions for Administrator
     if (sessionUser.role === 'Admin') {
-      if (role !== 'Admin' && role !== 'DepartmentHead') {
-        return NextResponse.json(
-          {
-            error: 'Forbidden: Admins can only create Admin and Department Head accounts. Students and Faculty must self-register.',
-          },
-          { status: 403 }
-        );
-      }
-      if (role === 'DepartmentHead') {
+      if (normalizedRole === 'DepartmentHead' || normalizedRole === 'Educator') {
         const cleanDept = departmentId ? String(departmentId).trim().toUpperCase() : '';
         if (!cleanDept || !isValidDepartmentCode(cleanDept)) {
           return NextResponse.json(
-            { error: 'Department Head must be assigned to a valid engineering department (CPE, EE, CE, ECE, IE, ME).' },
+            { error: `${normalizedRole} must be assigned to a valid engineering department (CPE, EE, CE, ECE, IE, ME).` },
             { status: 400 }
           );
         }
@@ -184,11 +194,8 @@ export async function POST(req: NextRequest) {
 
     // Role restrictions for Department Head
     if (sessionUser.role === 'DepartmentHead') {
-      if (role === 'Admin' || role === 'DepartmentHead') {
-        return NextResponse.json({ error: 'Forbidden: Department Heads cannot create Admin or Department Head accounts.' }, { status: 403 });
-      }
-      if (role !== 'Educator' && role !== 'Student') {
-        return NextResponse.json({ error: 'Forbidden: Department Heads can only manage Faculty or Student accounts.' }, { status: 403 });
+      if (normalizedRole !== 'Educator') {
+        return NextResponse.json({ error: 'Forbidden: Department Heads can only create Faculty accounts in their department.' }, { status: 403 });
       }
 
       const userDept = sessionUser.departmentId ? String(sessionUser.departmentId).toUpperCase() : null;
@@ -208,15 +215,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'idNumber must be a valid integer.' }, { status: 400 });
     }
 
-    // ID format validation
-    if (role === 'Student') {
-      if (!/^\d{10}$/.test(cleanId)) {
-        return NextResponse.json({ error: 'Student ID number must be exactly 10 digits (e.g., 2022012708).' }, { status: 400 });
-      }
-    } else {
-      if (!/^\d{5}$/.test(cleanId)) {
-        return NextResponse.json({ error: `${role} ID number must be exactly 5 digits (e.g., 10001 or 00000).` }, { status: 400 });
-      }
+    // ID format validation (5 digits for all institutional staff, or 0 for Admin)
+    if (!/^\d{5}$/.test(cleanId) && !(normalizedRole === 'Admin' && cleanId === '0')) {
+      return NextResponse.json({ error: 'Institutional ID number must be 5 digits (e.g., 10001).' }, { status: 400 });
     }
 
     const deptCode = sessionUser.role === 'DepartmentHead'
@@ -238,7 +239,6 @@ export async function POST(req: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password);
-    const isDeptHead = sessionUser.role === 'DepartmentHead';
 
     const newUser = await prisma.user.create({
       data: {
@@ -246,23 +246,39 @@ export async function POST(req: NextRequest) {
         email: cleanEmail,
         fullName: fullName.trim(),
         passwordHash,
-        role,
-        departmentId: deptCode,
+        role: normalizedRole,
+        departmentId:
+          normalizedRole === 'Admin' ||
+          normalizedRole === 'Registrar' ||
+          normalizedRole === 'VPAcademics' ||
+          normalizedRole === 'Dean'
+            ? null
+            : deptCode,
         accountStatus: accountStatus || 'Active',
-        academicRank: academicRank || (role === 'DepartmentHead' ? 'Department Chairperson' : role === 'Educator' ? 'Faculty Member' : null),
-        yearLevel: yearLevel || (role === 'Student' ? '1st Year' : null),
-        program: program ? String(program).trim() : null,
-        mustChangePassword: isDeptHead ? true : false,
+        academicRank:
+          academicRank ||
+          (normalizedRole === 'DepartmentHead'
+            ? 'Department Chairperson'
+            : normalizedRole === 'Dean'
+            ? 'College Dean'
+            : normalizedRole === 'Registrar'
+            ? 'School Registrar'
+            : normalizedRole === 'VPAcademics'
+            ? 'VP for Academics'
+            : normalizedRole === 'Educator'
+            ? 'Faculty Member'
+            : null),
+        mustChangePassword: false,
       },
     });
 
-    const auditAction = role === 'Student' ? 'StudentCreated' : role === 'Educator' ? 'FacultyCreated' : 'CreateUser';
+    const auditAction = normalizedRole === 'Educator' ? 'FacultyCreated' : 'CreateUser';
     await logAuditEvent({
       userId: sessionUser.id,
       userDisplayName: sessionUser.fullName || sessionUser.id,
       actionType: auditAction,
       resultStatus: 'Success',
-      description: `Created [${role}] user ${fullName.trim()} (${numericId} - ${deptCode || 'System'})${isDeptHead ? ' with MustChangePassword set to true' : ''}`,
+      description: `Created [${normalizedRole}] user ${fullName.trim()} (${numericId} - ${deptCode || 'System'})`,
       entityType: 'User',
       entityId: String(numericId),
       ipAddress: req.ip || '127.0.0.1',
@@ -334,32 +350,70 @@ export async function PATCH(req: NextRequest) {
     if (action === 'Approve') {
       updateData.accountStatus = 'Active';
       updateData.rejectionReason = null;
-      actionType = targetUser.role === 'Student' ? 'StudentRegistrationApproved' : 'ApproveUser';
+      actionType = 'ApproveUser';
       description = `Approved registration for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'Reject') {
       updateData.accountStatus = 'Rejected';
       updateData.rejectionReason = (reason || rejectionReason || 'Registration rejected by administrator').trim();
-      actionType = targetUser.role === 'Student' ? 'StudentRegistrationRejected' : 'RejectUser';
+      actionType = 'RejectUser';
       description = `Rejected registration for [${targetUser.role}] ${targetUser.fullName} (${targetId}). Reason: ${updateData.rejectionReason}`;
     } else if (action === 'Deactivate') {
       updateData.accountStatus = 'Deactivated';
-      actionType = targetUser.role === 'Student' ? 'StudentDeactivated' : targetUser.role === 'Educator' ? 'FacultyDeactivated' : 'DeactivateUser';
+      actionType = targetUser.role === 'Educator' ? 'FacultyDeactivated' : 'DeactivateUser';
       description = `Deactivated account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
     } else if (action === 'Activate') {
       updateData.accountStatus = 'Active';
-      actionType = targetUser.role === 'Student' ? 'StudentActivated' : targetUser.role === 'Educator' ? 'FacultyActivated' : 'ActivateUser';
+      actionType = targetUser.role === 'Educator' ? 'FacultyActivated' : 'ActivateUser';
       description = `Reactivated account for [${targetUser.role}] ${targetUser.fullName} (${targetId})`;
+    } else if (action === 'ResetPassword') {
+      const resetPw = String(body.newPassword || 'USJR@Reset2026').trim();
+      if (resetPw.length < 6) {
+        return NextResponse.json({ error: 'New password must be at least 6 characters.' }, { status: 400 });
+      }
+      updateData.passwordHash = await hashPassword(resetPw);
+      updateData.mustChangePassword = false;
+      actionType = 'AdminPasswordReset';
+      description = `Administrator reset password for [${targetUser.role}] ${targetUser.fullName} (${targetUser.email})`;
     } else {
-      if (role || newRole) updateData.role = newRole || role;
-      if (departmentId) {
+      if (role || newRole) {
+        const nextRole = (newRole || role) === 'Faculty' ? 'Educator' : (newRole || role);
+        updateData.role = nextRole;
+        if (
+          nextRole === 'Admin' ||
+          nextRole === 'Registrar' ||
+          nextRole === 'VPAcademics' ||
+          nextRole === 'Dean'
+        ) {
+          updateData.departmentId = null;
+        }
+      }
+      if (
+        departmentId !== undefined &&
+        updateData.role !== 'Admin' &&
+        updateData.role !== 'Registrar' &&
+        updateData.role !== 'VPAcademics' &&
+        updateData.role !== 'Dean' &&
+        targetUser.role !== 'Admin' &&
+        targetUser.role !== 'Registrar' &&
+        targetUser.role !== 'VPAcademics' &&
+        targetUser.role !== 'Dean'
+      ) {
+        if (!departmentId) {
+          updateData.departmentId = null;
+        } else {
+          const dCode = String(departmentId).toUpperCase();
+          if (isValidDepartmentCode(dCode)) updateData.departmentId = dCode;
+        }
+      } else if (
+        departmentId !== undefined &&
+        (updateData.role === 'DepartmentHead' || updateData.role === 'Educator')
+      ) {
         const dCode = String(departmentId).toUpperCase();
         if (isValidDepartmentCode(dCode)) updateData.departmentId = dCode;
       }
       if (accountStatus) updateData.accountStatus = accountStatus;
       if (fullName) updateData.fullName = fullName.trim();
       if (academicRank !== undefined) updateData.academicRank = academicRank;
-      if (yearLevel !== undefined) updateData.yearLevel = yearLevel;
-      if (program !== undefined) updateData.program = program;
       description = `Updated profile for ${targetUser.fullName} (${targetId})`;
     }
 

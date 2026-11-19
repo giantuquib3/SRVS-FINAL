@@ -1,84 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { hashPassword } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { roleLabel } from '@/lib/status';
 
 export async function POST(req: NextRequest) {
   try {
-    const { idNumber, email, newPassword, confirmPassword } = await req.json();
+    const body = await req.json();
+    const cleanEmail = String(body.email || '').trim().toLowerCase();
 
-    const cleanIdStr = idNumber !== undefined && idNumber !== null ? String(idNumber).trim() : '';
-    const cleanEmail = String(email || '').trim().toLowerCase();
-
-    if (!cleanIdStr || !cleanEmail || !newPassword) {
+    if (!cleanEmail) {
       return NextResponse.json(
-        { error: 'ID number, institutional email, and new password are required.' },
+        { error: 'Please provide your registered institutional email address.' },
         { status: 400 }
       );
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json(
-        { error: 'New password must be at least 6 characters.' },
-        { status: 400 }
-      );
-    }
-
-    if (confirmPassword && newPassword !== confirmPassword) {
-      return NextResponse.json(
-        { error: 'Passwords do not match.' },
-        { status: 400 }
-      );
-    }
-
-    const parsedId = parseInt(cleanIdStr, 10);
-    if (isNaN(parsedId)) {
-      return NextResponse.json(
-        { error: 'Valid integer ID number is required.' },
-        { status: 400 }
-      );
-    }
-
-    // Locate the user matching both ID number and institutional email
-    const targetUser = await prisma.user.findFirst({
-      where: { id: parsedId, email: cleanEmail },
+    // Locate the user matching the registered email
+    const targetUser = await prisma.user.findUnique({
+      where: { email: cleanEmail },
     });
 
     if (!targetUser) {
       await logAuditEvent({
-        userDisplayName: cleanIdStr,
-        actionType: 'PasswordReset',
+        userDisplayName: cleanEmail,
+        actionType: 'PasswordResetRequest',
         resultStatus: 'Failed',
-        description: `Failed password reset request: No matching account found for ID ${cleanIdStr} and email ${cleanEmail}`,
+        description: `Failed password reset request: No registered account found for email ${cleanEmail}`,
         ipAddress: req.ip || '127.0.0.1',
       });
       return NextResponse.json(
-        { error: 'No account found matching this ID number and registered email.' },
+        { error: 'No account found matching this registered email address.' },
         { status: 404 }
       );
     }
 
     if (targetUser.accountStatus === 'Rejected' || targetUser.accountStatus === 'Deactivated') {
       return NextResponse.json(
-        { error: `This account is ${targetUser.accountStatus.toLowerCase()}. Please contact the administrator.` },
+        { error: `This account is ${targetUser.accountStatus.toLowerCase()}. Please contact the System Administrator.` },
         { status: 403 }
       );
     }
 
-    // Hash the new password using bcrypt
-    const passwordHash = await hashPassword(newPassword);
-
+    // Flag the user account as requesting an Admin password reset
     await prisma.user.update({
       where: { id: targetUser.id },
-      data: { passwordHash },
+      data: { mustChangePassword: true },
     });
 
     await logAuditEvent({
       userId: targetUser.id,
       userDisplayName: targetUser.fullName,
-      actionType: 'PasswordReset',
-      resultStatus: 'Success',
-      description: `Password was successfully reset for [${targetUser.role}] ${targetUser.fullName} (${targetUser.id})`,
+      actionType: 'PasswordResetRequest',
+      resultStatus: 'Warning',
+      description: `Password reset requested by [${roleLabel(targetUser.role)}] ${targetUser.fullName} (${targetUser.email}). System Administrator notified.`,
       entityType: 'User',
       entityId: String(targetUser.id),
       ipAddress: req.ip || '127.0.0.1',
@@ -86,10 +60,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Password reset successful! You can now sign in with your new password.',
+      message: 'Your password reset request has been sent! The System Administrator has been notified and will reset the password for your registered email.',
     });
   } catch (error: any) {
-    console.error('Password reset error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to reset password.' }, { status: 500 });
+    console.error('Password reset request error:', error);
+    return NextResponse.json({ error: error.message || 'Failed to submit password reset request.' }, { status: 500 });
   }
 }

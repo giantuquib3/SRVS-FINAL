@@ -25,34 +25,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please fill in all required fields including a valid University ID Number.' }, { status: 400 });
     }
 
-    // Role validation: Admins and Department Heads cannot self-register
-    if (role === 'Admin' || role === 'DepartmentHead') {
+    // Role validation: Only Faculty can self-register
+    if (role && role !== 'Educator' && role !== 'Faculty') {
       return NextResponse.json(
         {
-          error: 'Administrator and Department Head accounts cannot self-register. Only Student and Faculty accounts can self-register.',
+          error: 'Only Faculty accounts can self-register. Administrative roles are provisioned by the System Administrator.',
         },
         { status: 403 }
       );
     }
 
-    // Determine target role: Student or Educator (Faculty)
-    const normalizedRoleInput = (role || '').trim().toLowerCase();
-    const isFaculty = normalizedRoleInput === 'faculty' || normalizedRoleInput === 'educator' || cleanIdStr.length === 5;
-    const targetRole = isFaculty ? 'Educator' : 'Student';
+    const targetRole = 'Educator';
+    const isFaculty = true;
 
     // ID Format validation
-    if (targetRole === 'Student') {
-      if (!/^\d{10}$/.test(cleanIdStr)) {
-        return NextResponse.json({
-          error: 'Student ID number must be exactly 10 digits (e.g., 2022012708).',
-        }, { status: 400 });
-      }
-    } else {
-      if (!/^\d{5}$/.test(cleanIdStr)) {
-        return NextResponse.json({
-          error: 'Faculty ID number must be exactly 5 digits (e.g., 12345).',
-        }, { status: 400 });
-      }
+    if (!/^\d{5}$/.test(cleanIdStr)) {
+      return NextResponse.json({
+        error: 'Faculty ID number must be exactly 5 digits (e.g., 10001).',
+      }, { status: 400 });
     }
 
     if (String(password).length < 6) {
@@ -109,14 +99,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const auditAction = targetRole === 'Student' ? 'StudentRegistered' : 'FacultyRegistered';
+    const auditAction = 'FacultyRegistered';
 
     await logAuditEvent({
       userId: createdRecord.id,
       userDisplayName: cleanFullName,
       actionType: auditAction,
       resultStatus: 'Success',
-      description: `New [${targetRole === 'Educator' ? 'Faculty' : 'Student'}] self-registered with ID: ${cleanIdStr} in Department: ${deptCode} (Status: ${initialStatus})`,
+      description: `New [Faculty] self-registered with ID: ${cleanIdStr} in Department: ${deptCode} (Status: ${initialStatus})`,
       entityType: 'User',
       entityId: String(numericId),
       ipAddress: req.ip || '127.0.0.1',
@@ -130,7 +120,7 @@ export async function POST(req: NextRequest) {
           idNumber: createdRecord.id,
           email: createdRecord.email,
           fullName: createdRecord.fullName,
-          role: targetRole === 'Educator' ? 'Faculty' : 'Student',
+          role: 'Faculty',
           departmentId: deptCode,
           accountStatus: initialStatus,
         },

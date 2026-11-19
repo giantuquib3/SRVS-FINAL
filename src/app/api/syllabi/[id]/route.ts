@@ -30,28 +30,15 @@ export async function GET(
 
     const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
 
-    // Department Head: strictly scoped to own department
-    if (user.role === 'DepartmentHead' && userDeptCode && userDeptCode !== syllabus.departmentId.toUpperCase()) {
-      return NextResponse.json({ error: 'Access denied: Department Heads may only view syllabi within their assigned department.' }, { status: 403 });
-    }
-
-    // Student: must be approved, in own department, and enrolled in the subject
-    if (user.role === 'Student') {
-      if (syllabus.status !== SYLLABUS_STATUS.APPROVED) {
-        return NextResponse.json({ error: 'Students can only view active, approved syllabi.' }, { status: 403 });
-      }
-      if (!userDeptCode || syllabus.departmentId.toUpperCase() !== userDeptCode) {
-        return NextResponse.json({ error: 'Access denied: Students can only view syllabi in their assigned department.' }, { status: 403 });
-      }
-      const studentIntId = parseInt(user.id, 10);
-      const enrollment = !isNaN(studentIntId)
-        ? await prisma.studentSubject.findUnique({
-            where: { studentId_subjectId: { studentId: studentIntId, subjectId: syllabus.subjectId } },
-          })
-        : null;
-      if (!enrollment || enrollment.status !== 'ENROLLED') {
-        return NextResponse.json({ error: 'Access restricted: You can only view syllabi for subjects you are actively enrolled in.' }, { status: 403 });
-      }
+    // Dean, Department Head, and Faculty: strictly scoped to own designated department
+    if (
+      (user.role === 'Dean' || user.role === 'DepartmentHead' || user.role === 'Educator' || user.role === 'Faculty') &&
+      userDeptCode &&
+      userDeptCode !== syllabus.departmentId.toUpperCase()
+    ) {
+      return NextResponse.json({
+        error: `Access denied: You may only view syllabi within your designated department (${userDeptCode}).`,
+      }, { status: 403 });
     }
 
     const currentVersion =
@@ -62,7 +49,8 @@ export async function GET(
     const canEdit =
       user.role === 'Admin' ||
       (user.role === 'DepartmentHead' && userDeptCode === syllabus.departmentId.toUpperCase()) ||
-      (user.role === 'Educator' && currentUserIdInt === syllabus.instructorId);
+      ((user.role === 'Educator' || user.role === 'Faculty') &&
+        (currentUserIdInt === syllabus.instructorId || userDeptCode === syllabus.departmentId.toUpperCase()));
 
     const deptCode = syllabus.departmentId;
     const subjectData = {
@@ -139,12 +127,16 @@ export async function PATCH(
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
 
     const currentUserIdInt = parseInt(user.id, 10) || 0;
-    const isAuthor = syllabus.instructorId === currentUserIdInt;
     const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+    const isFacultyInDept =
+      (user.role === 'Educator' || user.role === 'Faculty') &&
+      (syllabus.instructorId === currentUserIdInt || userDeptCode === syllabus.departmentId.toUpperCase());
     const isDeptHead = user.role === 'DepartmentHead' && userDeptCode === syllabus.departmentId.toUpperCase();
 
-    if (!isAuthor && !isDeptHead && user.role !== 'Admin') {
-      return NextResponse.json({ error: 'Forbidden: Only the assigned Educator author and Department Head may revise this syllabus.' }, { status: 403 });
+    if (!isFacultyInDept && !isDeptHead && user.role !== 'Admin') {
+      return NextResponse.json({
+        error: 'Forbidden: Only Faculty and the Department Head of this department may edit or revise this syllabus.',
+      }, { status: 403 });
     }
 
     const body = await req.json();

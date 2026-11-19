@@ -21,6 +21,7 @@ import { isPendingReview, syllabusStatusLabel } from '@/lib/status';
 export default function EducatorDashboard() {
   const [data, setData] = useState<any>(null);
   const [syllabi, setSyllabi] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -28,16 +29,19 @@ export default function EducatorDashboard() {
   const fetchEducatorData = async () => {
     setLoading(true);
     try {
-      const [statsRes, syllabiRes] = await Promise.all([
+      const [statsRes, syllabiRes, coursesRes] = await Promise.all([
         fetch('/api/dashboard/stats'),
         fetch('/api/syllabi?mySyllabi=true'),
+        fetch('/api/subjects'),
       ]);
 
       const statsData = await statsRes.json();
       const syllabiData = await syllabiRes.json();
+      const coursesData = await coursesRes.json();
 
       setData(statsData);
       setSyllabi(syllabiData.syllabi || []);
+      setCourses(coursesData.subjects || coursesData.courses || []);
     } catch (err) {
       console.error('Error fetching educator data:', err);
     } finally {
@@ -178,6 +182,88 @@ export default function EducatorDashboard() {
           <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Rejected</span>
           <p className="text-2xl font-black text-rose-700 mt-1">{stats.rejectedCount ?? 0}</p>
         </button>
+      </div>
+
+      {/* Department Courses Under Faculty's Department */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
+              <BookOpen className="w-4 h-4 text-[#005A36]" />
+              <span>Courses Under My Department ({courses.length})</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              View courses under your department and create or edit their syllabi (requires Department Head approval)
+            </p>
+          </div>
+          <Link
+            href="/subjects"
+            className="text-xs font-bold text-[#005A36] hover:underline"
+          >
+            View Full Catalog →
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {courses.map((course) => {
+            const activeSyllabus = course.syllabi?.[0];
+            return (
+              <div
+                key={course.id}
+                className="p-4 rounded-xl bg-slate-50/70 border border-slate-200 flex flex-col justify-between space-y-3"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] font-mono font-extrabold text-xs">
+                      {course.code}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      {course.units ?? 3} Units
+                    </span>
+                  </div>
+                  <p className="font-bold text-sm text-slate-900 mt-1.5">{course.title}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Assigned: <strong className="text-slate-700">{course.professorName || 'Department Faculty'}</strong>
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                  {activeSyllabus ? (
+                    <>
+                      <span className="text-[11px] font-bold text-slate-600">
+                        v{activeSyllabus.currentVersionNumber} ({syllabusStatusLabel(activeSyllabus.status)})
+                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <Link
+                          href={`/syllabi/${activeSyllabus.id}`}
+                          className="px-2 py-1 rounded bg-white border border-slate-300 text-slate-700 font-semibold text-[11px]"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/syllabi/${activeSyllabus.id}/edit`}
+                          className="px-2 py-1 rounded bg-[#FEF9C3] text-[#854D0E] font-bold text-[11px]"
+                        >
+                          Edit Syllabus
+                        </Link>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[11px] text-slate-400 italic">No syllabus yet</span>
+                      <Link
+                        href="/syllabi/new"
+                        className="px-2.5 py-1 rounded-lg bg-[#005A36] text-white font-bold text-[11px]"
+                      >
+                        Create Syllabus
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Syllabi Table */}

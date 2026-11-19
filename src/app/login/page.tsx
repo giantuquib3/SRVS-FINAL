@@ -22,12 +22,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Forgot Password Modal State
+  // Forgot / Change Password Modal State (Email only -> notifies Admin)
   const [forgotOpen, setForgotOpen] = useState(false);
-  const [resetId, setResetId] = useState('');
   const [resetEmail, setResetEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
@@ -38,7 +35,7 @@ export default function LoginPage() {
 
     const cleanUsername = username.trim();
     if (!cleanUsername) {
-      setError('Please enter your Username, ID number, or Email.');
+      setError('Please enter your ID number or institutional email.');
       return;
     }
 
@@ -64,12 +61,16 @@ export default function LoginPage() {
         case 'Admin':
           router.push('/admin/dashboard');
           break;
+        case 'Dean':
         case 'DepartmentHead':
           router.push('/dept/dashboard');
           break;
         case 'Educator':
+        case 'Faculty':
           router.push('/educator/dashboard');
           break;
+        case 'Registrar':
+        case 'VPAcademics':
         default:
           router.push('/student/dashboard');
           break;
@@ -86,8 +87,9 @@ export default function LoginPage() {
     setResetError('');
     setResetSuccess('');
 
-    if (newPassword !== confirmPassword) {
-      setResetError('Passwords do not match.');
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setResetError('Please enter your registered institutional email address.');
       return;
     }
 
@@ -97,25 +99,22 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          idNumber: resetId,
-          email: resetEmail,
-          newPassword,
-          confirmPassword,
+          email: cleanEmail,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setResetError(data.error || 'Failed to reset password.');
+        setResetError(data.error || 'Failed to send password reset request.');
         setResetLoading(false);
         return;
       }
 
-      setResetSuccess(data.message || 'Password reset successfully! You may now sign in.');
-      setResetId('');
+      setResetSuccess(
+        data.message ||
+          'Password reset request sent! The System Administrator has been notified to reset your password.'
+      );
       setResetEmail('');
-      setNewPassword('');
-      setConfirmPassword('');
     } catch (err: any) {
       setResetError('Connection error. Please try again.');
     } finally {
@@ -180,11 +179,11 @@ export default function LoginPage() {
                   setForgotOpen(true);
                   setResetError('');
                   setResetSuccess('');
-                  if (username) setResetId(username);
+                  if (username.includes('@')) setResetEmail(username.trim());
                 }}
                 className="text-[11px] text-[#005A36] hover:text-[#004529] font-bold hover:underline cursor-pointer"
               >
-                Forgot Password?
+                Forgot / Change Password?
               </button>
             </div>
             <div className="relative">
@@ -216,34 +215,38 @@ export default function LoginPage() {
           </button>
 
           <div className="text-center text-xs text-slate-600 pt-2 border-t border-slate-100">
-            <span>New student or faculty? </span>
+            <span>New faculty member? </span>
             <Link href="/register" className="text-[#005A36] hover:text-[#004529] font-bold underline underline-offset-4">
-              Register here
+              Register Faculty Account
             </Link>
           </div>
         </form>
 
-        {/* Forgot Password Modal */}
+        {/* Forgot / Change Password Modal (Email Only -> Notifies Admin) */}
         {forgotOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2.5">
                   <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[#005A36]">
                     <KeyRound className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">Account Password Recovery</h3>
-                    <p className="text-xs text-slate-500">Reset your USJ-R SRVS account credentials</p>
+                    <h3 className="text-base font-bold text-slate-900">Forgot / Change Password</h3>
+                    <p className="text-xs text-slate-500">Notify the System Administrator to reset your password</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setForgotOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed">
+                Enter your <strong>registered institutional email address</strong> below. This will send a notification to the <strong>System Administrator</strong> to reset your account password.
               </div>
 
               {resetError && (
@@ -260,28 +263,10 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <form onSubmit={handleResetPassword} className="space-y-3.5">
+              <form onSubmit={handleResetPassword} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    University ID Number
-                  </label>
-                  <div className="relative">
-                    <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={resetId}
-                      onChange={(e) => setResetId(e.target.value.replace(/\D/g, ''))}
-                      placeholder="e.g. 2022012708 or 00000"
-                      required
-                      className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Institutional Email Address
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Registered Institutional Email *
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -289,49 +274,20 @@ export default function LoginPage() {
                       type="email"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="e.g. juan.delacruz@usjr.edu.ph"
+                      placeholder="e.g. yourname@usjr.edu.ph"
                       required
-                      className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
+                      className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      New Password
-                    </label>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Min. 6 chars"
-                      required
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Confirm Password
-                    </label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat password"
-                      required
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36]"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end space-x-2">
+                <div className="pt-2 flex justify-end space-x-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setForgotOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                   >
-                    Cancel
+                    Close
                   </button>
                   <button
                     type="submit"
@@ -341,7 +297,7 @@ export default function LoginPage() {
                     {resetLoading ? (
                       <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     ) : (
-                      <span>Reset Password</span>
+                      <span>Notify Admin for Password Reset</span>
                     )}
                   </button>
                 </div>

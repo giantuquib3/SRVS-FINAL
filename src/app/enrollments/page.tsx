@@ -137,9 +137,11 @@ export default function EnrollmentsPage() {
   const canManage = currentUser?.role === 'Admin' || currentUser?.role === 'DepartmentHead';
   const visibleEnrollments = statusFilter === 'ALL' ? enrollments : enrollments.filter((en) => en.status === statusFilter);
   const statusBadge: Record<string, string> = {
+    PENDING: 'bg-amber-50 text-amber-800 border-amber-300',
     ENROLLED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    REJECTED: 'bg-rose-50 text-rose-700 border-rose-200',
     COMPLETED: 'bg-sky-50 text-sky-800 border-sky-200',
-    DROPPED: 'bg-rose-50 text-rose-700 border-rose-200',
+    DROPPED: 'bg-slate-100 text-slate-600 border-slate-300',
   };
 
   return (
@@ -192,7 +194,9 @@ export default function EnrollmentsPage() {
               className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-[#005A36]"
             >
               <option value="ALL">All statuses</option>
-              <option value="ENROLLED">Enrolled</option>
+              <option value="PENDING">Pending Approval</option>
+              <option value="ENROLLED">Enrolled (Approved)</option>
+              <option value="REJECTED">Rejected</option>
               <option value="COMPLETED">Completed</option>
               <option value="DROPPED">Dropped</option>
             </select>
@@ -273,7 +277,9 @@ export default function EnrollmentsPage() {
                             aria-label={`Enrollment status for ${en.student?.fullName || en.studentName}`}
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer focus:outline-none ${statusBadge[en.status] || ''}`}
                           >
+                            <option value="PENDING">PENDING</option>
                             <option value="ENROLLED">ENROLLED</option>
+                            <option value="REJECTED">REJECTED</option>
                             <option value="COMPLETED">COMPLETED</option>
                             <option value="DROPPED">DROPPED</option>
                           </select>
@@ -302,7 +308,25 @@ export default function EnrollmentsPage() {
                         )}
                       </td>
                       {canManage && (
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 px-3 text-right space-x-1.5">
+                          {en.status === 'PENDING' && (
+                            <>
+                              <button
+                                onClick={() => handleStatusChange(en, 'ENROLLED')}
+                                disabled={updatingId === en.id}
+                                className="inline-flex items-center px-2.5 py-1 rounded-lg bg-[#005A36] hover:bg-[#004529] text-white text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleStatusChange(en, 'REJECTED')}
+                                disabled={updatingId === en.id}
+                                className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => handleUnenroll(en)}
                             title="Unenroll student from this subject"

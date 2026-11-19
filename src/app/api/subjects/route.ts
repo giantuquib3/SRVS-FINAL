@@ -21,15 +21,18 @@ export async function GET(req: NextRequest) {
     const where: any = {};
 
     // Department Isolation
-    if (user?.role === 'Student') {
-      const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (!studentDept) return NextResponse.json({ subjects: [], courses: [] });
-      where.departmentId = studentDept;
-    } else if (user?.role === 'DepartmentHead') {
+    if (user?.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode) return NextResponse.json({ subjects: [], courses: [] });
       where.departmentId = deptCode;
-    } else if (user?.role === 'Educator') {
+    } else if (user?.role === 'Dean') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (deptCode) {
+        where.departmentId = deptCode;
+      } else if (departmentId) {
+        where.departmentId = String(departmentId).trim().toUpperCase();
+      }
+    } else if (user?.role === 'Educator' || user?.role === 'Faculty') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (deptCode) where.departmentId = deptCode;
     } else if (departmentId) {
@@ -60,17 +63,33 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // Enrolled subjects for student check
-    let enrolledCodes: string[] = [];
+    // Enrolled / requested subjects for student check
+    const studentEnrollmentMap = new Map<string, { id: number; status: string; academicYear: string; semester: string }>();
     if (user?.role === 'Student') {
       const studentIntId = parseInt(user.id, 10);
       const studentSubjects = !isNaN(studentIntId)
         ? await prisma.studentSubject.findMany({
-            where: { studentId: studentIntId, status: 'ENROLLED' },
-            select: { subject: { select: { code: true } } },
+            where: { studentId: studentIntId },
+            select: {
+              id: true,
+              status: true,
+              academicYear: true,
+              semester: true,
+              subject: { select: { code: true } },
+            },
           })
         : [];
-      enrolledCodes = studentSubjects.map((ss: any) => ss.subject?.code?.toUpperCase()).filter(Boolean);
+      for (const ss of studentSubjects) {
+        const code = ss.subject?.code?.toUpperCase();
+        if (code) {
+          studentEnrollmentMap.set(code, {
+            id: ss.id,
+            status: ss.status,
+            academicYear: ss.academicYear,
+            semester: ss.semester,
+          });
+        }
+      }
     }
 
     const includeStudentsParam = searchParams.get('includeStudents');
@@ -121,7 +140,9 @@ export async function GET(req: NextRequest) {
 
     const formatted = subjects.map((s: any) => {
       const deptCode = String(s.departmentId || '');
-      const isEnrolled = user?.role === 'Student' ? enrolledCodes.includes(s.code.toUpperCase()) : true;
+      const studentEnrollment = user?.role === 'Student' ? studentEnrollmentMap.get(s.code.toUpperCase()) || null : null;
+      const enrollmentStatus = studentEnrollment?.status || null;
+      const isEnrolled = user?.role === 'Student' ? enrollmentStatus === 'ENROLLED' : true;
       const assignedProf =
         s.professorName ||
         s.syllabi?.[0]?.instructor?.fullName ||
@@ -157,6 +178,10 @@ export async function GET(req: NextRequest) {
         professorName: assignedProf,
         department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
         isEnrolled,
+        enrollmentStatus,
+        enrollmentId: studentEnrollment?.id ?? null,
+        enrollmentAcademicYear: studentEnrollment?.academicYear ?? null,
+        enrollmentSemester: studentEnrollment?.semester ?? null,
         enrolledCount: s._count?.studentSubjects ?? 0,
         enrolledStudents,
         syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,

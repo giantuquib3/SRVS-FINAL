@@ -50,7 +50,7 @@ ALTER TABLE "syllabus_versions" ADD CONSTRAINT "syllabus_versions_status_at_save
 
 ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_role_check";
 ALTER TABLE "users" ADD CONSTRAINT "users_role_check"
-  CHECK ("role" IN ('Admin', 'DepartmentHead', 'Educator', 'Student'));
+  CHECK ("role" IN ('Admin', 'Registrar', 'VPAcademics', 'Dean', 'DepartmentHead', 'Educator', 'Faculty'));
 
 ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_account_status_check";
 ALTER TABLE "users" ADD CONSTRAINT "users_account_status_check"

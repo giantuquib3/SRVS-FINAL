@@ -12,8 +12,8 @@ export async function GET(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may review syllabi.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Dean' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads, Deans, and Administrators may review syllabi.' }, { status: 403 });
     }
 
     const versionOrSyllabusId = parseInt(params.id, 10);
@@ -53,7 +53,11 @@ export async function GET(
     // Department Isolation
     if (user.role === 'DepartmentHead') {
       if (!user.departmentId || String(user.departmentId).toUpperCase() !== version.syllabus.departmentId.toUpperCase()) {
-        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals outside your assigned department.' }, { status: 403 });
+        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals outside your designated department.' }, { status: 403 });
+      }
+    } else if (user.role === 'Dean' && user.departmentId) {
+      if (String(user.departmentId).toUpperCase() !== version.syllabus.departmentId.toUpperCase()) {
+        return NextResponse.json({ error: 'Forbidden: You do not have permission to view approvals outside your designated department.' }, { status: 403 });
       }
     }
 

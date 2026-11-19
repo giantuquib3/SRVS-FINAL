@@ -28,7 +28,7 @@ ALTER TABLE public.student_subjects
 
 ALTER TABLE public.student_subjects DROP CONSTRAINT IF EXISTS "student_subjects_status_check";
 ALTER TABLE public.student_subjects ADD CONSTRAINT "student_subjects_status_check"
-  CHECK ("status" IN ('ENROLLED', 'COMPLETED', 'DROPPED'));
+  CHECK ("status" IN ('PENDING', 'ENROLLED', 'REJECTED', 'COMPLETED', 'DROPPED'));
 
 ALTER TABLE public.student_subjects DROP CONSTRAINT IF EXISTS "student_subjects_semester_check";
 ALTER TABLE public.student_subjects ADD CONSTRAINT "student_subjects_semester_check"

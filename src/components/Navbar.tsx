@@ -115,16 +115,49 @@ export default function Navbar() {
 
   const isAuthPage = pathname === '/login' || pathname === '/register';
 
+  const getInitials = (name?: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'U';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getRoleText = (role: string) => {
+    switch (role) {
+      case 'Admin':
+        return 'System Admin';
+      case 'Registrar':
+        return 'School Registrar';
+      case 'VPAcademics':
+        return 'VP-Academics';
+      case 'Dean':
+        return 'Dean';
+      case 'DepartmentHead':
+        return 'Department Head';
+      case 'Educator':
+      case 'Faculty':
+      default:
+        return 'Faculty';
+    }
+  };
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'Admin':
-        return <span className="bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Admin</span>;
+        return <span className="bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">System Admin</span>;
+      case 'Registrar':
+        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">School Registrar</span>;
+      case 'VPAcademics':
+        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">VP-Academics</span>;
+      case 'Dean':
+        return <span className="bg-[#F3E8FF] text-[#6B21A8] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Dean</span>;
       case 'DepartmentHead':
-        return <span className="bg-[#FEF9C3] text-[#A16207] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Dept Head</span>;
+        return <span className="bg-[#FEF9C3] text-[#A16207] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Department Head</span>;
       case 'Educator':
-        return <span className="bg-[#DCFCE7] text-[#166534] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Faculty</span>;
+      case 'Faculty':
       default:
-        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Student</span>;
+        return <span className="bg-[#DCFCE7] text-[#166534] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Faculty</span>;
     }
   };
 
@@ -132,8 +165,7 @@ export default function Navbar() {
     if (!user) {
       return [
         { label: 'Sign In', href: '/login', icon: LogIn },
-        { label: 'Register Account', href: '/register', icon: UserPlus },
-        { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
+        { label: 'Register Faculty', href: '/register', icon: UserPlus },
       ];
     }
 
@@ -142,33 +174,37 @@ export default function Navbar() {
         return [
           { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
           { label: 'Syllabus Approvals', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Subjects Management', href: '/subjects', icon: BookOpen },
-          { label: 'Student Enrollments', href: '/enrollments', icon: GraduationCap },
+          { label: 'Courses Directory', href: '/subjects', icon: BookOpen },
           { label: 'User Management', href: '/admin/users', icon: Users },
           { label: 'System Audit Logs', href: '/admin/audit-logs', icon: History },
         ];
+      case 'Registrar':
+      case 'VPAcademics':
+        return [
+          { label: 'All Institutional Syllabi', href: '/student/dashboard', icon: FileText },
+          { label: 'Courses Directory', href: '/subjects', icon: BookOpen },
+        ];
+      case 'Dean':
+        return [
+          { label: 'Dean Department Portal', href: '/dept/dashboard', icon: LayoutDashboard },
+          { label: 'Syllabus Approvals (from Dept. Head)', href: '/department/syllabus-approvals', icon: CheckCircle },
+          { label: 'Department Courses', href: '/subjects', icon: BookOpen },
+        ];
       case 'DepartmentHead':
         return [
-          { label: 'Dept Dashboard', href: '/dept/dashboard', icon: LayoutDashboard },
-          { label: 'Syllabus Approvals', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Subjects Catalog', href: '/subjects', icon: BookOpen },
+          { label: 'Dept. Head Dashboard', href: '/dept/dashboard', icon: LayoutDashboard },
+          { label: 'Syllabus Approvals (from Faculty)', href: '/department/syllabus-approvals', icon: CheckCircle },
+          { label: 'Manage Dept. Courses', href: '/subjects', icon: BookOpen },
+          { label: 'Faculty Management', href: '/dept/users', icon: Users },
           { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
-          { label: 'Enrollments Tracking', href: '/enrollments', icon: GraduationCap },
         ];
       case 'Educator':
-        return [
-          { label: 'Faculty Dashboard', href: '/educator/dashboard', icon: LayoutDashboard },
-          { label: 'Subjects & Catalog', href: '/subjects', icon: BookOpen },
-          { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
-        ];
-      case 'Student':
-        return [
-          { label: 'My Enrolled Syllabi', href: '/student/dashboard', icon: GraduationCap },
-          { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
-        ];
+      case 'Faculty':
       default:
         return [
-          { label: 'Browse Subjects', href: '/subjects', icon: BookOpen },
+          { label: 'Faculty Dashboard', href: '/educator/dashboard', icon: LayoutDashboard },
+          { label: 'Department Courses', href: '/subjects', icon: BookOpen },
+          { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
         ];
     }
   };
@@ -276,33 +312,43 @@ export default function Navbar() {
                   )}
                 </div>
 
-                {/* User Profile Pill */}
-                <div className="flex items-center space-x-3 pl-3 border-l border-white/20">
-                  <div className="text-right hidden sm:block">
-                    <div className="flex items-center justify-end space-x-1.5">
-                      <p className="text-xs font-bold text-white leading-tight">{user.fullName}</p>
-                      {user.departmentCode && (
-                        <span className="px-1.5 py-0.2 rounded bg-[#FEF08A] text-[#005A36] text-[10px] font-extrabold tracking-wide font-mono shadow-xs">
-                          {user.departmentCode}
-                        </span>
-                      )}
+                {/* User Profile & Sign Out */}
+                <div className="flex items-center gap-3 pl-3.5 sm:pl-4 border-l border-white/15">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-xs font-bold text-[#FEF08A] shrink-0 shadow-xs">
+                      {getInitials(user.fullName)}
                     </div>
-                    <div className="mt-0.5 flex items-center justify-end space-x-1.5">
-                      {getRoleBadge(user.role)}
-                      {user.departmentName && (
-                        <span
-                          className="text-[10px] text-emerald-100/90 font-medium truncate max-w-[140px]"
-                          title={user.departmentName}
-                        >
-                          • {user.departmentName}
+                    <div className="hidden sm:flex flex-col justify-center text-left min-w-0">
+                      <p className="text-sm font-semibold text-white capitalize leading-tight tracking-tight truncate max-w-[180px]">
+                        {user.fullName}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] leading-tight">
+                        <span className="font-semibold text-[#FEF08A] whitespace-nowrap">
+                          {getRoleText(user.role)}
                         </span>
-                      )}
+                        {(user.departmentName || user.departmentCode) &&
+                          user.role !== 'Admin' &&
+                          user.role !== 'Registrar' &&
+                          user.role !== 'VPAcademics' &&
+                          user.role !== 'Dean' && (
+                            <>
+                              <span className="text-white/40 select-none">•</span>
+                              <span
+                                className="text-emerald-100/90 font-medium truncate max-w-[160px]"
+                                title={user.departmentName || user.departmentCode}
+                              >
+                                {user.departmentName || user.departmentCode}
+                              </span>
+                            </>
+                          )}
+                      </div>
                     </div>
                   </div>
                   <button
                     onClick={handleLogout}
                     title="Sign Out"
-                    className="p-2 rounded-lg text-white/90 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+                    aria-label="Sign Out"
+                    className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white/90 hover:text-white transition-all cursor-pointer shrink-0"
                   >
                     <LogOut className="w-4 h-4" />
                   </button>
@@ -375,31 +421,31 @@ export default function Navbar() {
               {/* User Profile Card (if logged in) */}
               {user ? (
                 <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 shadow-xs">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#005A36] text-[#FEF08A] font-extrabold flex items-center justify-center text-sm shadow-sm">
-                      {user.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#005A36] text-[#FEF08A] font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
+                      {getInitials(user.fullName)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-1.5">
-                        <p className="text-sm font-bold text-slate-900 truncate">{user.fullName}</p>
-                        {user.departmentCode && (
-                          <span className="px-1.5 py-0.2 rounded bg-[#005A36] text-[#FEF08A] text-[9px] font-extrabold font-mono shrink-0">
-                            {user.departmentCode}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                      <p className="text-sm font-bold text-slate-900 capitalize truncate leading-tight">
+                        {user.fullName}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
                     </div>
                   </div>
-                  <div className="mt-3 pt-2.5 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-1.5">
+                  <div className="mt-3 pt-2.5 border-t border-emerald-200/70 flex items-center justify-between gap-2">
                     <div>{getRoleBadge(user.role)}</div>
-                    {(user.departmentCode || user.departmentName) && (
-                      <span className="text-[11px] font-semibold text-emerald-900 bg-white/90 border border-emerald-300/70 px-2 py-0.5 rounded-lg shadow-2xs flex items-center gap-1 max-w-[170px]">
-                        <span className="truncate" title={user.departmentName || user.departmentCode}>
+                    {(user.departmentName || user.departmentCode) &&
+                      user.role !== 'Admin' &&
+                      user.role !== 'Registrar' &&
+                      user.role !== 'VPAcademics' &&
+                      user.role !== 'Dean' && (
+                        <span
+                          className="text-[11px] font-semibold text-emerald-900 truncate max-w-[170px]"
+                          title={user.departmentName || user.departmentCode}
+                        >
                           {user.departmentName || `${user.departmentCode} Department`}
                         </span>
-                      </span>
-                    )}
+                      )}
                   </div>
                 </div>
               ) : (

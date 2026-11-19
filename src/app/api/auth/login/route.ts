@@ -20,8 +20,9 @@ export async function POST(req: NextRequest) {
     const cleanInput = idInput.trim();
     const cleanLower = cleanInput.toLowerCase();
 
-    // Search unified User table
-    const parsedId = !isNaN(parseInt(cleanInput, 10)) ? parseInt(cleanInput, 10) : null;
+    // Search unified User table (guard against 32-bit INT4 overflow > 2,147,483,647)
+    const rawNum = /^\d+$/.test(cleanInput) ? Number(cleanInput) : NaN;
+    const parsedId = Number.isInteger(rawNum) && rawNum >= 0 && rawNum <= 2147483647 ? rawNum : null;
     const isSpecialAdmin = cleanLower === 'admin' || cleanLower === 'administrator' || cleanInput === '00000';
 
     const orConditions: any[] = [

@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const sessionUser = await getSessionFromRequest(req);
-    if (!sessionUser || (sessionUser.role !== 'DepartmentHead' && sessionUser.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Department Head or Admin access required.' }, { status: 403 });
+    if (!sessionUser || (sessionUser.role !== 'DepartmentHead' && sessionUser.role !== 'Dean' && sessionUser.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Department Head, Dean, or Admin access required.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -19,10 +19,10 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
 
     let deptCode: string | null = null;
-    if (sessionUser.role === 'DepartmentHead') {
+    if (sessionUser.role === 'DepartmentHead' || sessionUser.role === 'Dean') {
       deptCode = sessionUser.departmentId ? String(sessionUser.departmentId).toUpperCase() : null;
       if (!deptCode) {
-        return NextResponse.json({ error: 'Forbidden: Department Head is not assigned to a department.' }, { status: 403 });
+        return NextResponse.json({ error: 'Forbidden: Account is not assigned to a department.' }, { status: 403 });
       }
     } else {
       // Admin can view all or filter by department
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     }
 
     const where: any = {
-      role: 'Educator',
+      role: { in: ['Educator', 'Faculty'] },
     };
 
     if (deptCode) {
@@ -53,37 +53,58 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const faculty = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        departmentId: true,
-        academicRank: true,
-        accountStatus: true,
-        mustChangePassword: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const [faculty, deptSubjects] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          departmentId: true,
+          academicRank: true,
+          accountStatus: true,
+          mustChangePassword: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.subject.findMany({
+        where: deptCode ? { departmentId: deptCode } : undefined,
+        select: { code: true, title: true, departmentId: true, professorName: true },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
 
-    const formatted = faculty.map((f: any) => ({
-      id: f.id,
-      idNumber: f.id,
-      email: f.email,
-      fullName: f.fullName,
-      role: f.role,
-      departmentId: f.departmentId,
-      departmentName: getDepartmentName(f.departmentId),
-      academicRank: f.academicRank || 'Faculty Member',
-      accountStatus: f.accountStatus,
-      mustChangePassword: !!f.mustChangePassword,
-      createdAt: f.createdAt,
-      updatedAt: f.updatedAt,
-    }));
+    const formatted = faculty.map((f: any) => {
+      const assigned = deptSubjects
+        .filter(
+          (s: any) =>
+            s.professorName &&
+            f.fullName &&
+            s.professorName.trim().toLowerCase() === f.fullName.trim().toLowerCase() &&
+            (!f.departmentId || s.departmentId === f.departmentId)
+        )
+        .map((s: any) => s.code);
+
+      return {
+        id: f.id,
+        idNumber: f.id,
+        email: f.email,
+        fullName: f.fullName,
+        role: f.role,
+        departmentId: f.departmentId,
+        departmentName: getDepartmentName(f.departmentId),
+        academicRank: f.academicRank || 'Faculty Member',
+        accountStatus: f.accountStatus,
+        mustChangePassword: !!f.mustChangePassword,
+        assignedSubjects: assigned,
+        assignedCourses: assigned,
+        createdAt: f.createdAt,
+        updatedAt: f.updatedAt,
+      };
+    });
 
     return NextResponse.json({ faculty: formatted, total: formatted.length, departmentId: deptCode });
   } catch (error: any) {

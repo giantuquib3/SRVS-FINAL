@@ -33,12 +33,16 @@ export default function HomePage() {
             case 'Admin':
               router.push('/admin/dashboard');
               break;
+            case 'Dean':
             case 'DepartmentHead':
               router.push('/dept/dashboard');
               break;
             case 'Educator':
+            case 'Faculty':
               router.push('/educator/dashboard');
               break;
+            case 'Registrar':
+            case 'VPAcademics':
             default:
               router.push('/student/dashboard');
               break;
@@ -135,9 +139,9 @@ export default function HomePage() {
           <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700">
             <GraduationCap className="w-6 h-6" />
           </div>
-          <h3 className="font-bold text-lg text-slate-900">Josenian Students</h3>
+          <h3 className="font-bold text-lg text-slate-900">Dean, Registrar & VP-Academics</h3>
           <p className="text-slate-600 text-sm leading-relaxed">
-            Direct syllabus access: Officially enrolled subjects automatically mapped to approved syllabus documents.
+            Final departmental approval by the Dean after Department Head endorsement, and institution-wide syllabus visibility for the School Registrar and VP-Academics.
           </p>
         </div>
       </section>

@@ -34,40 +34,33 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    // Department-Level Data Isolation
-    if (user?.role === 'Student') {
-      where.status = SYLLABUS_STATUS.APPROVED;
-      const studentDept = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (!studentDept) return NextResponse.json({ syllabi: [] });
-      where.departmentId = studentDept;
+    // Role & Department-Level Data Isolation
+    if (user?.role === 'Registrar' || user?.role === 'VPAcademics' || user?.role === 'Admin') {
+      // School Registrar, VP-Academics, and Admin can view all syllabi across all departments
+      applyStatusFilter(where, status);
+      if (departmentId) where.departmentId = String(departmentId).trim().toUpperCase();
 
-      // Show only syllabi for subjects the student is enrolled in
-      const studentIntId = parseInt(user.id, 10);
-      const studentSubjects = !isNaN(studentIntId)
-        ? await prisma.studentSubject.findMany({
-            where: { studentId: studentIntId, status: 'ENROLLED' },
-            select: { subjectId: true },
-          })
-        : [];
-      const enrolledSubjectIds = studentSubjects.map((ss: any) => ss.subjectId);
-      if (enrolledSubjectIds.length === 0) return NextResponse.json({ syllabi: [] });
-      where.subjectId = { in: enrolledSubjectIds };
+    } else if (user?.role === 'Dean') {
+      const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      if (deptCode) {
+        where.departmentId = deptCode;
+      } else if (departmentId) {
+        where.departmentId = String(departmentId).trim().toUpperCase();
+      }
+      applyStatusFilter(where, status);
 
     } else if (user?.role === 'DepartmentHead') {
+      // Department Head can only view their designated department
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode) return NextResponse.json({ syllabi: [] });
       where.departmentId = deptCode;
       applyStatusFilter(where, status);
 
-    } else if (user?.role === 'Educator') {
+    } else if (user?.role === 'Educator' || user?.role === 'Faculty') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (deptCode) where.departmentId = deptCode;
       applyStatusFilter(where, status);
       if (mySyllabi) where.instructorId = parseInt(user.id, 10) || 0;
-
-    } else if (user?.role === 'Admin') {
-      applyStatusFilter(where, status);
-      if (departmentId) where.departmentId = String(departmentId).trim().toUpperCase();
 
     } else {
       where.status = SYLLABUS_STATUS.APPROVED;
@@ -203,9 +196,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
+    if (!user || (user.role !== 'Educator' && user.role !== 'Faculty' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
       return NextResponse.json({
-        error: 'Unauthorized: Only Department Heads and Educators can create or upload syllabi.',
+        error: 'Unauthorized: Only Faculty and Department Heads can create or upload syllabi.',
       }, { status: 403 });
     }
 

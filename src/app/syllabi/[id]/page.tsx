@@ -96,14 +96,28 @@ export default function SyllabusViewerPage() {
   const isOwner = currentUser?.id === syllabus.instructorId;
   const isAdmin = currentUser?.role === 'Admin';
   const isDeptHead = currentUser?.role === 'DepartmentHead';
+  const isReadOnlyViewer = currentUser?.role === 'Registrar' || currentUser?.role === 'VPAcademics';
   const canEdit = isOwner || (isDeptHead && syllabus.departmentId === currentUser?.departmentId);
-  const canViewHistory = currentUser && currentUser.role !== 'Student';
+  const canViewHistory = currentUser && !isReadOnlyViewer;
 
   const isDraftOrRejected =
     currentVersion?.approvalStatus === 'DRAFT' ||
     currentVersion?.approvalStatus === 'REJECTED' ||
     syllabus.status === 'DRAFT' ||
     syllabus.status === 'REJECTED';
+
+  const handleDownloadDocument = () => {
+    if (currentVersion?.fileUrl) {
+      const link = document.createElement('a');
+      link.href = currentVersion.fileUrl;
+      link.download = currentVersion.fileName || `${syllabus.course.code}_Syllabus.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+    window.print();
+  };
 
   const handleSubmitForApproval = async () => {
     if (!currentVersion) return;
@@ -159,6 +173,16 @@ export default function SyllabusViewerPage() {
             <span>Print / PDF</span>
           </button>
 
+          {isReadOnlyViewer && (
+            <button
+              onClick={handleDownloadDocument}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-[#FEF08A]" />
+              <span>Download File</span>
+            </button>
+          )}
+
           {canViewHistory && (
             <Link
               href={`/syllabi/${syllabus.id}/versions`}
@@ -206,7 +230,7 @@ export default function SyllabusViewerPage() {
       )}
 
       {/* Reviewer Feedback Notice if Rejected */}
-      {(syllabus.status === 'REJECTED' || currentVersion?.approvalStatus === 'REJECTED') && (currentVersion?.rejectionReason || syllabus.reviewerRemarks) && (
+      {!isReadOnlyViewer && (syllabus.status === 'REJECTED' || currentVersion?.approvalStatus === 'REJECTED') && (currentVersion?.rejectionReason || syllabus.reviewerRemarks) && (
         <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
           <div className="font-bold flex items-center justify-between text-rose-700">
             <div className="flex items-center space-x-1.5">
@@ -251,19 +275,21 @@ export default function SyllabusViewerPage() {
               <History className="w-3.5 h-3.5 text-[#CA8A04]" />
               <span>Snapshot: Version {currentVersion?.versionNumber || syllabus.currentVersionNumber}</span>
             </span>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                (currentVersion?.approvalStatus === 'APPROVED' || syllabus.status === 'APPROVED')
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : isPendingReview(currentVersion?.approvalStatus)
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : currentVersion?.approvalStatus === 'REJECTED' || syllabus.status === 'REJECTED'
-                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}
-            >
-              Approval Status: {syllabusStatusLabel(currentVersion?.approvalStatus || syllabus.status)}
-            </span>
+            {!isReadOnlyViewer && (
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                  (currentVersion?.approvalStatus === 'APPROVED' || syllabus.status === 'APPROVED')
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : isPendingReview(currentVersion?.approvalStatus)
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : currentVersion?.approvalStatus === 'REJECTED' || syllabus.status === 'REJECTED'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                Approval Status: {syllabusStatusLabel(currentVersion?.approvalStatus || syllabus.status)}
+              </span>
+            )}
           </div>
         </div>
 

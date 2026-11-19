@@ -71,10 +71,10 @@ export async function GET(req: NextRequest) {
     const where: any = {};
     const subjectWhere: any = {};
 
-    // Status filter: ENROLLED by default, 'ALL' for every status
+    // Status filter: ENROLLED by default for Admin/DeptHead unless specified; all statuses for Student by default
     if (statusParam && statusParam.trim().toUpperCase() !== 'ALL') {
       where.status = statusParam.trim().toUpperCase();
-    } else if (!statusParam) {
+    } else if (!statusParam && user.role !== 'Student') {
       where.status = ENROLLMENT_STATUS.ENROLLED;
     }
     if (semesterParam) where.semester = semesterParam.trim();
@@ -140,9 +140,9 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
     const body = await req.json();
-    let { studentId, idNumber, subjectId, courseId, subjectCode, courseCode } = body;
+    let { studentId, idNumber, subjectId, courseId, subjectCode, courseCode, subjectIds, subjectCodes } = body;
 
-    // Student self-enrollment or Admin/DeptHead enrollment
+    // Student self-enrollment request or Admin/DeptHead enrollment
     if (user.role === 'Student') {
       studentId = user.id;
     } else if (user.role !== 'Admin' && user.role !== 'DepartmentHead') {
@@ -157,10 +157,13 @@ export async function POST(req: NextRequest) {
     // Enrollment details (term + status); defaults apply when omitted
     const fields = parseEnrollmentFields(body);
     if (fields.error) return NextResponse.json({ error: fields.error }, { status: 400 });
-    // Students may only create ENROLLED records for themselves
-    if (user.role === 'Student' && fields.data.status && fields.data.status !== ENROLLMENT_STATUS.ENROLLED) {
-      return NextResponse.json({ error: 'Students can only create enrollments with status ENROLLED.' }, { status: 403 });
-    }
+
+    // When a Student submits enrollment requests from the Academic Subjects Directory,
+    // their request enters PENDING status for Department Head review & confirmation.
+    const targetStatus =
+      user.role === 'Student'
+        ? ENROLLMENT_STATUS.PENDING
+        : fields.data.status || ENROLLMENT_STATUS.ENROLLED;
 
     // 1. Student must exist and have role 'Student'
     const studentUser = await prisma.user.findUnique({ where: { id: numericStudentId } });
@@ -175,76 +178,166 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 2. Subject must exist (by id or code)
-    let subject: any = null;
-    const targetSubjId = subjectId ?? courseId;
-    const targetSubjCode = subjectCode || courseCode;
-    if (targetSubjId !== undefined && targetSubjId !== null && !isNaN(parseInt(String(targetSubjId), 10))) {
-      subject = await prisma.subject.findUnique({ where: { id: parseInt(String(targetSubjId), 10) } });
-    } else if (targetSubjCode) {
-      subject = await prisma.subject.findUnique({ where: { code: String(targetSubjCode).trim().toUpperCase() } });
+    // 2. Resolve target subject(s) — supports single or multiple (batch) subject selection
+    const idList: number[] = Array.isArray(subjectIds)
+      ? subjectIds.map((v: any) => parseInt(String(v), 10)).filter((n: number) => !isNaN(n))
+      : [];
+    const codeList: string[] = Array.isArray(subjectCodes)
+      ? subjectCodes.map((v: any) => String(v || '').trim().toUpperCase()).filter(Boolean)
+      : [];
+
+    const singleSubjId = subjectId ?? courseId;
+    const singleSubjCode = subjectCode || courseCode;
+    if (idList.length === 0 && codeList.length === 0) {
+      if (singleSubjId !== undefined && singleSubjId !== null && !isNaN(parseInt(String(singleSubjId), 10))) {
+        idList.push(parseInt(String(singleSubjId), 10));
+      } else if (singleSubjCode) {
+        codeList.push(String(singleSubjCode).trim().toUpperCase());
+      }
     }
-    if (!subject) {
+
+    if (idList.length === 0 && codeList.length === 0) {
+      return NextResponse.json({ error: 'Please select at least one subject to enroll in.' }, { status: 400 });
+    }
+
+    const subjects = await prisma.subject.findMany({
+      where: {
+        OR: [
+          ...(idList.length > 0 ? [{ id: { in: idList } }] : []),
+          ...(codeList.length > 0 ? [{ code: { in: codeList } }] : []),
+        ],
+      },
+      orderBy: { code: 'asc' },
+    });
+
+    if (subjects.length === 0) {
       return NextResponse.json({ error: 'Subject not found. Please provide a valid subjectId or subjectCode.' }, { status: 404 });
     }
 
-    // 3. Department isolation
-    const subjectDept = String(subject.departmentId).toUpperCase();
-    if (user.role === 'DepartmentHead') {
-      const deptCode = deptOf(user);
-      if (!deptCode || subjectDept !== deptCode) {
-        return NextResponse.json({
-          error: `Department Heads may only enroll students in subjects within their assigned department (${deptCode}).`,
-        }, { status: 403 });
-      }
-      if (studentUser.departmentId && studentUser.departmentId.toUpperCase() !== deptCode) {
-        return NextResponse.json({
-          error: `Department Heads may only enroll students belonging to their department (${deptCode}). Student belongs to ${studentUser.departmentId.toUpperCase()}.`,
-        }, { status: 403 });
-      }
-    } else if (user.role === 'Student') {
-      const deptCode = deptOf(user);
-      if (deptCode && subjectDept !== deptCode) {
-        return NextResponse.json({
-          error: `Students may only enroll in subjects within their assigned department (${deptCode}).`,
-        }, { status: 403 });
+    const isBatch = Array.isArray(subjectIds) || Array.isArray(subjectCodes);
+
+    // 3. Department isolation check across all selected subjects
+    for (const subject of subjects) {
+      const subjectDept = String(subject.departmentId).toUpperCase();
+      if (user.role === 'DepartmentHead') {
+        const deptCode = deptOf(user);
+        if (!deptCode || subjectDept !== deptCode) {
+          return NextResponse.json({
+            error: `Department Heads may only enroll students in subjects within their assigned department (${deptCode}).`,
+          }, { status: 403 });
+        }
+        if (studentUser.departmentId && studentUser.departmentId.toUpperCase() !== deptCode) {
+          return NextResponse.json({
+            error: `Department Heads may only enroll students belonging to their department (${deptCode}). Student belongs to ${studentUser.departmentId.toUpperCase()}.`,
+          }, { status: 403 });
+        }
+      } else if (user.role === 'Student') {
+        const deptCode = deptOf(user);
+        if (deptCode && subjectDept !== deptCode) {
+          return NextResponse.json({
+            error: `Students may only enroll in subjects within their assigned department (${deptCode}).`,
+          }, { status: 403 });
+        }
       }
     }
 
-    // 4. One association per student per subject (also enforced by uq_student_subjects)
-    const existing = await prisma.studentSubject.findUnique({
-      where: { studentId_subjectId: { studentId: numericStudentId, subjectId: subject.id } },
-    });
-    if (existing) {
+    // 4. Create or re-submit enrollment records
+    const enrolledById = parseInt(String(user.id), 10);
+    const createdOrUpdated: any[] = [];
+    const skippedCodes: string[] = [];
+
+    for (const subject of subjects) {
+      const existing = await prisma.studentSubject.findUnique({
+        where: { studentId_subjectId: { studentId: numericStudentId, subjectId: subject.id } },
+      });
+
+      if (existing) {
+        // If previously REJECTED or DROPPED (or if DeptHead/Admin is confirming a PENDING request), update it
+        const canReopen =
+          existing.status === ENROLLMENT_STATUS.REJECTED ||
+          existing.status === ENROLLMENT_STATUS.DROPPED ||
+          (user.role !== 'Student' && existing.status === ENROLLMENT_STATUS.PENDING);
+
+        if (canReopen) {
+          const updated = await prisma.studentSubject.update({
+            where: { id: existing.id },
+            data: {
+              status: targetStatus,
+              academicYear: fields.data.academicYear || existing.academicYear || DEFAULT_ACADEMIC_YEAR,
+              semester: fields.data.semester || existing.semester || DEFAULT_SEMESTER,
+              enrolledById: isNaN(enrolledById) ? existing.enrolledById : enrolledById,
+              createdAt: new Date(),
+            },
+            include: studentSubjectInclude,
+          });
+          createdOrUpdated.push(updated);
+          continue;
+        }
+
+        if (!isBatch && subjects.length === 1) {
+          const statusMsg =
+            existing.status === ENROLLMENT_STATUS.PENDING
+              ? 'already has a pending enrollment request awaiting Department Head approval'
+              : 'is already enrolled';
+          return NextResponse.json({
+            error: `${studentUser.fullName} ${statusMsg} for [${subject.code}] ${subject.title}.`,
+          }, { status: 409 });
+        }
+
+        skippedCodes.push(subject.code);
+        continue;
+      }
+
+      const created = await prisma.studentSubject.create({
+        data: {
+          studentId: numericStudentId,
+          subjectId: subject.id,
+          status: targetStatus,
+          academicYear: fields.data.academicYear || DEFAULT_ACADEMIC_YEAR,
+          semester: fields.data.semester || DEFAULT_SEMESTER,
+          enrolledById: isNaN(enrolledById) ? null : enrolledById,
+        },
+        include: studentSubjectInclude,
+      });
+      createdOrUpdated.push(created);
+    }
+
+    if (createdOrUpdated.length === 0) {
       return NextResponse.json({
-        error: `${studentUser.fullName} is already enrolled in [${subject.code}] ${subject.title}.`,
+        error: `Selected subject(s) (${skippedCodes.join(', ')}) are already enrolled or pending Department Head approval.`,
       }, { status: 409 });
     }
 
-    const enrolledById = parseInt(String(user.id), 10);
-    const created = await prisma.studentSubject.create({
-      data: {
-        studentId: numericStudentId,
-        subjectId: subject.id,
-        status: fields.data.status || ENROLLMENT_STATUS.ENROLLED,
-        academicYear: fields.data.academicYear || DEFAULT_ACADEMIC_YEAR,
-        semester: fields.data.semester || DEFAULT_SEMESTER,
-        enrolledById: isNaN(enrolledById) ? null : enrolledById,
-      },
-      include: studentSubjectInclude,
-    });
-
+    const subjCodesSummary = createdOrUpdated.map((r) => `[${r.subject.code}] ${r.subject.title}`).join(', ');
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
-      actionType: 'EnrollStudent',
+      actionType: user.role === 'Student' ? 'RequestEnrollment' : 'EnrollStudent',
       resultStatus: 'Success',
-      description: `Enrolled student ${studentUser.fullName} (${numericStudentId}) in [${subject.code}] ${subject.title} (${created.semester}, ${created.academicYear}, ${created.status})`,
+      description:
+        user.role === 'Student'
+          ? `Student ${studentUser.fullName} (${numericStudentId}) submitted enrollment request for ${subjCodesSummary} (Status: PENDING)`
+          : `Enrolled student ${studentUser.fullName} (${numericStudentId}) in ${subjCodesSummary} (Status: ${targetStatus})`,
       entityType: 'Enrollment',
-      entityId: String(created.id),
+      entityId: String(createdOrUpdated[0].id),
     });
 
-    return NextResponse.json({ success: true, enrollment: formatStudentSubject(created) }, { status: 201 });
+    const formattedList = createdOrUpdated.map((r) => formatStudentSubject(r));
+
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          user.role === 'Student'
+            ? `Enrollment request submitted for ${formattedList.length} subject(s). Waiting for Department Head confirmation.`
+            : `Successfully enrolled student in ${formattedList.length} subject(s).`,
+        enrollment: formattedList[0],
+        enrollments: formattedList,
+        count: formattedList.length,
+        skippedCodes,
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Error creating student subject:', error);
     if (error.code === 'P2002') {
@@ -261,53 +354,106 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** PATCH /api/enrollments  { id, status?, academicYear?, semester? } — Admin / Department Head only */
+/** PATCH /api/enrollments  { id | ids, action?: 'Approve' | 'Reject', status?, academicYear?, semester? } — Admin / Department Head only */
 export async function PATCH(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     if (user.role !== 'Admin' && user.role !== 'DepartmentHead') {
-      return NextResponse.json({ error: 'Only Administrators and Department Heads may update enrollments.' }, { status: 403 });
+      return NextResponse.json({ error: 'Only Administrators and Department Heads may review or update enrollments.' }, { status: 403 });
     }
 
     const body = await req.json();
-    const id = parseInt(String(body.id ?? ''), 10);
-    if (isNaN(id)) return NextResponse.json({ error: 'A valid enrollment id is required.' }, { status: 400 });
+    const actionRaw = body.action ? String(body.action).trim().toLowerCase() : null;
+    if (actionRaw === 'approve') {
+      body.status = ENROLLMENT_STATUS.ENROLLED;
+    } else if (actionRaw === 'reject') {
+      body.status = ENROLLMENT_STATUS.REJECTED;
+    }
+
+    const targetIds: number[] = Array.isArray(body.ids)
+      ? body.ids.map((v: any) => parseInt(String(v), 10)).filter((n: number) => !isNaN(n))
+      : [];
+    const singleId = parseInt(String(body.id ?? ''), 10);
+    if (targetIds.length === 0 && !isNaN(singleId)) {
+      targetIds.push(singleId);
+    }
+
+    if (targetIds.length === 0) {
+      return NextResponse.json({ error: 'A valid enrollment id (or ids array) is required.' }, { status: 400 });
+    }
 
     const fields = parseEnrollmentFields(body);
     if (fields.error) return NextResponse.json({ error: fields.error }, { status: 400 });
     if (Object.keys(fields.data).length === 0) {
-      return NextResponse.json({ error: 'Provide at least one of: status, academicYear, semester.' }, { status: 400 });
+      return NextResponse.json({ error: 'Provide at least one of: action (Approve/Reject), status, academicYear, semester.' }, { status: 400 });
     }
 
-    const existing = await prisma.studentSubject.findUnique({ where: { id }, include: studentSubjectInclude });
-    if (!existing) return NextResponse.json({ error: 'Enrollment not found.' }, { status: 404 });
+    const existingList = await prisma.studentSubject.findMany({
+      where: { id: { in: targetIds } },
+      include: studentSubjectInclude,
+    });
+    if (existingList.length === 0) {
+      return NextResponse.json({ error: 'Enrollment not found.' }, { status: 404 });
+    }
 
     if (user.role === 'DepartmentHead') {
       const deptCode = deptOf(user);
-      if (!deptCode || String(existing.subject.departmentId).toUpperCase() !== deptCode) {
-        return NextResponse.json({
-          error: `Department Heads may only manage enrollments within their assigned department (${deptCode}).`,
-        }, { status: 403 });
+      for (const existing of existingList) {
+        if (!deptCode || String(existing.subject.departmentId).toUpperCase() !== deptCode) {
+          return NextResponse.json({
+            error: `Department Heads may only manage enrollments within their assigned department (${deptCode}).`,
+          }, { status: 403 });
+        }
       }
     }
 
-    const updated = await prisma.studentSubject.update({ where: { id }, data: fields.data, include: studentSubjectInclude });
+    const updatedRows: any[] = [];
+    for (const existing of existingList) {
+      const updated = await prisma.studentSubject.update({
+        where: { id: existing.id },
+        data: fields.data,
+        include: studentSubjectInclude,
+      });
+      updatedRows.push(updated);
 
-    const changes = Object.entries(fields.data)
-      .filter(([key, value]) => (existing as any)[key] !== value)
-      .map(([key, value]) => `${key}: ${(existing as any)[key]} → ${value}`);
-    await logAuditEvent({
-      userId: user.id,
-      userDisplayName: user.fullName,
-      actionType: 'UpdateEnrollment',
-      resultStatus: 'Success',
-      description: `Updated enrollment of ${existing.student?.fullName || existing.studentId} (${existing.studentId}) in [${existing.subject.code}] ${existing.subject.title}${changes.length ? ' — ' + changes.join(', ') : ' (no changes)'}`,
-      entityType: 'Enrollment',
-      entityId: String(id),
+      const changes = Object.entries(fields.data)
+        .filter(([key, value]) => (existing as any)[key] !== value)
+        .map(([key, value]) => `${key}: ${(existing as any)[key]} → ${value}`);
+
+      const auditAction =
+        fields.data.status === ENROLLMENT_STATUS.ENROLLED && existing.status === ENROLLMENT_STATUS.PENDING
+          ? 'ApproveEnrollment'
+          : fields.data.status === ENROLLMENT_STATUS.REJECTED
+          ? 'RejectEnrollment'
+          : 'UpdateEnrollment';
+
+      await logAuditEvent({
+        userId: user.id,
+        userDisplayName: user.fullName,
+        actionType: auditAction,
+        resultStatus: 'Success',
+        description: `${
+          auditAction === 'ApproveEnrollment'
+            ? 'Approved enrollment request'
+            : auditAction === 'RejectEnrollment'
+            ? 'Rejected enrollment request'
+            : 'Updated enrollment'
+        } of ${existing.student?.fullName || existing.studentId} (${existing.studentId}) in [${existing.subject.code}] ${existing.subject.title}${
+          changes.length ? ' — ' + changes.join(', ') : ''
+        }`,
+        entityType: 'Enrollment',
+        entityId: String(existing.id),
+      });
+    }
+
+    const formattedList = updatedRows.map((r) => formatStudentSubject(r));
+    return NextResponse.json({
+      success: true,
+      enrollment: formattedList[0],
+      enrollments: formattedList,
+      count: formattedList.length,
     });
-
-    return NextResponse.json({ success: true, enrollment: formatStudentSubject(updated) });
   } catch (error: any) {
     console.error('Error updating student subject:', error);
     return NextResponse.json({ error: 'Failed to update enrollment.' }, { status: 500 });

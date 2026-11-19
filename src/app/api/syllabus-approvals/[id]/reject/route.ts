@@ -13,8 +13,8 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may review syllabi.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Dean' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads, Deans, and Administrators may review syllabi.' }, { status: 403 });
     }
 
     const versionOrSyllabusId = parseInt(params.id, 10);
@@ -46,7 +46,12 @@ export async function POST(
     if (user.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode || deptCode !== version.syllabus.departmentId.toUpperCase()) {
-        return NextResponse.json({ error: 'Forbidden: You may only review syllabi in your department.' }, { status: 403 });
+        return NextResponse.json({ error: 'Forbidden: You may only review syllabi in your designated department.' }, { status: 403 });
+      }
+    } else if (user.role === 'Dean' && user.departmentId) {
+      const deptCode = String(user.departmentId).trim().toUpperCase();
+      if (deptCode !== version.syllabus.departmentId.toUpperCase()) {
+        return NextResponse.json({ error: 'Forbidden: You may only review syllabi in your designated department.' }, { status: 403 });
       }
     }
 

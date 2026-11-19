@@ -17,12 +17,34 @@ export type SyllabusStatus = (typeof SYLLABUS_STATUS)[keyof typeof SYLLABUS_STAT
 /** Human-readable labels for syllabus / version statuses. */
 export const SYLLABUS_STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft',
-  SUBMITTED: 'Submitted',
-  UNDER_REVIEW: 'Under Review',
+  SUBMITTED: 'Pending Dept. Head',
+  UNDER_REVIEW: 'Endorsed • Pending Dean',
   APPROVED: 'Approved',
-  REJECTED: 'Rejected',
+  REJECTED: 'Returned for Revision',
   ARCHIVED: 'Archived',
 };
+
+export const ROLE_LABEL: Record<string, string> = {
+  Admin: 'System Administrator',
+  Registrar: 'School Registrar',
+  VPAcademics: 'VP-Academics',
+  Dean: 'Dean',
+  DepartmentHead: 'Department Head',
+  Educator: 'Faculty',
+  Faculty: 'Faculty',
+};
+
+export function roleLabel(role?: string | null): string {
+  return (role && ROLE_LABEL[role]) || role || '';
+}
+
+export function isFacultyRole(role?: string | null): boolean {
+  return role === 'Educator' || role === 'Faculty';
+}
+
+export function isGlobalViewerRole(role?: string | null): boolean {
+  return role === 'Registrar' || role === 'VPAcademics';
+}
 
 export function syllabusStatusLabel(status?: string | null) {
   return (status && SYLLABUS_STATUS_LABEL[status]) || status || '';
@@ -47,7 +69,9 @@ export function parseSyllabusStatusParam(param?: string | null): SyllabusStatus 
 
 /** Status of a student's enrollment in a subject (student_subjects.status, CHECK constraint). */
 export const ENROLLMENT_STATUS = {
+  PENDING: 'PENDING',
   ENROLLED: 'ENROLLED',
+  REJECTED: 'REJECTED',
   COMPLETED: 'COMPLETED',
   DROPPED: 'DROPPED',
 } as const;

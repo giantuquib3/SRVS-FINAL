@@ -75,8 +75,10 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         updatedAt: true,
         studentSubjects: {
-          where: { status: 'ENROLLED' },
+          where: { status: { in: ['ENROLLED', 'PENDING'] } },
           select: {
+            id: true,
+            status: true,
             subject: { select: { code: true, title: true } },
           },
         },
@@ -84,7 +86,14 @@ export async function GET(req: NextRequest) {
     });
 
     const formatted = students.map((s: any) => {
-      const subjectCodes = (s.studentSubjects || []).map((ss: any) => ss.subject?.code).filter(Boolean);
+      const enrolledCodes = (s.studentSubjects || [])
+        .filter((ss: any) => ss.status === 'ENROLLED')
+        .map((ss: any) => ss.subject?.code)
+        .filter(Boolean);
+      const pendingCodes = (s.studentSubjects || [])
+        .filter((ss: any) => ss.status === 'PENDING')
+        .map((ss: any) => ss.subject?.code)
+        .filter(Boolean);
       return {
         id: s.id,
         idNumber: s.id,
@@ -98,8 +107,9 @@ export async function GET(req: NextRequest) {
         accountStatus: s.accountStatus,
         mustChangePassword: !!s.mustChangePassword,
         rejectionReason: s.rejectionReason,
-        enrolledSubjects: subjectCodes,
-        enrolledCourses: subjectCodes, // Alias for backward compatibility
+        enrolledSubjects: enrolledCodes,
+        enrolledCourses: enrolledCodes, // Alias for backward compatibility
+        pendingSubjects: pendingCodes,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
       };

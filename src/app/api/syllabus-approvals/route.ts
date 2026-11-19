@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Dean' && user.role !== 'Admin')) {
       return NextResponse.json({
-        error: 'Unauthorized: Only Department Heads and Administrators may view syllabus approvals.',
+        error: 'Unauthorized: Only Department Heads, Deans, and Administrators may view syllabus approvals.',
       }, { status: 403 });
     }
 
@@ -27,12 +27,22 @@ export async function GET(req: NextRequest) {
     const where: any = {};
     let deptInfo: { id: string; code: string; name: string } | null = null;
 
-    // Department Isolation
+    // Department Isolation for DepartmentHead and Dean
     if (user.role === 'DepartmentHead') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode) return NextResponse.json({ approvals: [], stats: { pending: 0, approved: 0, rejected: 0, total: 0 } });
       deptInfo = { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) };
       where.syllabus = { departmentId: deptCode };
+    } else if (user.role === 'Dean') {
+      const deptCode = user.departmentId
+        ? String(user.departmentId).trim().toUpperCase()
+        : departmentParam
+        ? String(departmentParam).trim().toUpperCase()
+        : null;
+      if (deptCode) {
+        deptInfo = { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) };
+        where.syllabus = { departmentId: deptCode };
+      }
     } else if (departmentParam) {
       const deptCode = String(departmentParam).trim().toUpperCase();
       where.syllabus = { departmentId: deptCode };
@@ -162,8 +172,8 @@ export async function GET(req: NextRequest) {
 async function handleReviewAction(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
-      return NextResponse.json({ error: 'Unauthorized: Only Department Heads and Administrators may approve or reject syllabi.' }, { status: 403 });
+    if (!user || (user.role !== 'DepartmentHead' && user.role !== 'Dean' && user.role !== 'Admin')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Department Heads, Deans, and Administrators may approve or reject syllabi.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -187,7 +197,14 @@ async function handleReviewAction(req: NextRequest) {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (!deptCode || version.syllabus.departmentId.toUpperCase() !== deptCode) {
         return NextResponse.json({
-          error: `Forbidden: You may only review syllabi within your assigned department (${deptCode || 'None'}).`,
+          error: `Forbidden: You may only review syllabi within your designated department (${deptCode || 'None'}).`,
+        }, { status: 403 });
+      }
+    } else if (user.role === 'Dean' && user.departmentId) {
+      const deptCode = String(user.departmentId).trim().toUpperCase();
+      if (version.syllabus.departmentId.toUpperCase() !== deptCode) {
+        return NextResponse.json({
+          error: `Forbidden: You may only review syllabi within your designated department (${deptCode}).`,
         }, { status: 403 });
       }
     }
@@ -201,8 +218,18 @@ async function handleReviewAction(req: NextRequest) {
       return NextResponse.json({ error: 'Action must be Approve, Reject, or Under_Review.' }, { status: 400 });
     }
 
+    if (user.role === 'Dean' && isApprove && version.approvalStatus === SYLLABUS_STATUS.SUBMITTED) {
+      return NextResponse.json({
+        error: 'This syllabus must first be approved by the Department Head before the Dean can give final approval.',
+      }, { status: 400 });
+    }
+
     const now = new Date();
-    const targetStatus = isApprove ? 'APPROVED' : (isReject ? 'REJECTED' : 'UNDER_REVIEW');
+    const targetStatus = isReject
+      ? 'REJECTED'
+      : isUnderReview || (isApprove && user.role === 'DepartmentHead')
+      ? 'UNDER_REVIEW'
+      : 'APPROVED';
 
     await prisma.$transaction(async (tx) => {
       await tx.syllabusVersion.update({
@@ -216,7 +243,7 @@ async function handleReviewAction(req: NextRequest) {
         },
       });
 
-      if (isApprove) {
+      if (targetStatus === 'APPROVED') {
         // Archive previously active versions for this subject
         await tx.syllabus.updateMany({
           where: {
@@ -234,17 +261,17 @@ async function handleReviewAction(req: NextRequest) {
             currentVersionNumber: version.versionNumber,
             reviewedAt: now,
             reviewedByUserId: currentUserIdInt,
-            reviewerRemarks: remarks || 'Approved by Department Head',
+            reviewerRemarks: remarks || `Final Approved by ${user.role === 'Dean' ? 'Dean' : 'Administrator'} (${user.fullName})`,
           },
         });
-      } else if (isReject) {
+      } else if (targetStatus === 'REJECTED') {
         await tx.syllabus.update({
           where: { id: version.syllabusId },
           data: {
             status: 'REJECTED',
             reviewedAt: now,
             reviewedByUserId: currentUserIdInt,
-            reviewerRemarks: remarks || 'Rejected by Department Head',
+            reviewerRemarks: remarks || `Rejected by ${user.role === 'Dean' ? 'Dean' : 'Department Head'}`,
           },
         });
       } else {
@@ -252,8 +279,10 @@ async function handleReviewAction(req: NextRequest) {
           where: { id: version.syllabusId },
           data: {
             status: 'UNDER_REVIEW',
+            currentVersionNumber: version.versionNumber,
             reviewedAt: now,
             reviewedByUserId: currentUserIdInt,
+            reviewerRemarks: remarks || `Approved by Department Head (${user.fullName}) — Pending Dean Final Approval`,
           },
         });
       }

@@ -48,6 +48,7 @@ export default function UsersManagementPage() {
   // Role Edit Modal State
   const [roleModalUser, setRoleModalUser] = useState<any>(null);
   const [selectedRole, setSelectedRole] = useState('');
+  const [selectedDeptId, setSelectedDeptId] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -93,20 +94,21 @@ export default function UsersManagementPage() {
       return;
     }
 
-    if (newRole !== 'Admin' && newRole !== 'DepartmentHead') {
-      setCreateError('Administrators can only create Admin and Department Head accounts. Students and Faculty must self-register.');
-      return;
-    }
+      const allowedAdminCreateRoles = ['Admin', 'Registrar', 'VPAcademics', 'Dean', 'DepartmentHead', 'Educator'];
+      if (!allowedAdminCreateRoles.includes(newRole)) {
+        setCreateError('Please select a valid institutional role.');
+        return;
+      }
 
-    if (newRole === 'DepartmentHead' && !newDeptId) {
-      setCreateError('Please select a department for the Department Head account.');
-      return;
-    }
+      if ((newRole === 'DepartmentHead' || newRole === 'Educator') && !newDeptId) {
+        setCreateError('Please select a designated department for this role.');
+        return;
+      }
 
-    if (!/^\d{5}$/.test(cleanUsername) && !(newRole === 'Admin' && cleanUsername === '0')) {
-      setCreateError('Admin and Department Head Username / ID numbers must be 5 digits (or 0 for Super Admin).');
-      return;
-    }
+      if (!/^\d{5}$/.test(cleanUsername) && !(newRole === 'Admin' && cleanUsername === '0')) {
+        setCreateError('Institutional ID numbers must be 5 digits (or 0 for Super Admin).');
+        return;
+      }
 
     const cleanEmail = newEmail.trim().toLowerCase();
     if (!cleanEmail.endsWith('@usjr.edu.ph')) {
@@ -154,13 +156,18 @@ export default function UsersManagementPage() {
     }
   };
 
-  const handleAction = async (userId: string, action: string, newRoleValue?: string) => {
+  const handleAction = async (userId: string, action: string, newRoleValue?: string, newDeptValue?: string | null) => {
     setProcessingId(userId);
     try {
+      const noDeptRoles = ['Admin', 'Registrar', 'VPAcademics', 'Dean'];
+      const payload: any = { userId, action, newRole: newRoleValue };
+      if (action === 'ChangeRole' && newRoleValue) {
+        payload.departmentId = noDeptRoles.includes(newRoleValue) ? null : (newDeptValue || null);
+      }
       const res = await fetch('/api/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, action, newRole: newRoleValue }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         if (action === 'ChangeRole') {
@@ -253,9 +260,11 @@ export default function UsersManagementPage() {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         {[
           { id: '', label: 'All Users', count: counts.total },
+          { id: 'Registrar', label: 'School Registrar' },
+          { id: 'VPAcademics', label: 'VP-Academics' },
+          { id: 'Dean', label: 'Deans' },
           { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
-          { id: 'Educator', label: 'Faculty / Educators', count: counts.educators },
-          { id: 'Student', label: 'Students', count: counts.students },
+          { id: 'Educator', label: 'Faculty', count: counts.educators },
           { id: 'Admin', label: 'Administrators', count: counts.admins },
         ].map((tab) => {
           const active = roleFilter === tab.id;
@@ -270,13 +279,15 @@ export default function UsersManagementPage() {
               }`}
             >
               <span>{tab.label}</span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                  active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-slate-100 text-slate-600'
-                }`}
-              >
-                {tab.count}
-              </span>
+              {tab.count !== undefined && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -325,10 +336,12 @@ export default function UsersManagementPage() {
               className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
             >
               <option value="">All Roles</option>
-              <option value="Admin">Admin</option>
+              <option value="Registrar">School Registrar</option>
+              <option value="VPAcademics">VP-Academics</option>
+              <option value="Dean">Dean</option>
               <option value="DepartmentHead">Department Head</option>
-              <option value="Educator">Educator</option>
-              <option value="Student">Student</option>
+              <option value="Educator">Faculty</option>
+              <option value="Admin">System Administrator</option>
             </select>
           </div>
         </div>
@@ -379,24 +392,45 @@ export default function UsersManagementPage() {
                         </span>
                       </div>
                     )}
+                    {u.role === 'Educator' && Array.isArray(u.assignedSubjects) && u.assignedSubjects.length > 0 && (
+                      <div className="mt-1 flex items-center space-x-1 text-[10px]">
+                        <span className="text-slate-500 font-semibold">Assigned Subjects:</span>
+                        <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {u.assignedSubjects.join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-3 px-3">
                     <button
                       onClick={() => {
                         setRoleModalUser(u);
                         setSelectedRole(u.role);
+                        setSelectedDeptId(
+                          u.role === 'Admin' || u.role === 'Registrar' || u.role === 'VPAcademics' || u.role === 'Dean'
+                            ? ''
+                            : (u.departmentId || u.departmentCode || '')
+                        );
                       }}
                       className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 hover:bg-[#FEF08A] text-slate-800 hover:text-[#854D0E] transition-colors cursor-pointer"
                       title="Click to change role"
                     >
-                      <span>{u.role}</span>
+                      <span>
+                        {u.role === 'Registrar'
+                          ? 'School Registrar'
+                          : u.role === 'VPAcademics'
+                          ? 'VP-Academics'
+                          : u.role === 'Educator'
+                          ? 'Faculty'
+                          : u.role}
+                      </span>
                       <Edit3 className="w-2.5 h-2.5 ml-1 text-slate-400" />
                     </button>
                   </td>
                   <td className="py-3 px-3">
-                    {u.role === 'Admin' ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                        All Departments (Admin)
+                    {u.role === 'Admin' || u.role === 'Registrar' || u.role === 'VPAcademics' || u.role === 'Dean' ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none cursor-not-allowed">
+                        No Department (Institutional)
                       </span>
                     ) : (u.departmentCode || u.departmentId || u.department?.code) ? (
                       <div className="space-y-0.5">
@@ -536,53 +570,81 @@ export default function UsersManagementPage() {
                   <select
                     value={newRole}
                     onChange={(e) => {
-                      setNewRole(e.target.value);
+                      const nextRole = e.target.value;
+                      setNewRole(nextRole);
                       setNewUsername('');
+                      if (
+                        nextRole === 'Registrar' ||
+                        nextRole === 'VPAcademics' ||
+                        nextRole === 'Admin' ||
+                        nextRole === 'Dean'
+                      ) {
+                        setNewDeptId('');
+                      }
                     }}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
                   >
-                    <option value="DepartmentHead">Department Head (5-digit ID)</option>
-                    <option value="Admin">System Administrator (5-digit ID)</option>
+                    <option value="Registrar">School Registrar</option>
+                    <option value="VPAcademics">VP-Academics</option>
+                    <option value="Dean">Dean</option>
+                    <option value="DepartmentHead">Department Head</option>
+                    <option value="Educator">Faculty</option>
+                    <option value="Admin">System Administrator</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Department {newRole === 'DepartmentHead' ? '*' : '(Optional)'}
+                    Department{' '}
+                    {newRole === 'DepartmentHead' || newRole === 'Educator'
+                      ? '*'
+                      : '(Disabled)'}
                   </label>
-                  <select
-                    value={newDeptId}
-                    onChange={(e) => setNewDeptId(e.target.value)}
-                    required={newRole === 'DepartmentHead'}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
-                  >
-                    <option value="">{newRole === 'DepartmentHead' ? '-- Select Department * --' : '-- None / Unassigned --'}</option>
-                    {departments.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        [{dept.code}] {dept.name}
-                      </option>
-                    ))}
-                  </select>
+                  {newRole === 'Registrar' ||
+                  newRole === 'VPAcademics' ||
+                  newRole === 'Admin' ||
+                  newRole === 'Dean' ? (
+                    <input
+                      type="text"
+                      disabled
+                      readOnly
+                      value="No Department (Institutional)"
+                      aria-label="Department disabled for this role"
+                      className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-500 font-semibold cursor-not-allowed select-none"
+                    />
+                  ) : (
+                    <select
+                      value={newDeptId}
+                      onChange={(e) => setNewDeptId(e.target.value)}
+                      required
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
+                    >
+                      <option value="">-- Select Department * --</option>
+                      {departments.map((dept) => (
+                        <option key={dept.id} value={dept.id}>
+                          [{dept.code}] {dept.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block font-bold text-slate-700">
-                    {newRole === 'Student' ? 'Username (Student ID - 10 digits) *' : 'Username (Staff/Admin ID - 5 digits) *'}
+                    Institutional ID Number (5 digits) *
                   </label>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {newRole === 'Student' ? '10 digits' : '5 digits'}
-                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">5 digits</span>
                 </div>
                 <input
                   type="text"
                   required
                   inputMode="numeric"
-                  maxLength={newRole === 'Student' ? 10 : 5}
+                  maxLength={5}
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value.replace(/\D/g, ''))}
-                  placeholder={newRole === 'Student' ? 'e.g. 2022012708' : 'e.g. 00000 or 10001'}
+                  placeholder="e.g. 10018 or 70001"
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-mono focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
                 />
               </div>
@@ -675,28 +737,83 @@ export default function UsersManagementPage() {
                 <label className="block font-bold text-slate-700 mb-1">Select New Role</label>
                 <select
                   value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
+                  onChange={(e) => {
+                    const nextRole = e.target.value;
+                    setSelectedRole(nextRole);
+                    if (
+                      nextRole === 'Registrar' ||
+                      nextRole === 'VPAcademics' ||
+                      nextRole === 'Admin' ||
+                      nextRole === 'Dean'
+                    ) {
+                      setSelectedDeptId('');
+                    }
+                  }}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
                 >
-                  <option value="Admin">Admin (Full Access)</option>
-                  <option value="DepartmentHead">Department Head (Curriculum Review)</option>
-                  <option value="Educator">Educator (Syllabus Creator)</option>
-                  <option value="Student">Student (Read-Only)</option>
+                  <option value="Registrar">School Registrar (View All Syllabi)</option>
+                  <option value="VPAcademics">VP-Academics (View All Syllabi)</option>
+                  <option value="Dean">Dean (Approve from Dept Head)</option>
+                  <option value="DepartmentHead">Department Head (Approve from Faculty & Edit Courses)</option>
+                  <option value="Educator">Faculty (View Courses & Edit Syllabus)</option>
+                  <option value="Admin">System Administrator</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Department{' '}
+                  {selectedRole === 'Registrar' ||
+                  selectedRole === 'VPAcademics' ||
+                  selectedRole === 'Admin' ||
+                  selectedRole === 'Dean'
+                    ? '(Disabled)'
+                    : '*'}
+                </label>
+                {selectedRole === 'Registrar' ||
+                selectedRole === 'VPAcademics' ||
+                selectedRole === 'Admin' ||
+                selectedRole === 'Dean' ? (
+                  <input
+                    type="text"
+                    disabled
+                    readOnly
+                    value="No Department (Institutional)"
+                    aria-label="Department disabled for this role"
+                    className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-500 font-semibold cursor-not-allowed select-none"
+                  />
+                ) : (
+                  <select
+                    value={selectedDeptId}
+                    onChange={(e) => setSelectedDeptId(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
+                  >
+                    <option value="">-- Select Designated Department --</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        [{dept.code}] {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="pt-3 flex items-center justify-end space-x-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setRoleModalUser(null)}
-                  className="px-3 py-1.5 rounded-xl font-medium text-slate-600 hover:bg-slate-100"
+                  className="px-3 py-1.5 rounded-xl font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleAction(roleModalUser.id, 'ChangeRole', selectedRole)}
-                  className="px-4 py-1.5 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm"
+                  disabled={
+                    (selectedRole === 'DepartmentHead' || selectedRole === 'Educator') &&
+                    !selectedDeptId
+                  }
+                  onClick={() => handleAction(roleModalUser.id, 'ChangeRole', selectedRole, selectedDeptId)}
+                  className="px-4 py-1.5 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] disabled:bg-slate-300 text-white shadow-sm cursor-pointer"
                 >
                   Save Role
                 </button>

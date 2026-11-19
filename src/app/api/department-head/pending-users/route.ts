@@ -12,16 +12,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Session missing or expired.' }, { status: 401 });
     }
 
-    if (sessionUser.role !== 'DepartmentHead' && sessionUser.role !== 'Admin') {
-      return NextResponse.json({ error: 'Forbidden: Requires Department Head or Administrator access.' }, { status: 403 });
+    if (sessionUser.role !== 'DepartmentHead' && sessionUser.role !== 'Dean' && sessionUser.role !== 'Admin') {
+      return NextResponse.json({ error: 'Forbidden: Requires Department Head, Dean, or Administrator access.' }, { status: 403 });
     }
 
-    const isDeptHead = sessionUser.role === 'DepartmentHead';
+    const isDeptScoped = sessionUser.role === 'DepartmentHead' || sessionUser.role === 'Dean';
     let targetDeptId: string | null = null;
 
-    if (isDeptHead) {
+    if (isDeptScoped) {
       if (!sessionUser.departmentId) {
-        return NextResponse.json({ error: 'Forbidden: Department Head is not assigned to an academic department.' }, { status: 403 });
+        return NextResponse.json({ error: 'Forbidden: Account is not assigned to an academic department.' }, { status: 403 });
       }
       targetDeptId = String(sessionUser.departmentId).toUpperCase();
     } else {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     const whereClause: any = {
       accountStatus: 'PendingApproval',
-      role: { in: ['Student', 'Educator'] },
+      role: { in: ['Educator', 'Faculty'] },
     };
 
     if (targetDeptId) {

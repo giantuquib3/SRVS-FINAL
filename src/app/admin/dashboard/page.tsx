@@ -23,7 +23,10 @@ export default function AdminDashboard() {
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [pendingSyllabi, setPendingSyllabi] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | number | null>(null);
+  const [resetModalUser, setResetModalUser] = useState<any | null>(null);
+  const [newResetPassword, setNewResetPassword] = useState('USJR@Reset2026');
+  const [toast, setToast] = useState<string>('');
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -88,6 +91,30 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAdminPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetModalUser) return;
+    setProcessingId(resetModalUser.id);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: resetModalUser.id,
+          action: 'ResetPassword',
+          newPassword: newResetPassword,
+        }),
+      });
+      if (res.ok) {
+        setToast(`Password reset for ${resetModalUser.fullName} (${resetModalUser.email}). New password: ${newResetPassword}`);
+        setResetModalUser(null);
+        await fetchDashboardData();
+      }
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   if (loading && !data) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -101,9 +128,22 @@ export default function AdminDashboard() {
 
   const stats = data?.stats || {};
   const recentActivities = data?.recentActivities || [];
+  const passwordResetRequests = data?.passwordResetRequests || [];
 
   return (
     <div className="space-y-8">
+      {toast && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <CheckCircle className="w-4 h-4 text-[#005A36]" />
+            <span>{toast}</span>
+          </div>
+          <button onClick={() => setToast('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
@@ -166,13 +206,107 @@ export default function AdminDashboard() {
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[#854D0E] uppercase tracking-wider">Immutable Versions</span>
-            <History className="w-5 h-5 text-[#CA8A04]" />
+            <span className="text-xs font-bold text-[#854D0E] uppercase tracking-wider">Password Reset Requests</span>
+            <AlertTriangle className="w-5 h-5 text-[#CA8A04]" />
           </div>
-          <p className="text-3xl font-black text-[#854D0E]">{stats.totalVersions ?? 0}</p>
-          <span className="text-[11px] text-slate-500">Permanent revision snapshots</span>
+          <p className="text-3xl font-black text-[#854D0E]">{passwordResetRequests.length}</p>
+          <span className="text-[11px] text-slate-500">Submitted via registered email</span>
         </div>
       </div>
+
+      {/* Password Reset Requests Panel (Notified from Forgot Password) */}
+      <div className="bg-white p-6 rounded-2xl border border-amber-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-[#CA8A04]" />
+              <span>Password Reset Notifications (From Registered Email)</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Users who requested a password reset using their registered email on the sign-in page
+            </p>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
+            {passwordResetRequests.length} Pending Reset
+          </span>
+        </div>
+
+        {passwordResetRequests.length === 0 ? (
+          <p className="text-xs text-slate-500 py-4 text-center">
+            No pending password reset requests at this time.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {passwordResetRequests.map((u: any) => (
+              <div
+                key={u.id}
+                className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 flex items-center justify-between gap-3"
+              >
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{u.fullName}</p>
+                  <p className="text-xs font-mono text-slate-600">{u.email}</p>
+                  <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-white border border-amber-200 font-bold text-amber-900">
+                    Role: {u.role === 'Educator' ? 'Faculty' : u.role} (ID: {u.id})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetModalUser(u);
+                    setNewResetPassword('USJR@Reset2026');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm cursor-pointer shrink-0"
+                >
+                  Reset Password
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal: Reset User Password */}
+      {resetModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900">
+              Reset Password for {resetModalUser.fullName}
+            </h3>
+            <p className="text-xs text-slate-600">
+              Registered Email: <strong className="font-mono">{resetModalUser.email}</strong>
+            </p>
+            <form onSubmit={handleAdminPasswordReset} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">New Temporary Password *</label>
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  value={newResetPassword}
+                  onChange={(e) => setNewResetPassword(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono text-sm text-slate-900"
+                />
+              </div>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setResetModalUser(null)}
+                  className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingId === resetModalUser.id}
+                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer"
+                >
+                  Confirm Password Reset
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Two Column Layout: User Approval Queue & Pending Syllabus Reviews */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -184,7 +318,7 @@ export default function AdminDashboard() {
                 <Users className="w-4 h-4 text-[#005A36]" />
                 <span>User Approval Queue</span>
               </h2>
-              <p className="text-xs text-slate-500">Pending student registrations</p>
+              <p className="text-xs text-slate-500">Pending faculty registrations</p>
             </div>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               {pendingUsers.length} Pending

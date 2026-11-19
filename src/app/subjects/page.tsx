@@ -8,18 +8,21 @@ import {
   PlusCircle,
   Search,
   Filter,
-  Layers,
   History,
   CheckCircle2,
   AlertCircle,
   X,
-  GraduationCap,
-  Users
+  Edit3,
+  Trash2,
+  FileEdit,
+  Eye
 } from 'lucide-react';
+import { syllabusStatusLabel } from '@/lib/status';
 
 export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [deptFaculty, setDeptFaculty] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,21 +30,28 @@ export default function SubjectsPage() {
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
 
-  // Modal
+  // Create / Edit Course Modal
   const [modalOpen, setModalOpen] = useState(false);
-  const [newCode, setNewCode] = useState('');
-  const [newTitle, setNewTitle] = useState('');
-  const [newUnits, setNewUnits] = useState<number>(3);
-  const [newLecHours, setNewLecHours] = useState<number>(3);
-  const [newLabHours, setNewLabHours] = useState<number>(0);
-  const [newPrerequisite, setNewPrerequisite] = useState('None');
-  const [newYearLevel, setNewYearLevel] = useState('1st Year');
-  const [newSemester, setNewSemester] = useState('1st Semester');
-  const [newDeptId, setNewDeptId] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newProfessorName, setNewProfessorName] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<any | null>(null);
+  const [formCode, setFormCode] = useState('');
+  const [formTitle, setFormTitle] = useState('');
+  const [formUnits, setFormUnits] = useState<number>(3);
+  const [formLecHours, setFormLecHours] = useState<number>(3);
+  const [formLabHours, setFormLabHours] = useState<number>(0);
+  const [formPrerequisite, setFormPrerequisite] = useState('None');
+  const [formYearLevel, setFormYearLevel] = useState('1st Year');
+  const [formSemester, setFormSemester] = useState('1st Semester');
+  const [formDeptId, setFormDeptId] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formProfessorName, setFormProfessorName] = useState('');
+  const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchSubjects = async () => {
     setLoading(true);
@@ -60,15 +70,18 @@ export default function SubjectsPage() {
       setDepartments(dRes.departments || []);
       if (uRes?.user) {
         setCurrentUser(uRes.user);
-        if (uRes.user.departmentId) {
-          setDepartmentId(String(uRes.user.departmentId));
-          setNewDeptId(String(uRes.user.departmentId));
-        } else if (uRes.user.departmentCode && dRes.departments) {
-          const matched = dRes.departments.find((d: any) => d.code === uRes.user.departmentCode);
-          if (matched) {
-            setDepartmentId(String(matched.id));
-            setNewDeptId(String(matched.id));
-          }
+        const userDept = uRes.user.departmentId || uRes.user.departmentCode;
+        if (userDept) {
+          setDepartmentId(String(userDept));
+          setFormDeptId(String(userDept));
+        }
+        if (uRes.user.role === 'DepartmentHead' || uRes.user.role === 'Admin') {
+          fetch('/api/department-head/faculty')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((fData) => {
+              if (fData?.faculty) setDeptFaculty(fData.faculty);
+            })
+            .catch(() => {});
         }
       }
     } catch (err) {
@@ -87,65 +100,143 @@ export default function SubjectsPage() {
     fetchSubjects();
   };
 
-  const handleCreateSubject = async (e: React.FormEvent) => {
+  const openCreateModal = () => {
+    setEditingSubject(null);
+    setFormCode('');
+    setFormTitle('');
+    setFormUnits(3);
+    setFormLecHours(3);
+    setFormLabHours(0);
+    setFormPrerequisite('None');
+    setFormYearLevel('1st Year');
+    setFormSemester('1st Semester');
+    setFormDeptId(currentUser?.departmentCode || currentUser?.departmentId || departmentId || 'CPE');
+    setFormDescription('');
+    setFormProfessorName('');
+    setModalError('');
+    setModalOpen(true);
+  };
+
+  const openEditModal = (subject: any) => {
+    setEditingSubject(subject);
+    setFormCode(subject.code || '');
+    setFormTitle(subject.title || '');
+    setFormUnits(subject.units ?? 3);
+    setFormLecHours(subject.lecHours ?? 3);
+    setFormLabHours(subject.labHours ?? 0);
+    setFormPrerequisite(subject.prerequisite || 'None');
+    setFormYearLevel(subject.yearLevel || '1st Year');
+    setFormSemester(subject.semester || '1st Semester');
+    setFormDeptId(subject.departmentId || currentUser?.departmentCode || 'CPE');
+    setFormDescription(subject.description || '');
+    setFormProfessorName(subject.professorName || '');
+    setModalError('');
+    setModalOpen(true);
+  };
+
+  const handleSaveSubject = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError('');
-    setCreating(true);
+    setSaving(true);
 
     try {
+      const method = editingSubject ? 'PUT' : 'POST';
+      const payload: any = {
+        id: editingSubject?.id,
+        code: formCode,
+        title: formTitle,
+        units: formUnits,
+        lecHours: formLecHours,
+        labHours: formLabHours,
+        prerequisite: formPrerequisite,
+        yearLevel: formYearLevel,
+        semester: formSemester,
+        departmentId: formDeptId,
+        description: formDescription,
+        professorName: formProfessorName,
+      };
+
       const res = await fetch('/api/subjects', {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: newCode,
-          title: newTitle,
-          units: newUnits,
-          lecHours: newLecHours,
-          labHours: newLabHours,
-          prerequisite: newPrerequisite,
-          yearLevel: newYearLevel,
-          semester: newSemester,
-          departmentId: newDeptId,
-          description: newDescription,
-          professorName: newProfessorName,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setModalError(data.error || 'Failed to create subject.');
-        setCreating(false);
+        setModalError(data.error || 'Failed to save course.');
+        setSaving(false);
         return;
       }
 
       setModalOpen(false);
-      setNewCode('');
-      setNewTitle('');
-      setNewUnits(3);
-      setNewLecHours(3);
-      setNewLabHours(0);
-      setNewPrerequisite('None');
-      setNewDescription('');
-      setNewProfessorName('');
+      showToast(
+        editingSubject
+          ? `Course [${formCode.toUpperCase()}] updated successfully.`
+          : `Course [${formCode.toUpperCase()}] added to curriculum.`
+      );
       await fetchSubjects();
-    } catch (err) {
+    } catch {
       setModalError('Connection error.');
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
-  const canCreateSubject = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
-  const canManageSyllabus =
+  const handleDeleteSubject = async (subject: any) => {
+    if (!confirm(`Are you sure you want to delete course [${subject.code}] ${subject.title}?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/subjects?id=${subject.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Course [${subject.code}] deleted.`);
+        await fetchSubjects();
+      } else {
+        showToast(data.error || 'Failed to delete course.', 'error');
+      }
+    } catch {
+      showToast('Network error while deleting course.', 'error');
+    }
+  };
+
+  // Department Head (and Admin) have full right to create, edit, and delete courses in their department
+  const canEditCourses = currentUser?.role === 'DepartmentHead' || currentUser?.role === 'Admin';
+  // Faculty and Department Head can create/edit syllabi
+  const canAuthorSyllabus =
     currentUser?.role === 'Educator' ||
+    currentUser?.role === 'Faculty' ||
     currentUser?.role === 'DepartmentHead';
+  const canSwitchDepartments =
+    currentUser?.role === 'Admin' ||
+    currentUser?.role === 'Registrar' ||
+    currentUser?.role === 'VPAcademics' ||
+    (currentUser?.role === 'Dean' && !currentUser?.departmentCode);
 
   return (
     <div className="space-y-8">
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-2 text-xs font-semibold ${
+            toast.type === 'success'
+              ? 'bg-emerald-900 text-white border-emerald-700'
+              : 'bg-rose-900 text-white border-rose-700'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-300" />
+          )}
+          <span>{toast.text}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
               Academic Curriculum Catalog
             </span>
@@ -154,18 +245,21 @@ export default function SubjectsPage() {
                 Department: [{currentUser.departmentCode}] {currentUser.departmentName || currentUser.departmentCode}
               </span>
             )}
-            <span className="text-xs text-slate-500 font-medium">USJ-R Academic Subjects</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
-            Academic Subjects Directory
+            Department Courses & Syllabi
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Curriculum subjects catalog including Programming, Networking, Mathematics, and Engineering disciplines.
+            {canEditCourses
+              ? 'Manage and edit courses under your department, assign faculty instructors, and oversee syllabus status.'
+              : canAuthorSyllabus
+              ? 'View courses under your department and create or edit course syllabi for Department Head approval.'
+              : 'Browse academic courses and view official course syllabi.'}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
-          {canManageSyllabus && (
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {canAuthorSyllabus && (
             <Link
               href="/syllabi/new"
               className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-2"
@@ -174,19 +268,19 @@ export default function SubjectsPage() {
               <span>Create / Upload Syllabus</span>
             </Link>
           )}
-          {canCreateSubject && (
+          {canEditCourses && (
             <button
-              onClick={() => setModalOpen(true)}
+              onClick={openCreateModal}
               className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-2 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Subject</span>
+              <span>Add Course</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Dynamic Search and Filter Bar */}
+      {/* Search and Department Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-3">
         <form onSubmit={handleSearchSubmit} className="flex-1 w-full relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -194,14 +288,14 @@ export default function SubjectsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search academic subjects by code, title, or professor..."
+            placeholder="Search courses by code, title, or assigned faculty..."
             className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36]"
           />
         </form>
 
-        {currentUser?.role !== 'Admin' ? (
-          <div className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 whitespace-nowrap shadow-2xs">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Department:</span>
+        {!canSwitchDepartments ? (
+          <div className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 whitespace-nowrap">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Designated Dept:</span>
             <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[#005A36] font-mono font-extrabold text-[11px]">
               [{currentUser?.departmentCode || '...'}]
             </span>
@@ -233,22 +327,23 @@ export default function SubjectsPage() {
         <div className="min-h-[40vh] flex items-center justify-center">
           <div className="flex flex-col items-center space-y-3">
             <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-[#005A36] animate-spin" />
-            <p className="text-slate-500 text-xs font-semibold">Loading academic subjects catalog...</p>
+            <p className="text-slate-500 text-xs font-semibold">Loading courses catalog...</p>
           </div>
         </div>
       )}
 
-      {/* Subjects Grid */}
+      {/* Empty state */}
       {!loading && subjects.length === 0 && (
         <div className="bg-white p-12 rounded-3xl border border-slate-200 shadow-sm text-center space-y-3">
           <BookOpen className="w-12 h-12 text-slate-300 mx-auto" />
-          <h3 className="text-base font-bold text-slate-700">No Academic Subjects Found</h3>
+          <h3 className="text-base font-bold text-slate-700">No Courses Found</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            No subjects matched your filter criteria. Adjust the department filter or search terms.
+            No courses matched your filter criteria.
           </p>
         </div>
       )}
 
+      {/* Courses Grid */}
       {!loading && subjects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {subjects.map((subject) => {
@@ -259,7 +354,7 @@ export default function SubjectsPage() {
                 className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-4 hover:border-[#005A36] transition-all hover:shadow-md"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center space-x-2">
                       <span className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[#005A36] font-extrabold text-sm">
                         {subject.code}
@@ -268,52 +363,122 @@ export default function SubjectsPage() {
                         {subject.units ?? 3} Units
                       </span>
                     </div>
-                    <span className="text-xs text-slate-600 font-bold">
-                      [{subject.department?.code || subject.departmentId}]
-                    </span>
+
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-xs text-slate-600 font-bold">
+                        [{subject.department?.code || subject.departmentId}]
+                      </span>
+                      {canEditCourses && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(subject)}
+                            title="Edit Course Details & Assigned Faculty"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-[#005A36] hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubject(subject)}
+                            title="Delete Course"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <h3 className="text-base font-bold text-slate-900">{subject.title}</h3>
                   <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                    {subject.description || 'No description provided.'}
+                    {subject.description || 'Standard departmental curriculum course.'}
                   </p>
 
                   <div className="flex items-center justify-between text-[11px] bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-slate-600">
-                    <span className="font-semibold">Lec: {subject.lecHours ?? 3}h • Lab: {subject.labHours ?? 0}h</span>
-                    <span className="text-slate-500">Prereq: <strong className="text-slate-700">{subject.prerequisite || 'None'}</strong></span>
+                    <span className="font-semibold">
+                      Lec: {subject.lecHours ?? 3}h • Lab: {subject.labHours ?? 0}h
+                    </span>
+                    <span className="text-slate-500">
+                      Prereq: <strong className="text-slate-700">{subject.prerequisite || 'None'}</strong>
+                    </span>
                   </div>
 
-                  {subject.professorName && (
-                    <p className="text-[11px] text-slate-500">
-                      Instructor: <span className="font-semibold text-slate-700">{subject.professorName}</span>
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>
+                      Assigned Faculty:{' '}
+                      <strong className="text-slate-800">{subject.professorName || 'Unassigned'}</strong>
+                    </span>
+                    <span className="text-slate-400 font-semibold">{subject.yearLevel || '1st Year'}</span>
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
                   <div>
                     {activeSyllabus ? (
-                      <span className="text-[#005A36] font-bold flex items-center space-x-1">
-                        <History className="w-3.5 h-3.5" />
-                        <span>Version {activeSyllabus.currentVersionNumber}</span>
-                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-[#005A36] font-bold flex items-center space-x-1">
+                          <History className="w-3.5 h-3.5" />
+                          <span>v{activeSyllabus.currentVersionNumber}</span>
+                        </span>
+                        {currentUser?.role !== 'Registrar' && currentUser?.role !== 'VPAcademics' ? (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              activeSyllabus.status === 'APPROVED'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : activeSyllabus.status === 'UNDER_REVIEW'
+                                ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                : activeSyllabus.status === 'SUBMITTED'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {syllabusStatusLabel(activeSyllabus.status)}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#005A36] border border-emerald-200">
+                            File Uploaded
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <span className="text-amber-700 italic text-[11px] font-semibold">
-                        {currentUser?.role === 'Student' && !subject.isEnrolled ? 'Enrollment Required' : 'No active syllabus'}
+                      <span className="text-slate-400 italic text-[11px] font-medium">
+                        No syllabus file uploaded
                       </span>
                     )}
                   </div>
 
-                  {activeSyllabus ? (
-                    <Link
-                      href={`/syllabi/${activeSyllabus.id}`}
-                      className="text-[#005A36] hover:underline font-bold"
-                    >
-                      View Syllabus →
-                    </Link>
-                  ) : currentUser?.role === 'Student' ? (
-                    <span className="text-slate-400 text-[11px] italic">Not Enrolled</span>
-                  ) : null}
+                  <div className="flex items-center space-x-2">
+                    {activeSyllabus ? (
+                      <>
+                        <Link
+                          href={`/syllabi/${activeSyllabus.id}`}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px]"
+                        >
+                          <Eye className="w-3 h-3 text-[#005A36]" />
+                          <span>View</span>
+                        </Link>
+                        {canAuthorSyllabus && (
+                          <Link
+                            href={`/syllabi/${activeSyllabus.id}/edit`}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] font-bold text-[11px]"
+                          >
+                            <FileEdit className="w-3 h-3 text-[#CA8A04]" />
+                            <span>Edit Syllabus</span>
+                          </Link>
+                        )}
+                      </>
+                    ) : canAuthorSyllabus ? (
+                      <Link
+                        href="/syllabi/new"
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#005A36] hover:bg-[#004529] text-white font-bold text-[11px]"
+                      >
+                        <Plus className="w-3 h-3 text-[#FEF08A]" />
+                        <span>Create Syllabus</span>
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );
@@ -321,15 +486,17 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      {/* Create Subject Modal */}
+      {/* Create / Edit Course Modal (Department Head & Admin) */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white max-w-lg w-full p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4 text-slate-900 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="font-bold text-base text-[#005A36]">Add New Academic Subject</h2>
+              <h2 className="font-bold text-base text-[#005A36]">
+                {editingSubject ? `Edit Course: [${editingSubject.code}]` : 'Add New Department Course'}
+              </h2>
               <button
                 onClick={() => setModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -342,25 +509,26 @@ export default function SubjectsPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreateSubject} className="space-y-4">
+            <form onSubmit={handleSaveSubject} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Subject Code</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Course Code *</label>
                   <input
                     type="text"
                     required
-                    value={newCode}
-                    onChange={(e) => setNewCode(e.target.value)}
-                    placeholder="Subject code (e.g. CPE101)"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 uppercase focus:outline-none focus:border-[#005A36]"
+                    disabled={Boolean(editingSubject)}
+                    value={formCode}
+                    onChange={(e) => setFormCode(e.target.value)}
+                    placeholder="e.g. CPE101"
+                    className="w-full bg-white disabled:bg-slate-100 border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 uppercase font-mono focus:outline-none focus:border-[#005A36]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Units</label>
                   <select
-                    value={newUnits}
-                    onChange={(e) => setNewUnits(Number(e.target.value))}
+                    value={formUnits}
+                    onChange={(e) => setFormUnits(Number(e.target.value))}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 font-semibold focus:outline-none focus:border-[#005A36]"
                   >
                     <option value={1}>1</option>
@@ -373,13 +541,13 @@ export default function SubjectsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Subject Title</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Course Title *</label>
                 <input
                   type="text"
                   required
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Subject title (e.g. Computer Programming 1)"
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="e.g. Computer Programming 1"
                   className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                 />
               </div>
@@ -390,8 +558,8 @@ export default function SubjectsPage() {
                   <input
                     type="number"
                     min={0}
-                    value={newLecHours}
-                    onChange={(e) => setNewLecHours(Number(e.target.value))}
+                    value={formLecHours}
+                    onChange={(e) => setFormLecHours(Number(e.target.value))}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                   />
                 </div>
@@ -400,8 +568,8 @@ export default function SubjectsPage() {
                   <input
                     type="number"
                     min={0}
-                    value={newLabHours}
-                    onChange={(e) => setNewLabHours(Number(e.target.value))}
+                    value={formLabHours}
+                    onChange={(e) => setFormLabHours(Number(e.target.value))}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                   />
                 </div>
@@ -411,8 +579,8 @@ export default function SubjectsPage() {
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Year Level</label>
                   <select
-                    value={newYearLevel}
-                    onChange={(e) => setNewYearLevel(e.target.value)}
+                    value={formYearLevel}
+                    onChange={(e) => setFormYearLevel(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                   >
                     <option value="1st Year">1st Year</option>
@@ -424,13 +592,13 @@ export default function SubjectsPage() {
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Semester</label>
                   <select
-                    value={newSemester}
-                    onChange={(e) => setNewSemester(e.target.value)}
+                    value={formSemester}
+                    onChange={(e) => setFormSemester(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                   >
                     <option value="1st Semester">1st Semester</option>
                     <option value="2nd Semester">2nd Semester</option>
-                    <option value="Summer Term">Summer Term</option>
+                    <option value="Summer">Summer</option>
                   </select>
                 </div>
               </div>
@@ -439,48 +607,46 @@ export default function SubjectsPage() {
                 <label className="block text-xs font-bold text-slate-700 mb-1">Prerequisite</label>
                 <input
                   type="text"
-                  value={newPrerequisite}
-                  onChange={(e) => setNewPrerequisite(e.target.value)}
-                  placeholder="None or prerequisite subject code (e.g. CPE101)"
+                  value={formPrerequisite}
+                  onChange={(e) => setFormPrerequisite(e.target.value)}
+                  placeholder="None or prerequisite course code"
                   className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Professor / Faculty</label>
-                <input
-                  type="text"
-                  value={newProfessorName}
-                  onChange={(e) => setNewProfessorName(e.target.value)}
-                  placeholder="Instructor or Professor name"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Academic Department</label>
-                <div className="flex items-center space-x-2.5 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-[#005A36] text-xs font-extrabold font-mono shadow-2xs">
-                    [{currentUser?.departmentCode || '...'}]
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">
-                      {currentUser?.departmentName || (currentUser?.departmentCode ? `${currentUser.departmentCode} Department` : 'Assigned Department')}
-                    </p>
-                    <span className="text-[10px] text-emerald-700 font-medium block">
-                      Recognized automatically from account &bull; Locked
-                    </span>
-                  </div>
-                </div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Faculty Member</label>
+                {deptFaculty.length > 0 ? (
+                  <select
+                    value={formProfessorName}
+                    onChange={(e) => setFormProfessorName(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
+                  >
+                    <option value="">-- Select Department Faculty --</option>
+                    {deptFaculty.map((fac) => (
+                      <option key={fac.id} value={fac.fullName}>
+                        {fac.fullName} ({fac.email})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formProfessorName}
+                    onChange={(e) => setFormProfessorName(e.target.value)}
+                    placeholder="Faculty name"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
                 <textarea
                   rows={3}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Subject scope, learning goals, and course requirements..."
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="Course scope and description..."
                   className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-[#005A36]"
                 />
               </div>
@@ -489,16 +655,16 @@ export default function SubjectsPage() {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={creating}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm cursor-pointer"
                 >
-                  {creating ? 'Saving...' : 'Save Subject'}
+                  {saving ? 'Saving...' : editingSubject ? 'Save Changes' : 'Add Course'}
                 </button>
               </div>
             </form>
