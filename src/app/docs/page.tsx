@@ -13,12 +13,7 @@ import {
   Layers,
   Key,
   Network,
-  Users,
-  GraduationCap,
-  FileText,
-  Clock,
-  ChevronRight,
-  Info
+  ChevronRight
 } from 'lucide-react';
 
 export default function SwaggerDocsPage() {
@@ -535,7 +530,7 @@ export default function SwaggerDocsPage() {
                 <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
                   Database Tables ({Object.keys(tablesMeta).length})
                 </h4>
-                {Object.entries(tablesMeta).map(([key, meta]) => {
+                {Object.keys(tablesMeta).map((key) => {
                   const isSelected = selectedTable === key;
                   return (
                     <button

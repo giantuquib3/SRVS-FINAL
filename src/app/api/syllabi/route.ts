@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { createNotification } from '@/lib/notifications';
 import { getDepartmentName } from '@/lib/departments';
-import { SYLLABUS_STATUS, SEMESTERS, DEFAULT_ACADEMIC_YEAR, DEFAULT_SEMESTER, DEFAULT_SECTION, parseSyllabusStatusParam } from '@/lib/status';
+import {
+  SYLLABUS_STATUS,
+  SEMESTERS,
+  DEFAULT_ACADEMIC_YEAR,
+  DEFAULT_SEMESTER,
+  DEFAULT_SECTION,
+  parseSyllabusStatusParam,
+} from '@/lib/status';
+import { normalizeSyllabusContent, extractReviewComments } from '@/lib/syllabus-template';
+import { getFacultyEditPermissionsMap } from '@/lib/edit-permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +21,6 @@ function applyStatusFilter(where: any, status: string | null) {
   if (!status || status.toUpperCase() === 'ALL') return;
   const canonical = parseSyllabusStatusParam(status);
   if (canonical === SYLLABUS_STATUS.SUBMITTED) {
-    // "Pending" includes syllabi that a reviewer has already picked up
     where.status = { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] };
   } else {
     where.status = canonical ?? status;
@@ -36,10 +45,8 @@ export async function GET(req: NextRequest) {
 
     // Role & Department-Level Data Isolation
     if (user?.role === 'Registrar' || user?.role === 'VPAcademics' || user?.role === 'Admin') {
-      // School Registrar, VP-Academics, and Admin can view all syllabi across all departments
       applyStatusFilter(where, status);
       if (departmentId) where.departmentId = String(departmentId).trim().toUpperCase();
-
     } else if (user?.role === 'Dean') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (deptCode) {
@@ -48,20 +55,35 @@ export async function GET(req: NextRequest) {
         where.departmentId = String(departmentId).trim().toUpperCase();
       }
       applyStatusFilter(where, status);
-
     } else if (user?.role === 'DepartmentHead') {
-      // Department Head can only view their designated department
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      if (!deptCode) return NextResponse.json({ syllabi: [] });
+      if (!deptCode) return NextResponse.json({ syllabi: [], total: 0 });
       where.departmentId = deptCode;
       applyStatusFilter(where, status);
-
     } else if (user?.role === 'Educator' || user?.role === 'Faculty') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
       if (deptCode) where.departmentId = deptCode;
       applyStatusFilter(where, status);
-      if (mySyllabi) where.instructorId = parseInt(user.id, 10) || 0;
-
+      if (mySyllabi) {
+        const uid = parseInt(user.id, 10) || 0;
+        where.OR = [
+          { instructorId: uid },
+          { versions: { some: { editorId: uid } } },
+        ];
+      }
+    } else if (user?.role === 'Student') {
+      // Students can view ONLY currently approved syllabi for their enrolled subjects
+      const studentId = parseInt(user.id, 10) || 0;
+      const enrollments = await prisma.studentSubject.findMany({
+        where: { studentId, status: 'ENROLLED' },
+        select: { subjectId: true },
+      });
+      const enrolledSubjectIds = enrollments.map((e: any) => e.subjectId);
+      if (enrolledSubjectIds.length === 0) {
+        return NextResponse.json({ syllabi: [], total: 0 });
+      }
+      where.subjectId = { in: enrolledSubjectIds };
+      where.status = SYLLABUS_STATUS.APPROVED;
     } else {
       where.status = SYLLABUS_STATUS.APPROVED;
     }
@@ -69,18 +91,15 @@ export async function GET(req: NextRequest) {
     if (semester) where.semester = semester;
     if (academicYear) where.academicYear = academicYear;
 
-    // subjectId (integer database ID)
     if (subjectIdParam) {
       const parsedSubjectId = parseInt(subjectIdParam, 10);
       if (!isNaN(parsedSubjectId)) where.subjectId = parsedSubjectId;
     }
 
-    // subjectCode (string institutional subject code)
     if (subjectCodeParam) {
       where.subject = { ...(where.subject || {}), code: subjectCodeParam.trim().toUpperCase() };
     }
 
-    // instructorId (integer institutional ID)
     if (instructorParam) {
       const parsedInstId = parseInt(instructorParam, 10);
       if (!isNaN(parsedInstId)) where.instructorId = parsedInstId;
@@ -100,12 +119,19 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { updatedAt: 'desc' },
       include: {
+        department: true,
         subject: {
           select: {
             id: true,
             code: true,
             title: true,
+            description: true,
             units: true,
+            lecHours: true,
+            labHours: true,
+            prerequisite: true,
+            yearLevel: true,
+            semester: true,
             departmentId: true,
             professorName: true,
           },
@@ -121,41 +147,127 @@ export async function GET(req: NextRequest) {
           },
         },
         versions: {
-          orderBy: { versionNumber: 'desc' },
-          take: 1,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: {
             id: true,
             versionNumber: true,
             changeSummary: true,
+            changeType: true,
             statusAtSave: true,
             approvalStatus: true,
             fileName: true,
             fileUrl: true,
             fileType: true,
             fileSize: true,
+            editorId: true,
+            editor: { select: { id: true, fullName: true, email: true, role: true } },
+            submittedById: true,
+            submittedBy: { select: { id: true, fullName: true, email: true, role: true } },
+            submittedAt: true,
+            reviewedById: true,
+            reviewedBy: { select: { id: true, fullName: true, email: true, role: true } },
+            reviewedAt: true,
+            rejectionReason: true,
+            content: true,
             createdAt: true,
+            updatedAt: true,
           },
         },
       },
     });
 
+    const isStudent = user?.role === 'Student';
+    const isFacultyUser = user?.role === 'Educator' || user?.role === 'Faculty';
+    const isDeptHeadUser = user?.role === 'DepartmentHead';
+    const currentUserIdInt = user ? parseInt(user.id, 10) || 0 : 0;
+    const userDeptUpper = user?.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+
+    const editPermMap =
+      isFacultyUser && currentUserIdInt > 0 && syllabi.length > 0
+        ? await getFacultyEditPermissionsMap(
+            currentUserIdInt,
+            syllabi.map((s: any) => s.id)
+          )
+        : new Map();
+
     const formatted = syllabi.map((s: any) => {
       const deptCode = String(s.departmentId || s.subject?.departmentId || '');
-      const latestVersion = s.versions?.[0] || null;
+      const deptName = s.department?.name || getDepartmentName(deptCode);
+      const versionsList = s.versions || [];
+      const approvedVersion =
+        versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED && v.versionNumber === s.currentVersionNumber) ||
+        versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED) ||
+        null;
+      const latestVersion = isStudent ? approvedVersion : versionsList[0] || null;
+      const pendingVersion = isStudent
+        ? null
+        : versionsList.find(
+            (v: any) =>
+              v.approvalStatus === SYLLABUS_STATUS.SUBMITTED ||
+              v.approvalStatus === SYLLABUS_STATUS.UNDER_REVIEW
+          ) || null;
+      const latestRejectedVersion = isStudent
+        ? null
+        : versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.REJECTED) || null;
+
+      const stripHeavyContent = (v: any) =>
+        v
+          ? {
+              id: v.id,
+              versionNumber: v.versionNumber,
+              changeSummary: v.changeSummary,
+              changeType: v.changeType,
+              statusAtSave: v.statusAtSave,
+              approvalStatus: v.approvalStatus,
+              fileName: v.fileName,
+              fileUrl: v.fileUrl,
+              fileType: v.fileType,
+              fileSize: v.fileSize,
+              editorId: v.editorId,
+              editor: v.editor,
+              submittedById: v.submittedById,
+              submittedBy: v.submittedBy,
+              submittedAt: v.submittedAt,
+              reviewedById: v.reviewedById,
+              reviewedBy: v.reviewedBy,
+              reviewedAt: v.reviewedAt,
+              rejectionReason: v.rejectionReason,
+              reviewComments: extractReviewComments(v),
+              content: v.content?._proposalMeta ? { _proposalMeta: v.content._proposalMeta } : undefined,
+              createdAt: v.createdAt,
+            }
+          : null;
+
       const subjData = {
         id: s.subject?.id,
         code: s.subject?.code,
         title: s.subject?.title,
+        description: s.subject?.description,
         units: s.subject?.units,
+        lecHours: s.subject?.lecHours,
+        labHours: s.subject?.labHours,
+        prerequisite: s.subject?.prerequisite,
+        yearLevel: s.subject?.yearLevel,
+        semester: s.subject?.semester,
         departmentId: s.subject?.departmentId,
         professorName: s.subject?.professorName || null,
-        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        department: { id: deptCode, code: deptCode, name: deptName },
       };
+
+      const editReq = isFacultyUser ? editPermMap.get(s.id) || null : null;
+      const editPermissionStatus = isDeptHeadUser
+        ? 'DIRECT_ACCESS'
+        : isFacultyUser
+        ? editReq?.status || 'NONE'
+        : 'READ_ONLY';
+      const canEdit =
+        (isDeptHeadUser && Boolean(userDeptUpper && userDeptUpper === deptCode.toUpperCase())) ||
+        (isFacultyUser && editPermissionStatus === 'APPROVED');
 
       return {
         id: s.id,
         subjectId: s.subjectId,
-        courseId: s.subjectId, // Alias
+        courseId: s.subjectId,
         instructorId: s.instructorId,
         departmentId: deptCode,
         academicYear: s.academicYear,
@@ -163,14 +275,18 @@ export async function GET(req: NextRequest) {
         section: s.section,
         status: s.status,
         currentVersionNumber: s.currentVersionNumber,
+        totalVersions: versionsList.length,
         reviewerRemarks: s.reviewerRemarks,
         submittedAt: s.submittedAt,
         reviewedAt: s.reviewedAt,
         reviewedByUserId: s.reviewedByUserId,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
+        canEdit,
+        editPermissionStatus,
+        editPermissionRequest: editReq,
         subject: subjData,
-        course: subjData, // Alias
+        course: subjData,
         instructor: s.instructor
           ? {
               id: s.instructor.id,
@@ -181,8 +297,11 @@ export async function GET(req: NextRequest) {
               academicRank: s.instructor.academicRank,
             }
           : null,
-        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
-        latestVersion,
+        department: { id: deptCode, code: deptCode, name: deptName },
+        latestVersion: stripHeavyContent(latestVersion),
+        approvedVersion: stripHeavyContent(approvedVersion),
+        pendingVersion: stripHeavyContent(pendingVersion),
+        latestRejectedVersion: stripHeavyContent(latestRejectedVersion),
       };
     });
 
@@ -196,9 +315,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Faculty' && user.role !== 'DepartmentHead' && user.role !== 'Admin')) {
+    if (!user || (user.role !== 'Educator' && user.role !== 'Faculty' && user.role !== 'DepartmentHead')) {
       return NextResponse.json({
-        error: 'Unauthorized: Only Faculty and Department Heads can create or upload syllabi.',
+        error: 'Unauthorized: Only Faculty and Department Heads can create electronic syllabi.',
       }, { status: 403 });
     }
 
@@ -210,14 +329,16 @@ export async function POST(req: NextRequest) {
       courseCode,
       semester,
       academicYear,
+      section = 'A',
+      saveAsDraft = true,
+      changeSummary,
+      content: structuredContent,
       courseDescription,
       learningOutcomes,
       topics,
       references,
       gradingSystem,
       schedule,
-      section = 'A',
-      saveAsDraft = true,
       fileName,
       fileUrl,
       fileType,
@@ -228,60 +349,88 @@ export async function POST(req: NextRequest) {
     const targetSubjCode = subjectCode || courseCode;
 
     if ((!targetSubjId && !targetSubjCode) || !semester || !academicYear) {
-      return NextResponse.json({ error: 'subjectId or subjectCode, Semester, and Academic Year are required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Subject, Semester, and Academic Year are required.' }, { status: 400 });
     }
 
-    // Resolve subject
-    let subject = null;
+    let subject: (Awaited<ReturnType<typeof prisma.subject.findUnique>> & { department?: { name: string } | null }) | null = null;
     if (targetSubjId && !isNaN(parseInt(String(targetSubjId), 10))) {
-      subject = await prisma.subject.findUnique({ where: { id: parseInt(String(targetSubjId), 10) } });
+      subject = await prisma.subject.findUnique({
+        where: { id: parseInt(String(targetSubjId), 10) },
+        include: { department: true },
+      });
     } else if (targetSubjCode) {
-      subject = await prisma.subject.findUnique({ where: { code: String(targetSubjCode).trim().toUpperCase() } });
+      subject = await prisma.subject.findUnique({
+        where: { code: String(targetSubjCode).trim().toUpperCase() },
+        include: { department: true },
+      });
     }
 
     if (!subject) {
       return NextResponse.json({ error: 'Selected subject was not found.' }, { status: 404 });
     }
 
-    // Department Isolation
+    // Department Isolation: Faculty & Department Heads can only create syllabi within their assigned department
     const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-    if (userDeptCode && subject.departmentId.toUpperCase() !== userDeptCode) {
+    if (!userDeptCode || subject.departmentId.toUpperCase() !== userDeptCode) {
       return NextResponse.json({
-        error: `You may only create syllabi for subjects within your assigned department (${userDeptCode}).`,
+        error: `Forbidden: You may only create syllabi for subjects within your assigned department (${userDeptCode || 'None'}).`,
       }, { status: 403 });
     }
 
-    // File type validation (PDF syllabi only)
-    if (fileUrl && fileType && fileType.toUpperCase() !== 'PDF') {
+    // Prevent duplicate syllabus creation when Version 1 already exists (also prevents Faculty bypassing edit permission!)
+    const existingForSubject = await prisma.syllabus.findFirst({
+      where: { subjectId: subject.id },
+      select: { id: true, currentVersionNumber: true },
+    });
+    if (existingForSubject) {
+      return NextResponse.json(
+        {
+          error:
+            user.role === 'DepartmentHead'
+              ? `An electronic syllabus (Version ${existingForSubject.currentVersionNumber}) already exists for [${subject.code}]. Open and edit it directly to submit Version ${existingForSubject.currentVersionNumber + 1} for Dean approval.`
+              : `An electronic syllabus (Version ${existingForSubject.currentVersionNumber}) already exists for [${subject.code}]. Please request edit permission from your Department Head to revise it.`,
+          existingSyllabusId: existingForSubject.id,
+        },
+        { status: 409 }
+      );
+    }
+
+    const normalizedContent = normalizeSyllabusContent(
+      structuredContent || {
+        courseDescription,
+        learningOutcomes,
+        topics,
+        references,
+        gradingSystem,
+        schedule,
+      },
+      subject,
+      subject.department?.name || getDepartmentName(subject.departmentId)
+    );
+
+    if (!normalizedContent.courseDescription.trim()) {
       return NextResponse.json({
-        error: 'Invalid file type. The SRVS system accepts PDF syllabi only.',
+        error: 'Please provide a Course Overview / Description for the electronic syllabus.',
       }, { status: 400 });
     }
 
-    if (!fileUrl && (!courseDescription || !courseDescription.trim())) {
-      return NextResponse.json({
-        error: 'Please provide either a subject description or an uploaded PDF syllabus document.',
-      }, { status: 400 });
-    }
-
-    // Workflow enforcement: DRAFT -> SUBMITTED -> UNDER_REVIEW -> APPROVED / REJECTED
+    // Dual approval workflow:
+    // - Draft -> DRAFT
+    // - Faculty submit -> SUBMITTED (Pending Department Head Approval)
+    // - Department Head submit -> UNDER_REVIEW (Pending Dean Approval — NEVER self-approved!)
     const isDraft = saveAsDraft === true;
-    const initialStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
-    const versionApprovalStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
+    const isDeptHead = user.role === 'DepartmentHead';
+    const targetStatus = isDraft
+      ? SYLLABUS_STATUS.DRAFT
+      : isDeptHead
+      ? SYLLABUS_STATUS.UNDER_REVIEW
+      : SYLLABUS_STATUS.SUBMITTED;
+
     const now = new Date();
     const currentUserIdInt = parseInt(user.id, 10) || 0;
 
-    const contentSnapshot = {
-      courseDescription: courseDescription?.trim() || '',
-      learningOutcomes: Array.isArray(learningOutcomes) ? learningOutcomes : [],
-      topics: Array.isArray(topics) ? topics : [],
-      references: Array.isArray(references) ? references : [],
-      gradingSystem: Array.isArray(gradingSystem) ? gradingSystem : [],
-      schedule: schedule?.trim() || '',
-    };
-
     let instructorIdInt = currentUserIdInt;
-    if (user.role === 'DepartmentHead' && body.instructorId) {
+    if (isDeptHead && body.instructorId) {
       const parsedInstructorId = parseInt(String(body.instructorId), 10);
       if (!isNaN(parsedInstructorId)) {
         const assignedUser = await prisma.user.findUnique({ where: { id: parsedInstructorId } });
@@ -291,15 +440,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Academic term this syllabus is for
     const termAcademicYear = String(academicYear || DEFAULT_ACADEMIC_YEAR).trim();
-    const termSemester = String(semester || DEFAULT_SEMESTER).trim();
+    const termSemester = String(semester || DEFAULT_SEMESTER).trim().replace('Summer Term', 'Summer');
     const termSection = String(section || DEFAULT_SECTION).trim().toUpperCase();
     if (!(SEMESTERS as readonly string[]).includes(termSemester)) {
       return NextResponse.json({ error: `Invalid semester "${termSemester}". Allowed: ${SEMESTERS.join(', ')}.` }, { status: 400 });
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const summaryText =
+      changeSummary?.trim() ||
+      (isDeptHead
+        ? 'Initial electronic syllabus authored by Department Head (Version 1)'
+        : 'Initial electronic syllabus authored by Faculty (Version 1)');
+
+    const result = await prisma.$transaction(async (tx: any) => {
       const syllabus = await tx.syllabus.create({
         data: {
           subjectId: subject.id,
@@ -308,7 +462,7 @@ export async function POST(req: NextRequest) {
           academicYear: termAcademicYear,
           semester: termSemester,
           section: termSection,
-          status: initialStatus,
+          status: targetStatus,
           currentVersionNumber: 1,
           submittedAt: isDraft ? null : now,
         },
@@ -319,16 +473,14 @@ export async function POST(req: NextRequest) {
           syllabusId: syllabus.id,
           versionNumber: 1,
           editorId: currentUserIdInt,
-          changeSummary: fileUrl
-            ? `Initial syllabus creation with uploaded PDF document (${fileName})`
-            : 'Initial syllabus drafting (Version 1)',
+          changeSummary: summaryText,
           changeType: 'Create',
-          statusAtSave: versionApprovalStatus,
-          approvalStatus: versionApprovalStatus,
-          content: contentSnapshot,
+          statusAtSave: targetStatus,
+          approvalStatus: targetStatus,
+          content: normalizedContent as any,
           fileName: fileName || null,
           fileUrl: fileUrl || null,
-          fileType: 'PDF',
+          fileType: fileUrl ? fileType || 'PDF' : null,
           fileSize: fileSize || null,
           submittedById: isDraft ? null : currentUserIdInt,
           submittedAt: isDraft ? null : now,
@@ -343,19 +495,55 @@ export async function POST(req: NextRequest) {
       userDisplayName: user.fullName,
       actionType: isDraft ? 'DraftSyllabus' : 'SubmitSyllabus',
       resultStatus: 'Success',
-      description: `Created syllabus for [${subject.code}] ${subject.title} (${semester}, AY ${academicYear}) – Status: ${initialStatus}`,
+      description: `Created electronic syllabus v1 for [${subject.code}] ${subject.title} (${termSemester}, AY ${termAcademicYear}) – Status: ${targetStatus}`,
       entityType: 'Syllabus',
       entityId: String(result.syllabus.id),
     });
 
-    return NextResponse.json({
-      success: true,
-      syllabus: result.syllabus,
-      version: result.version,
-      message: isDraft
-        ? 'Syllabus draft saved successfully.'
-        : 'Syllabus submitted for department head review and approval.',
-    }, { status: 201 });
+    // Notify the appropriate reviewer when submitted
+    if (!isDraft) {
+      if (isDeptHead) {
+        const deans = await prisma.user.findMany({
+          where: { role: 'Dean', accountStatus: 'Active' },
+          select: { id: true },
+        });
+        for (const dean of deans) {
+          await createNotification(
+            String(dean.id),
+            `Dept. Head Syllabus Submission: ${subject.code}`,
+            `Department Head ${user.fullName} submitted [${subject.code}] ${subject.title} (v1) for Dean review and approval.`,
+            `/department/syllabus-approvals/${result.version.id}`
+          );
+        }
+      } else {
+        const deptHeads = await prisma.user.findMany({
+          where: { role: 'DepartmentHead', departmentId: subject.departmentId, accountStatus: 'Active' },
+          select: { id: true },
+        });
+        for (const dh of deptHeads) {
+          await createNotification(
+            String(dh.id),
+            `Faculty Syllabus Submission: ${subject.code}`,
+            `Faculty ${user.fullName} submitted [${subject.code}] ${subject.title} (v1) for Department Head review and approval.`,
+            `/department/syllabus-approvals/${result.version.id}`
+          );
+        }
+      }
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        syllabus: result.syllabus,
+        version: result.version,
+        message: isDraft
+          ? 'Electronic syllabus Version 1 saved as draft.'
+          : isDeptHead
+          ? 'Electronic syllabus Version 1 submitted to the Dean for review and approval.'
+          : 'Electronic syllabus Version 1 submitted to the Department Head for review and approval.',
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Error creating syllabus:', error);
     return NextResponse.json({ error: 'Failed to create syllabus: ' + error.message }, { status: 500 });

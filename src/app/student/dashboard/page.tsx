@@ -7,7 +7,6 @@ import {
   Calendar,
   Eye,
   RefreshCw,
-  Layers,
   Download,
   ExternalLink,
   X,
@@ -21,6 +20,7 @@ import { roleLabel } from '@/lib/status';
 
 export default function InstitutionalSyllabusViewerPage() {
   const [syllabi, setSyllabi] = useState<any[]>([]);
+  const [departmentsList, setDepartmentsList] = useState<any[]>(DEPARTMENTS);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -38,12 +38,14 @@ export default function InstitutionalSyllabusViewerPage() {
   const fetchRepositoryData = async () => {
     setLoading(true);
     try {
-      const [meRes, sylRes] = await Promise.all([
+      const [meRes, sylRes, deptRes] = await Promise.all([
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/syllabi?status=ALL').then((r) => r.json()),
+        fetch('/api/departments').then((r) => (r.ok ? r.json() : null)),
       ]);
       if (meRes?.user) setCurrentUser(meRes.user);
       setSyllabi(sylRes.syllabi || []);
+      if (deptRes?.departments?.length) setDepartmentsList(deptRes.departments);
     } catch (err) {
       console.error('Error fetching institutional syllabi:', err);
     } finally {
@@ -191,7 +193,7 @@ export default function InstitutionalSyllabusViewerPage() {
             Departmental Syllabus Files Repository
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Browse, view, and download course syllabus files uploaded across all engineering departments.
+            Browse, view electronically, and download course syllabi across all academic departments.
           </p>
         </div>
 
@@ -237,7 +239,7 @@ export default function InstitutionalSyllabusViewerPage() {
           </span>
         </button>
 
-        {DEPARTMENTS.map((dept) => {
+        {departmentsList.map((dept) => {
           const count = syllabi.filter((s) => s.departmentId === dept.id).length;
           const isSelected = departmentFilter === dept.id;
           return (
@@ -292,8 +294,8 @@ export default function InstitutionalSyllabusViewerPage() {
             onChange={(e) => setDepartmentFilter(e.target.value)}
             className="w-full sm:w-64 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
           >
-            <option value="">All Engineering Departments</option>
-            {DEPARTMENTS.map((d) => (
+            <option value="">All Academic Departments</option>
+            {departmentsList.map((d) => (
               <option key={d.id} value={d.id}>
                 [{d.code}] {d.name}
               </option>
@@ -395,33 +397,13 @@ export default function InstitutionalSyllabusViewerPage() {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {pdfUrl ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPdfPreviewModal({
-                            isOpen: true,
-                            fileUrl: pdfUrl,
-                            fileName: displayFileName,
-                            courseCode: subject.code,
-                            courseTitle: subject.title,
-                            syllabusId: item.id,
-                          })
-                        }
-                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-1.5 transition-all cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-[#005A36]" />
-                        <span>View File</span>
-                      </button>
-                    ) : (
-                      <Link
-                        href={`/syllabi/${item.id}`}
-                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-1.5 transition-all"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-[#005A36]" />
-                        <span>View File</span>
-                      </Link>
-                    )}
+                    <Link
+                      href={`/syllabi/${item.id}`}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-1.5 transition-all"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#005A36]" />
+                      <span>View Syllabus</span>
+                    </Link>
 
                     <button
                       type="button"
@@ -443,7 +425,7 @@ export default function InstitutionalSyllabusViewerPage() {
       {/* PDF Preview Modal */}
       {pdfPreviewModal?.isOpen && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setPdfPreviewModal(null)}
         >
           <div

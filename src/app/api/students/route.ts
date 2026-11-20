@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       enrollmentMap.get(enr.studentId)!.push(enr.subjectId);
     }
 
-    const students = rawStudents.map((s) => {
+    const students = rawStudents.map((s: any) => {
       const enrolledSubjects = enrollmentMap.get(s.id) || [];
 
       return {

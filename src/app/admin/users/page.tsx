@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  Users,
   Shield,
   ArrowLeft,
   RefreshCw,
@@ -435,7 +434,7 @@ export default function UsersManagementPage() {
                     ) : (u.departmentCode || u.departmentId || u.department?.code) ? (
                       <div className="space-y-0.5">
                         <div className="flex items-center space-x-1.5">
-                          <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-2xs">
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-sm">
                             [{u.departmentCode || u.departmentId || u.department?.code}]
                           </span>
                         </div>
@@ -454,7 +453,7 @@ export default function UsersManagementPage() {
                           {(Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects : String(u.enrolledSubjects).split(',')).map((code: string) => (
                             <span
                               key={String(code).trim()}
-                              className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs"
+                              className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm"
                             >
                               {String(code).trim()}
                             </span>
@@ -561,7 +560,7 @@ export default function UsersManagementPage() {
 
             <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
               <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed">
-                <strong>Policy:</strong> Students and Faculty self-register through the public portal. Administrators provision <strong>Admin</strong> and <strong>Department Head</strong> accounts only.
+                <strong>Policy:</strong> Administrators may provision <strong>School Registrar</strong>, <strong>VP-Academics</strong>, <strong>Dean</strong>, <strong>Department Head</strong>, <strong>Faculty</strong>, and <strong>System Administrator</strong> accounts. Department assignment applies only to Department Heads and Faculty.
               </div>
 
               <div className="grid grid-cols-2 gap-3">

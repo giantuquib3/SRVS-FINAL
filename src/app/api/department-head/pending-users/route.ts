@@ -105,8 +105,8 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const studentsCount = formatted.filter((u) => u.type === 'Student').length;
-    const facultyCount = formatted.filter((u) => u.type === 'Faculty').length;
+    const studentsCount = formatted.filter((u: any) => u.type === 'Student').length;
+    const facultyCount = formatted.filter((u: any) => u.type === 'Faculty').length;
 
     const formatParam = req.nextUrl.searchParams.get('format');
     if (formatParam === 'detailed' || formatParam === 'object') {

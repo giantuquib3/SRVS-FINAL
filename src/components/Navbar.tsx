@@ -5,22 +5,17 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   BookOpen,
-  User,
   LogOut,
-  Shield,
   Layers,
-  GraduationCap,
   FileText,
   Bell,
   CheckCircle,
-  Clock,
   Menu,
   X,
   FileCode,
   LayoutDashboard,
   Users,
   History,
-  PlusCircle,
   LogIn,
   UserPlus,
   ChevronRight
@@ -113,8 +108,6 @@ export default function Navbar() {
     setUnreadCount(0);
   };
 
-  const isAuthPage = pathname === '/login' || pathname === '/register';
-
   const getInitials = (name?: string) => {
     if (!name) return 'U';
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -145,19 +138,19 @@ export default function Navbar() {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'Admin':
-        return <span className="bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">System Admin</span>;
+        return <span className="bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">System Admin</span>;
       case 'Registrar':
-        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">School Registrar</span>;
+        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">School Registrar</span>;
       case 'VPAcademics':
-        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">VP-Academics</span>;
+        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">VP-Academics</span>;
       case 'Dean':
-        return <span className="bg-[#F3E8FF] text-[#6B21A8] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Dean</span>;
+        return <span className="bg-[#F3E8FF] text-[#6B21A8] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Dean</span>;
       case 'DepartmentHead':
-        return <span className="bg-[#FEF9C3] text-[#A16207] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Department Head</span>;
+        return <span className="bg-[#FEF9C3] text-[#A16207] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Department Head</span>;
       case 'Educator':
       case 'Faculty':
       default:
-        return <span className="bg-[#DCFCE7] text-[#166534] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-xs">Faculty</span>;
+        return <span className="bg-[#DCFCE7] text-[#166534] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Faculty</span>;
     }
   };
 
@@ -186,9 +179,9 @@ export default function Navbar() {
         ];
       case 'Dean':
         return [
-          { label: 'Dean Department Portal', href: '/dept/dashboard', icon: LayoutDashboard },
-          { label: 'Syllabus Approvals (from Dept. Head)', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Department Courses', href: '/subjects', icon: BookOpen },
+          { label: 'Dean Review Portal', href: '/dept/dashboard', icon: LayoutDashboard },
+          { label: 'Dept. Head Submissions Queue', href: '/department/syllabus-approvals', icon: CheckCircle },
+          { label: 'All Academic Courses', href: '/subjects', icon: BookOpen },
         ];
       case 'DepartmentHead':
         return [
@@ -196,7 +189,6 @@ export default function Navbar() {
           { label: 'Syllabus Approvals (from Faculty)', href: '/department/syllabus-approvals', icon: CheckCircle },
           { label: 'Manage Dept. Courses', href: '/subjects', icon: BookOpen },
           { label: 'Faculty Management', href: '/dept/users', icon: Users },
-          { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
         ];
       case 'Educator':
       case 'Faculty':
@@ -204,7 +196,6 @@ export default function Navbar() {
         return [
           { label: 'Faculty Dashboard', href: '/educator/dashboard', icon: LayoutDashboard },
           { label: 'Department Courses', href: '/subjects', icon: BookOpen },
-          { label: 'Create / Upload Syllabus', href: '/syllabi/new', icon: PlusCircle },
         ];
     }
   };
@@ -315,7 +306,7 @@ export default function Navbar() {
                 {/* User Profile & Sign Out */}
                 <div className="flex items-center gap-3 pl-3.5 sm:pl-4 border-l border-white/15">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-xs font-bold text-[#FEF08A] shrink-0 shadow-xs">
+                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-xs font-bold text-[#FEF08A] shrink-0 shadow-sm">
                       {getInitials(user.fullName)}
                     </div>
                     <div className="hidden sm:flex flex-col justify-center text-left min-w-0">
@@ -380,7 +371,7 @@ export default function Navbar() {
           {/* Backdrop with fade-in blur */}
           <div
             onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300"
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300"
             aria-hidden="true"
           />
 
@@ -420,7 +411,7 @@ export default function Navbar() {
             <div className="flex-1 overflow-y-auto p-4 space-y-5">
               {/* User Profile Card (if logged in) */}
               {user ? (
-                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 shadow-xs">
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-[#005A36] text-[#FEF08A] font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
                       {getInitials(user.fullName)}
@@ -462,7 +453,7 @@ export default function Navbar() {
                     <Link
                       href="/register"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 transition-colors shadow-xs"
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 transition-colors shadow-sm"
                     >
                       Register
                     </Link>

@@ -12,33 +12,51 @@ import {
   GitCompare,
   RefreshCw,
   Eye,
-  History,
   Plus,
   UserCheck,
-  UserX,
   UserPlus,
-  Briefcase,
   X,
   CheckCircle2,
   Search,
   Edit3,
   Trash2,
-  ShieldCheck
+  ShieldCheck,
+  FileEdit,
+  Send,
+  PlusCircle,
+  KeyRound,
+  XCircle,
 } from 'lucide-react';
-import { syllabusStatusLabel } from '@/lib/status';
+import {
+  syllabusStatusLabel,
+  roleLabel,
+  getApprovalRouteLabel,
+  formatVersionLabel,
+  formatShortVersionLabel,
+} from '@/lib/status';
+import { DEPARTMENTS } from '@/lib/departments';
 
 export default function DeptHeadAndDeanDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [data, setData] = useState<any>(null);
+  const [departmentsList, setDepartmentsList] = useState<any[]>(DEPARTMENTS);
   const [courses, setCourses] = useState<any[]>([]);
   const [syllabi, setSyllabi] = useState<any[]>([]);
+  const [pendingQueue, setPendingQueue] = useState<any[]>([]);
+  const [myDeanSubmissions, setMyDeanSubmissions] = useState<any[]>([]);
+  const [editRequests, setEditRequests] = useState<any[]>([]);
+  const [editReqFilter, setEditReqFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'ALL'>('PENDING');
+  const [deanDeptFilter, setDeanDeptFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // Active Tab: 'syllabi' | 'courses' | 'faculty' | 'registrations'
-  const [activeTab, setActiveTab] = useState<'syllabi' | 'courses' | 'faculty' | 'registrations'>('syllabi');
-  const [syllabusStatusFilter, setSyllabusStatusFilter] = useState<string>('ACTION_REQUIRED');
+  // Active Tab
+  const [activeTab, setActiveTab] = useState<'approvals' | 'edit-requests' | 'syllabi' | 'my-dean' | 'courses' | 'faculty' | 'registrations'>('approvals');
 
-  // Faculty & Pending Faculty Registrations State
+  // Deny / Revoke Edit Permission Modal
+  const [editReqModal, setEditReqModal] = useState<{ request: any; action: 'REJECT' | 'REVOKE' } | null>(null);
+  const [editReqRemarks, setEditReqRemarks] = useState('');
+
+  // Faculty & Pending Registrations State (Dept Head)
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -50,7 +68,7 @@ export default function DeptHeadAndDeanDashboard() {
   const [newFacultyId, setNewFacultyId] = useState('');
   const [newFacultyName, setNewFacultyName] = useState('');
   const [newFacultyEmail, setNewFacultyEmail] = useState('');
-  const [newFacultyRank, setNewFacultyRank] = useState('Full-Time');
+  const [newFacultyRank] = useState('Full-Time');
   const [newFacultyPassword, setNewFacultyPassword] = useState('USJR@Faculty2026');
 
   // Add / Edit Course Modal (Department Head)
@@ -67,8 +85,10 @@ export default function DeptHeadAndDeanDashboard() {
   const [courseProfessor, setCourseProfessor] = useState('');
   const [courseDescription, setCourseDescription] = useState('');
 
-  // Reject Syllabus Modal
-  const [rejectingSyllabus, setRejectingSyllabus] = useState<any | null>(null);
+  // Quick Approve / Reject Modals for Pending Version
+  const [approvingVersion, setApprovingVersion] = useState<any | null>(null);
+  const [approveComments, setApproveComments] = useState('');
+  const [rejectingVersion, setRejectingVersion] = useState<any | null>(null);
   const [rejectRemarks, setRejectRemarks] = useState('');
 
   // Toast
@@ -77,23 +97,32 @@ export default function DeptHeadAndDeanDashboard() {
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 4000);
+    setTimeout(() => setToastMessage(null), 4500);
   };
 
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [meRes, statsRes, coursesRes, syllabiRes] = await Promise.all([
+      const deptQuery = deanDeptFilter ? `&departmentId=${encodeURIComponent(deanDeptFilter)}` : '';
+      const subjQuery = deanDeptFilter ? `?departmentId=${encodeURIComponent(deanDeptFilter)}` : '';
+      const [meRes, statsRes, coursesRes, syllabiRes, approvalsRes, deptsRes, editReqsRes] = await Promise.all([
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/dashboard/stats').then((r) => r.json()),
-        fetch('/api/subjects').then((r) => r.json()),
-        fetch('/api/syllabi?status=ALL').then((r) => r.json()),
+        fetch(`/api/subjects${subjQuery}`).then((r) => r.json()),
+        fetch(`/api/syllabi?status=ALL${deptQuery}`).then((r) => r.json()),
+        fetch(`/api/syllabus-approvals?status=PENDING_APPROVAL${deptQuery}`).then((r) => (r.ok ? r.json() : { approvals: [], mySubmissions: [] })),
+        fetch('/api/departments').then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/syllabus-edit-requests?status=ALL${deptQuery}`).then((r) => (r.ok ? r.json() : { requests: [] })),
       ]);
 
       if (meRes?.user) setCurrentUser(meRes.user);
       setData(statsRes);
+      if (deptsRes?.departments?.length) setDepartmentsList(deptsRes.departments);
       setCourses(coursesRes.subjects || coursesRes.courses || []);
       setSyllabi(syllabiRes.syllabi || []);
+      setPendingQueue(approvalsRes.approvals || []);
+      setMyDeanSubmissions(approvalsRes.mySubmissions || []);
+      setEditRequests(editReqsRes.requests || []);
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -126,34 +155,117 @@ export default function DeptHeadAndDeanDashboard() {
 
   useEffect(() => {
     fetchAllData();
+  }, [deanDeptFilter]);
+
+  useEffect(() => {
     fetchFacultyAndRegistrations();
+    if (typeof window !== 'undefined') {
+      const tabParam = new URLSearchParams(window.location.search).get('tab');
+      if (tabParam === 'edit-requests') setActiveTab('edit-requests');
+    }
   }, []);
+
+  const handleGrantEditPermission = async (requestItem: any) => {
+    setProcessingId(`edit-req-${requestItem.id}`);
+    try {
+      const res = await fetch(`/api/syllabus-edit-requests/${requestItem.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'APPROVE' }),
+      });
+      const resData = await res.json();
+      if (res.ok) {
+        showToast(resData.message || 'Edit permission granted to Faculty member.');
+        await fetchAllData();
+      } else {
+        showToast(resData.error || 'Failed to grant edit permission.', 'error');
+      }
+    } catch {
+      showToast('Network error while granting edit permission.', 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleConfirmDenyOrRevokeEditPermission = async () => {
+    if (!editReqModal || !editReqRemarks.trim()) return;
+    setProcessingId(`edit-req-${editReqModal.request.id}`);
+    try {
+      const res = await fetch(`/api/syllabus-edit-requests/${editReqModal.request.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: editReqModal.action,
+          remarks: editReqRemarks.trim(),
+        }),
+      });
+      const resData = await res.json();
+      if (res.ok) {
+        showToast(resData.message || 'Edit permission updated.');
+        setEditReqModal(null);
+        setEditReqRemarks('');
+        await fetchAllData();
+      } else {
+        showToast(resData.error || 'Failed to update edit permission.', 'error');
+      }
+    } catch {
+      showToast('Network error while updating edit permission.', 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const isDean = currentUser?.role === 'Dean' || data?.role === 'Dean';
   const isDeptHead = currentUser?.role === 'DepartmentHead' || data?.role === 'DepartmentHead';
   const currentDept = data?.department;
   const stats = data?.stats || {};
 
-  // Syllabus Approval / Rejection Handler
-  const handleSyllabusDecision = async (syllabusId: number, action: 'Approve' | 'Reject', remarks?: string) => {
-    setProcessingId(syllabusId);
+  // Version-Level Approve / Reject Handlers
+  const handleConfirmApprove = async () => {
+    if (!approvingVersion) return;
+    setProcessingId(approvingVersion.id);
     try {
-      const res = await fetch(`/api/syllabi/${syllabusId}/review`, {
+      const res = await fetch(`/api/syllabus-approvals/${approvingVersion.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, remarks }),
+        body: JSON.stringify({ comments: approveComments }),
       });
       const resData = await res.json();
       if (res.ok) {
-        showToast(resData.message || `Syllabus ${action.toLowerCase()}d successfully.`);
-        setRejectingSyllabus(null);
+        showToast(resData.message || 'Proposed version approved and promoted as current effective syllabus.');
+        setApprovingVersion(null);
+        setApproveComments('');
+        await fetchAllData();
+      } else {
+        showToast(resData.error || 'Failed to approve syllabus version.', 'error');
+      }
+    } catch {
+      showToast('Network error while approving syllabus.', 'error');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectingVersion || !rejectRemarks.trim()) return;
+    setProcessingId(rejectingVersion.id);
+    try {
+      const res = await fetch(`/api/syllabus-approvals/${rejectingVersion.id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejectionReason: rejectRemarks.trim() }),
+      });
+      const resData = await res.json();
+      if (res.ok) {
+        showToast(resData.message || 'Proposed version returned for revision with feedback.');
+        setRejectingVersion(null);
         setRejectRemarks('');
         await fetchAllData();
       } else {
-        showToast(resData.error || 'Failed to process syllabus review.', 'error');
+        showToast(resData.error || 'Failed to reject syllabus version.', 'error');
       }
     } catch {
-      showToast('Network error while reviewing syllabus.', 'error');
+      showToast('Network error while rejecting syllabus.', 'error');
     } finally {
       setProcessingId(null);
     }
@@ -333,18 +445,6 @@ export default function DeptHeadAndDeanDashboard() {
     }
   };
 
-  // Filter syllabi based on role & selected filter
-  // For Dept Head: ACTION_REQUIRED = 'SUBMITTED' (from Faculty)
-  // For Dean: ACTION_REQUIRED = 'UNDER_REVIEW' (approved by Dept Head)
-  const actionRequiredStatus = isDean ? 'UNDER_REVIEW' : 'SUBMITTED';
-  const actionRequiredSyllabi = syllabi.filter((s) => s.status === actionRequiredStatus);
-
-  const filteredSyllabi = syllabi.filter((s) => {
-    if (syllabusStatusFilter === 'ACTION_REQUIRED') return s.status === actionRequiredStatus;
-    if (syllabusStatusFilter === 'ALL') return true;
-    return s.status === syllabusStatusFilter;
-  });
-
   const filteredFaculty = facultyList.filter((f) => {
     if (!userSearch.trim()) return true;
     const q = userSearch.toLowerCase();
@@ -354,6 +454,8 @@ export default function DeptHeadAndDeanDashboard() {
       String(f.id).includes(q)
     );
   });
+
+  const pendingDeanFromDeptHead = myDeanSubmissions.filter((v) => v.approvalStatus === 'UNDER_REVIEW').length;
 
   return (
     <div className="space-y-8">
@@ -376,136 +478,161 @@ export default function DeptHeadAndDeanDashboard() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
-              {isDean ? 'College Dean Portal' : 'Department Head Portal'}
+              {isDean ? 'College of Engineering — Dean Portal' : 'Department Head Electronic Workspace'}
             </span>
-            {currentDept?.code && (
+            {isDeptHead && currentDept?.code && (
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200">
-                Designated Department: [{currentDept.code}] {currentDept.name || currentDept.code}
+                Assigned Department: [{currentDept.code}] {currentDept.name || currentDept.code}
               </span>
             )}
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
-            {isDean ? 'Dean Departmental Syllabus Portal' : 'Department Head Dashboard'}
+            {isDean ? 'Dean Electronic Syllabus Review Portal' : 'Department Head Syllabus & Course Dashboard'}
           </h1>
           <p className="text-xs text-slate-600 mt-1">
             {isDean
-              ? `View all syllabi and courses under [${currentDept?.code || 'your department'}] and approve syllabi endorsed by the Department Head.`
-              : `Approve syllabi submitted by [${currentDept?.code || 'department'}] Faculty and manage all courses under your department.`}
+              ? 'Review, preview, compare side-by-side, and approve or reject electronic syllabus revisions submitted by Department Heads across all academic departments.'
+              : `Manage Faculty edit permission requests, review Faculty syllabus revisions in [${currentDept?.code || 'your department'}], and edit syllabi directly for Dean approval.`}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {isDean && (
+            <select
+              value={deanDeptFilter}
+              onChange={(e) => setDeanDeptFilter(e.target.value)}
+              className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#005A36]"
+            >
+              <option value="">All Academic Departments</option>
+              {departmentsList.map((d) => (
+                <option key={d.id} value={d.id}>
+                  [{d.code}] {d.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <button
             onClick={() => {
               fetchAllData();
-              fetchFacultyAndRegistrations();
+              if (isDeptHead) fetchFacultyAndRegistrations();
             }}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-[#005A36] ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
 
-          <Link
-            href="/department/syllabus-approvals"
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-1.5"
-          >
-            <Clock className="w-4 h-4" />
-            <span>
-              {isDean ? 'Dean Approval Queue' : 'Faculty Approval Queue'}{' '}
-              {actionRequiredSyllabi.length > 0 ? `(${actionRequiredSyllabi.length})` : ''}
-            </span>
-          </Link>
-
           {isDeptHead && (
-            <>
-              <button
-                onClick={() => {
-                  setActiveTab('courses');
-                  openAddCourseModal();
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-[#FEF08A]" />
-                <span>Add Course</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('faculty');
-                  setCreateFacultyModal(true);
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-emerald-50 text-[#005A36] border border-[#005A36] shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
-              >
-                <UserPlus className="w-4 h-4 text-[#005A36]" />
-                <span>Add Faculty</span>
-              </button>
-            </>
+            <button
+              onClick={() => {
+                setActiveTab('courses');
+                openAddCourseModal();
+              }}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-[#FEF08A]" />
+              <span>Add Subject</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* Role Workflow Banner */}
-      <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-start space-x-3 text-xs text-emerald-950">
-        <ShieldCheck className="w-4 h-4 text-[#005A36] shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <p className="font-bold text-[#005A36]">
-            {isDean
-              ? `Dean Authority — Designated Department [${currentDept?.code}]`
-              : `Department Head Authority — Designated Department [${currentDept?.code}]`}
-          </p>
-          <p className="text-slate-600 text-[11px] leading-relaxed">
-            {isDean
-              ? 'Approval Workflow: Faculty submits syllabus → Department Head reviews & endorses → Dean grants final approval.'
-              : 'Approval Workflow: Faculty submits syllabus → Department Head approves (forwards to Dean) & manages all department courses.'}
-          </p>
-        </div>
-      </div>
-
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${isDeptHead ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-4`}>
         <div
-          onClick={() => {
-            setActiveTab('syllabi');
-            setSyllabusStatusFilter('ACTION_REQUIRED');
-          }}
+          onClick={() => setActiveTab('approvals')}
           className={`p-4 rounded-2xl border shadow-sm space-y-1 transition-all cursor-pointer ${
-            actionRequiredSyllabi.length > 0
-              ? 'bg-amber-50/70 border-amber-300 hover:border-amber-500'
+            pendingQueue.length > 0
+              ? 'bg-amber-50/75 border-amber-300 hover:border-amber-500'
               : 'bg-white border-slate-200 hover:border-[#005A36]'
           }`}
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-              {isDean ? 'Awaiting Dean Approval' : 'From Faculty (Pending)'}
+              {isDean ? 'Awaiting Dean Approval' : 'Faculty Revisions Pending'}
             </span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <p className="text-2xl font-black text-[#854D0E]">{actionRequiredSyllabi.length}</p>
+          <p className="text-2xl font-black text-[#854D0E]">{pendingQueue.length}</p>
           <p className="text-[10px] text-amber-700 font-medium">
-            {isDean ? 'Endorsed by Department Head' : 'Awaiting Dept. Head endorsement'}
+            {isDean ? 'Submitted by Dept. Heads' : 'Submitted by Department Faculty'}
           </p>
         </div>
 
+        {isDeptHead && (
+          <div
+            onClick={() => setActiveTab('edit-requests')}
+            className={`p-4 rounded-2xl border shadow-sm space-y-1 transition-all cursor-pointer ${
+              editRequests.filter((r) => r.status === 'PENDING').length > 0
+                ? 'bg-[#FEF9C3]/70 border-[#CA8A04]/40 hover:border-[#CA8A04]'
+                : 'bg-white border-slate-200 hover:border-[#005A36]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-[#854D0E] uppercase tracking-wider">
+                Edit Permission Req.
+              </span>
+              <KeyRound className="w-4 h-4 text-[#CA8A04]" />
+            </div>
+            <p className="text-2xl font-black text-[#854D0E]">
+              {editRequests.filter((r) => r.status === 'PENDING').length}
+            </p>
+            <p className="text-[10px] text-amber-800 font-medium">
+              {editRequests.filter((r) => r.status === 'APPROVED').length} active granted
+            </p>
+          </div>
+        )}
+
         <div
-          onClick={() => {
-            setActiveTab('syllabi');
-            setSyllabusStatusFilter('APPROVED');
-          }}
+          onClick={() => setActiveTab('syllabi')}
           className="bg-white hover:border-[#005A36] p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 transition-all cursor-pointer"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
-              Final Approved Syllabi
+              Effective Approved Syllabi
             </span>
             <CheckCircle className="w-4 h-4 text-[#005A36]" />
           </div>
           <p className="text-2xl font-black text-[#005A36]">{stats.approvedSyllabi ?? 0}</p>
-          <p className="text-[10px] text-slate-500 font-medium">Approved by Dean</p>
+          <p className="text-[10px] text-slate-500 font-medium">Active official versions</p>
         </div>
+
+        {isDeptHead ? (
+          <div
+            onClick={() => setActiveTab('my-dean')}
+            className="bg-white hover:border-purple-400 p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">
+                My Edits → Dean
+              </span>
+              <Send className="w-4 h-4 text-purple-600" />
+            </div>
+            <p className="text-2xl font-black text-purple-900">{myDeanSubmissions.length}</p>
+            <p className="text-[10px] text-purple-600 font-medium">
+              {pendingDeanFromDeptHead} awaiting Dean decision
+            </p>
+          </div>
+        ) : (
+          <div
+            onClick={() => setActiveTab('syllabi')}
+            className="bg-white hover:border-[#005A36] p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Total Electronic Syllabi
+              </span>
+              <Layers className="w-4 h-4 text-[#005A36]" />
+            </div>
+            <p className="text-2xl font-black text-slate-800">{syllabi.length}</p>
+            <p className="text-[10px] text-slate-500 font-medium">Across selected departments</p>
+          </div>
+        )}
 
         <div
           onClick={() => setActiveTab('courses')}
@@ -513,33 +640,55 @@ export default function DeptHeadAndDeanDashboard() {
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Department Courses
+              {isDeptHead ? 'Department Subjects' : 'Academic Subjects'}
             </span>
             <BookOpen className="w-4 h-4 text-[#005A36]" />
           </div>
           <p className="text-2xl font-black text-slate-800">{courses.length}</p>
           <p className="text-[10px] text-slate-500 font-medium">
-            {isDeptHead ? 'Click to add or edit courses' : 'Designated department catalog'}
+            {isDeptHead ? 'Manage department catalog' : 'All departments catalog'}
           </p>
-        </div>
-
-        <div
-          onClick={() => setActiveTab('faculty')}
-          className="bg-white hover:border-[#005A36] p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Department Faculty
-            </span>
-            <Briefcase className="w-4 h-4 text-slate-400" />
-          </div>
-          <p className="text-2xl font-black text-slate-800">{facultyList.length || (stats.educatorsCount ?? 0)}</p>
-          <p className="text-[10px] text-slate-500 font-medium">Assigned to [{currentDept?.code}]</p>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap border-b border-slate-200 space-x-2">
+      <div className="flex flex-wrap border-b border-slate-200 gap-2">
+        <button
+          onClick={() => setActiveTab('approvals')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
+            activeTab === 'approvals'
+              ? 'border-[#005A36] text-[#005A36]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>{isDean ? 'Dept. Head Submissions Awaiting Dean' : 'Faculty Revisions Queue'}</span>
+          {pendingQueue.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+              {pendingQueue.length}
+            </span>
+          )}
+        </button>
+
+        {isDeptHead && (
+          <button
+            onClick={() => setActiveTab('edit-requests')}
+            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
+              activeTab === 'edit-requests'
+                ? 'border-[#005A36] text-[#005A36]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Edit Permission Requests</span>
+            {editRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#C99700] text-slate-950">
+                {editRequests.filter((r) => r.status === 'PENDING').length}
+              </span>
+            )}
+          </button>
+        )}
+
         <button
           onClick={() => setActiveTab('syllabi')}
           className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
@@ -549,13 +698,22 @@ export default function DeptHeadAndDeanDashboard() {
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>{isDean ? 'Department Syllabi & Dean Approvals' : 'Faculty Syllabus Approvals'}</span>
-          {actionRequiredSyllabi.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-              {actionRequiredSyllabi.length}
-            </span>
-          )}
+          <span>{isDean ? 'All Syllabi & Version History' : 'Department Syllabi'} ({syllabi.length})</span>
         </button>
+
+        {isDeptHead && (
+          <button
+            onClick={() => setActiveTab('my-dean')}
+            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
+              activeTab === 'my-dean'
+                ? 'border-[#005A36] text-[#005A36]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Send className="w-4 h-4" />
+            <span>My Revisions → Dean ({myDeanSubmissions.length})</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('courses')}
@@ -566,20 +724,22 @@ export default function DeptHeadAndDeanDashboard() {
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>{isDeptHead ? 'Manage Department Courses' : 'Department Courses'} ({courses.length})</span>
+          <span>{isDeptHead ? 'Manage Courses' : 'Courses Overview'} ({courses.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('faculty')}
-          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
-            activeTab === 'faculty'
-              ? 'border-[#005A36] text-[#005A36]'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <UserCheck className="w-4 h-4" />
-          <span>Department Faculty ({facultyList.length})</span>
-        </button>
+        {isDeptHead && (
+          <button
+            onClick={() => setActiveTab('faculty')}
+            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center space-x-2 ${
+              activeTab === 'faculty'
+                ? 'border-[#005A36] text-[#005A36]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>Department Faculty ({facultyList.length})</span>
+          </button>
+        )}
 
         {isDeptHead && registrations.length > 0 && (
           <button
@@ -591,191 +751,409 @@ export default function DeptHeadAndDeanDashboard() {
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Pending Faculty Registrations</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-              {registrations.length}
-            </span>
+            <span>Pending Registrations ({registrations.length})</span>
           </button>
         )}
       </div>
 
-      {/* TAB 1: SYLLABI & APPROVALS */}
-      {activeTab === 'syllabi' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+      {/* TAB 1B: FACULTY EDIT PERMISSION REQUESTS (DEPARTMENT HEAD ONLY) */}
+      {isDeptHead && activeTab === 'edit-requests' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
+                <KeyRound className="w-5 h-5 text-[#005A36]" />
+                <span>Faculty Syllabus Edit Permission Requests ({currentDept?.code || ''})</span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                Faculty members must receive your approval here before they can edit a syllabus. Once granted, their proposed changes will come back to you for final version approval.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED', 'ALL'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setEditReqFilter(st)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                    editReqFilter === st
+                      ? 'bg-[#005A36] text-white'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {st === 'APPROVED' ? 'Granted' : st === 'REJECTED' ? 'Denied' : st === 'ALL' ? 'All' : st.charAt(0) + st.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {editRequests.filter((r) => editReqFilter === 'ALL' || r.status === editReqFilter).length === 0 ? (
+            <div className="py-12 text-center space-y-2">
+              <KeyRound className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="text-sm font-bold text-slate-700">
+                No {editReqFilter === 'ALL' ? '' : editReqFilter.toLowerCase()} edit permission requests
+              </p>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                When Faculty members request permission to revise a department syllabus, their requests will appear here for your approval.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/70">
+                    <th className="py-2.5 px-3">Faculty Member</th>
+                    <th className="py-2.5 px-3">Subject & Current Version</th>
+                    <th className="py-2.5 px-3">Reason for Edit Request</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {editRequests
+                    .filter((r) => editReqFilter === 'ALL' || r.status === editReqFilter)
+                    .map((reqItem) => {
+                      const isBusy = processingId === `edit-req-${reqItem.id}`;
+                      return (
+                        <tr key={reqItem.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-3 align-top">
+                            <div className="font-bold text-slate-900 capitalize">{reqItem.faculty?.fullName}</div>
+                            <div className="text-[11px] text-slate-500">{reqItem.faculty?.email}</div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              Requested {new Date(reqItem.requestedAt).toLocaleDateString()}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3 align-top">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-extrabold text-[#005A36]">
+                                {reqItem.syllabus?.subject?.code}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono text-[10px] font-bold">
+                                v{reqItem.syllabus?.currentVersionNumber || 1}
+                              </span>
+                            </div>
+                            <div className="font-semibold text-slate-800">{reqItem.syllabus?.subject?.title}</div>
+                          </td>
+                          <td className="py-3.5 px-3 align-top max-w-sm">
+                            <p className="text-slate-700 leading-relaxed">{reqItem.reason}</p>
+                            {reqItem.reviewRemarks && reqItem.status !== 'PENDING' && (
+                              <p className="text-[11px] text-slate-500 italic mt-1">
+                                Remarks: &ldquo;{reqItem.reviewRemarks}&rdquo;
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 align-top">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                reqItem.status === 'PENDING'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : reqItem.status === 'APPROVED'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : reqItem.status === 'COMPLETED'
+                                  ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {reqItem.status === 'APPROVED'
+                                ? 'Permission Granted'
+                                : reqItem.status === 'REJECTED'
+                                ? 'Denied'
+                                : reqItem.status === 'COMPLETED'
+                                ? 'Revision Completed'
+                                : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-right align-top">
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              <Link
+                                href={`/syllabi/${reqItem.syllabusId}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
+                              >
+                                <Eye className="w-3 h-3 text-[#005A36]" />
+                                <span>View</span>
+                              </Link>
+                              {reqItem.status === 'PENDING' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => handleGrantEditPermission(reqItem)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer disabled:opacity-50"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3 text-[#FEF08A]" />
+                                    <span>{isBusy ? '...' : 'Grant Permission'}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => {
+                                      setEditReqModal({ request: reqItem, action: 'REJECT' });
+                                      setEditReqRemarks('');
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer disabled:opacity-50"
+                                  >
+                                    <XCircle className="w-3 h-3" />
+                                    <span>Deny</span>
+                                  </button>
+                                </>
+                              )}
+                              {reqItem.status === 'APPROVED' && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => {
+                                    setEditReqModal({ request: reqItem, action: 'REVOKE' });
+                                    setEditReqRemarks('');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer disabled:opacity-50"
+                                >
+                                  <XCircle className="w-3 h-3" />
+                                  <span>Revoke</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 1: PENDING VERSION APPROVAL QUEUE (DEPT HEAD REVIEWS FACULTY / DEAN REVIEWS DEPT HEAD) */}
+      {activeTab === 'approvals' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
             <div>
               <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
                 <ShieldCheck className="w-5 h-5 text-[#005A36]" />
                 <span>
                   {isDean
-                    ? `All Syllabi Under [${currentDept?.code}] & Dean Approval Queue`
-                    : `Faculty Syllabus Submissions Under [${currentDept?.code}]`}
+                    ? 'Department Head Submissions Awaiting Dean Approval'
+                    : `Faculty Submissions Awaiting Department Head Approval (${currentDept?.code || ''})`}
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                {isDean
-                  ? 'Approve syllabi endorsed by the Department Head or inspect any syllabus in your designated department.'
-                  : 'Approve syllabi submitted by Faculty to endorse them to the Dean, or return them for revision.'}
+                Preview electronic syllabus changes and compare side-by-side directly in SRVS before approving or rejecting with feedback.
               </p>
             </div>
+            <Link
+              href="/department/syllabus-approvals"
+              className="text-xs font-bold text-[#005A36] hover:underline"
+            >
+              Open Full Approval Queue →
+            </Link>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                {
-                  id: 'ACTION_REQUIRED',
-                  label: isDean ? 'Awaiting Dean Approval' : 'Awaiting Dept. Head Approval',
-                  count: actionRequiredSyllabi.length,
-                },
-                {
-                  id: isDean ? 'SUBMITTED' : 'UNDER_REVIEW',
-                  label: isDean ? 'Pending Dept. Head' : 'Endorsed to Dean',
-                  count: syllabi.filter((s) => s.status === (isDean ? 'SUBMITTED' : 'UNDER_REVIEW')).length,
-                },
-                {
-                  id: 'APPROVED',
-                  label: 'Final Approved',
-                  count: syllabi.filter((s) => s.status === 'APPROVED').length,
-                },
-                {
-                  id: 'ALL',
-                  label: 'All Dept. Syllabi',
-                  count: syllabi.length,
-                },
-              ].map((f) => {
-                const active = syllabusStatusFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setSyllabusStatusFilter(f.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                      active
-                        ? 'bg-[#005A36] text-white shadow-2xs'
-                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    <span>{f.label}</span>
-                    <span
-                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                        active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-white text-slate-600'
-                      }`}
-                    >
-                      {f.count}
-                    </span>
-                  </button>
-                );
-              })}
+          {pendingQueue.length === 0 ? (
+            <div className="py-12 text-center space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+              <p className="text-sm font-bold text-slate-700">No Pending Submissions Awaiting Your Review</p>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {isDean
+                  ? 'When a Department Head edits and submits a syllabus revision, it will appear here immediately for your Dean review.'
+                  : 'When Faculty members in your department submit new syllabi or proposed revisions, they will appear here.'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/70">
+                    <th className="py-2.5 px-3">Course & Dept</th>
+                    <th className="py-2.5 px-3">Submitted By</th>
+                    <th className="py-2.5 px-3">Proposed Version & Change Summary</th>
+                    <th className="py-2.5 px-3">Submitted</th>
+                    <th className="py-2.5 px-3 text-right">Review & Decision</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pendingQueue.map((item) => {
+                    const subj = item.syllabus?.subject || item.syllabus?.course;
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-3 align-top">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-extrabold text-[#005A36]">{subj?.code}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-mono font-bold">
+                              [{item.syllabus?.departmentId}]
+                            </span>
+                          </div>
+                          <div className="font-semibold text-slate-800 mt-0.5">{subj?.title}</div>
+                        </td>
+                        <td className="py-3.5 px-3 align-top">
+                          <div className="font-bold text-slate-900 capitalize">{item.editor?.fullName}</div>
+                          <div className="text-[10px] text-slate-500">{roleLabel(item.editor?.role)}</div>
+                        </td>
+                        <td className="py-3.5 px-3 align-top max-w-sm">
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9C3] text-[#854D0E] border border-[#CA8A04]/30">
+                            {formatVersionLabel(item)}
+                          </span>
+                          <p className="text-slate-700 mt-1">{item.changeSummary}</p>
+                        </td>
+                        <td className="py-3.5 px-3 align-top font-mono text-[11px] text-slate-500">
+                          {new Date(item.submittedAt || item.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="py-3.5 px-3 text-right align-top">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Link
+                              href={`/department/syllabus-approvals/${item.id}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30"
+                            >
+                              <GitCompare className="w-3 h-3" />
+                              <span>Preview & Compare</span>
+                            </Link>
+                            {item.canReview && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={processingId === item.id}
+                                  onClick={() => {
+                                    setApprovingVersion(item);
+                                    setApproveComments('');
+                                  }}
+                                  className="px-3 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={processingId === item.id}
+                                  onClick={() => {
+                                    setRejectingVersion(item);
+                                    setRejectRemarks('');
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: ALL SYLLABI & VERSION HISTORY */}
+      {activeTab === 'syllabi' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
+                <Layers className="w-5 h-5 text-[#005A36]" />
+                <span>
+                  {isDean ? 'All Electronic Syllabi & Versions' : `Department Electronic Syllabi (${currentDept?.code || ''})`}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                {isDeptHead
+                  ? 'View, compare versions, or edit any syllabus in your department (Department Head edits are routed to the Dean for approval).'
+                  : 'Inspect effective approved versions and complete revision histories across departments.'}
+              </p>
             </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
-                  <th className="py-2.5 px-3">Course Code & Title</th>
-                  <th className="py-2.5 px-3">Faculty Author</th>
-                  <th className="py-2.5 px-3">Term & AY</th>
-                  <th className="py-2.5 px-3">Version</th>
-                  <th className="py-2.5 px-3">Approval Status</th>
+                <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/70">
+                  <th className="py-2.5 px-3">Course</th>
+                  <th className="py-2.5 px-3">Effective Official Version</th>
+                  <th className="py-2.5 px-3">Latest Activity / Pending Revision</th>
                   <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredSyllabi.length === 0 ? (
+                {syllabi.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-slate-400 italic">
-                      No syllabi found in this category.
+                    <td colSpan={4} className="py-10 text-center text-slate-400 italic">
+                      No electronic syllabi found.
                     </td>
                   </tr>
                 ) : (
-                  filteredSyllabi.map((s) => {
+                  syllabi.map((s) => {
                     const subj = s.subject || s.course;
-                    const canApproveHere =
-                      (isDeptHead && s.status === 'SUBMITTED') ||
-                      (isDean && s.status === 'UNDER_REVIEW');
-
+                    const approved = s.approvedVersion;
+                    const pending = s.pendingVersion;
+                    const latest = s.latestVersion;
                     return (
                       <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-3">
-                          <span className="font-mono font-extrabold text-[#005A36] mr-1.5">
-                            [{subj?.code}]
-                          </span>
-                          <span className="font-bold text-slate-900">{subj?.title}</span>
+                        <td className="py-3.5 px-3 align-top">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-extrabold text-[#005A36]">{subj?.code}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono font-bold">
+                              [{s.departmentId}]
+                            </span>
+                          </div>
+                          <div className="font-bold text-slate-900">{subj?.title}</div>
+                          <div className="text-[10px] text-slate-500">
+                            {s.semester}, AY {s.academicYear} • {s.totalVersions || 1} version(s)
+                          </div>
                         </td>
-                        <td className="py-3.5 px-3">
-                          <p className="font-semibold text-slate-800">{s.instructor?.fullName || subj?.professorName || 'Faculty'}</p>
-                          <p className="text-[10px] font-mono text-slate-500">{s.instructor?.email || ''}</p>
-                        </td>
-                        <td className="py-3.5 px-3 text-slate-600">
-                          {s.semester}, {s.academicYear}
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[11px]">
-                            <History className="w-3 h-3 text-[#005A36]" />
-                            <span>v{s.currentVersionNumber}</span>
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                              s.status === 'APPROVED'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : s.status === 'UNDER_REVIEW'
-                                ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                : s.status === 'SUBMITTED'
-                                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                : s.status === 'REJECTED'
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            {syllabusStatusLabel(s.status)}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-3 text-right space-x-1.5">
-                          <Link
-                            href={`/syllabi/${s.id}`}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-                          >
-                            <Eye className="w-3 h-3 text-[#005A36]" />
-                            <span>View</span>
-                          </Link>
-
-                          <Link
-                            href={`/syllabi/${s.id}/versions`}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] transition-colors"
-                          >
-                            <GitCompare className="w-3 h-3 text-[#CA8A04]" />
-                            <span>Versions</span>
-                          </Link>
-
-                          {canApproveHere && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={processingId === s.id}
-                                onClick={() => handleSyllabusDecision(s.id, 'Approve')}
-                                className="inline-flex items-center px-3 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
-                              >
-                                {processingId === s.id
-                                  ? 'Processing...'
-                                  : isDean
-                                  ? 'Final Approve'
-                                  : 'Approve (To Dean)'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={processingId === s.id}
-                                onClick={() => {
-                                  setRejectingSyllabus(s);
-                                  setRejectRemarks('');
-                                }}
-                                className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer"
-                              >
-                                Reject
-                              </button>
-                            </>
+                        <td className="py-3.5 px-3 align-top">
+                          {approved ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              v{approved.versionNumber} Approved
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">No approved version yet</span>
                           )}
+                        </td>
+                        <td className="py-3.5 px-3 align-top space-y-1">
+                          {pending ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                <Clock className="w-3 h-3" />
+                                {formatShortVersionLabel(pending)} • {syllabusStatusLabel(pending.approvalStatus)}
+                              </span>
+                              <div className="text-[10px] text-slate-500">
+                                by <strong className="capitalize">{pending.editor?.fullName}</strong> ({roleLabel(pending.editor?.role)})
+                              </div>
+                            </div>
+                          ) : latest ? (
+                            <span className="text-[11px] text-slate-600">
+                              Latest: {formatShortVersionLabel(latest)} ({syllabusStatusLabel(latest.approvalStatus)})
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-3.5 px-3 text-right align-top">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Link
+                              href={`/syllabi/${s.id}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800"
+                            >
+                              <Eye className="w-3 h-3 text-[#005A36]" />
+                              <span>View</span>
+                            </Link>
+                            {isDeptHead && (
+                              <Link
+                                href={`/syllabi/${s.id}/edit`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white"
+                                title="Edit syllabus and submit proposed revision to Dean"
+                              >
+                                <FileEdit className="w-3 h-3 text-[#FEF08A]" />
+                                <span>Edit (To Dean)</span>
+                              </Link>
+                            )}
+                            <Link
+                              href={`/syllabi/${s.id}/versions`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E]"
+                            >
+                              <GitCompare className="w-3 h-3 text-[#CA8A04]" />
+                              <span>Versions & Compare</span>
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -787,19 +1165,132 @@ export default function DeptHeadAndDeanDashboard() {
         </div>
       )}
 
-      {/* TAB 2: COURSES MANAGEMENT (EDITABLE FOR DEPT HEAD, READ-ONLY FOR DEAN) */}
+      {/* TAB 3 (DEPT HEAD ONLY): MY PROPOSED REVISIONS SUBMITTED TO DEAN */}
+      {isDeptHead && activeTab === 'my-dean' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-4">
+            <h2 className="font-bold text-base text-slate-900 flex items-center gap-2">
+              <Send className="w-4 h-4 text-purple-700" />
+              <span>My Proposed Syllabus Revisions — Dean Approval Tracker</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Track approval status and review comments from the Dean for all electronic syllabus revisions you authored as Department Head.
+            </p>
+          </div>
+
+          {myDeanSubmissions.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-400 italic">
+              You have not proposed any syllabus revisions yet. Click &ldquo;Edit (To Dean)&rdquo; on any department syllabus to propose changes for Dean approval.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/70">
+                    <th className="py-2.5 px-3">Course</th>
+                    <th className="py-2.5 px-3">Version & Change Summary</th>
+                    <th className="py-2.5 px-3">Dean Approval Status</th>
+                    <th className="py-2.5 px-3">Dean Review Feedback</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {myDeanSubmissions.map((item) => {
+                    const subj = item.syllabus?.subject || item.syllabus?.course;
+                    const isRejected = item.approvalStatus === 'REJECTED';
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/80">
+                        <td className="py-3.5 px-3 align-top">
+                          <span className="font-mono font-extrabold text-[#005A36]">{subj?.code}</span>
+                          <div className="font-semibold text-slate-800">{subj?.title}</div>
+                        </td>
+                        <td className="py-3.5 px-3 align-top max-w-xs">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF9C3] text-[#854D0E]">
+                            {formatVersionLabel(item)}
+                          </span>
+                          <p className="text-slate-600 mt-1">{item.changeSummary}</p>
+                        </td>
+                        <td className="py-3.5 px-3 align-top">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                              item.approvalStatus === 'APPROVED'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : item.approvalStatus === 'UNDER_REVIEW'
+                                ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                : isRejected
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {syllabusStatusLabel(item.approvalStatus)}
+                          </span>
+                          <div className="text-[10px] text-slate-400 mt-1">
+                            {getApprovalRouteLabel(item.approvalStatus, 'DepartmentHead')}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3 align-top max-w-xs">
+                          {item.reviewComments ? (
+                            <p className={`italic text-[11px] ${isRejected ? 'text-rose-700' : 'text-emerald-800'}`}>
+                              &ldquo;{item.reviewComments}&rdquo;
+                              {item.reviewedBy?.fullName && (
+                                <span className="block not-italic text-[10px] text-slate-500">
+                                  — {item.reviewedBy.fullName}
+                                </span>
+                              )}
+                            </p>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">Awaiting Dean review</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-3 text-right align-top">
+                          <div className="flex justify-end gap-1.5">
+                            <Link
+                              href={`/syllabi/${item.syllabusId}?version=${item.versionNumber}`}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-[11px]"
+                            >
+                              View
+                            </Link>
+                            {isRejected && (
+                              <Link
+                                href={`/syllabi/${item.syllabusId}/edit?fromVersion=${item.versionNumber}`}
+                                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px]"
+                              >
+                                Revise & Resubmit
+                              </Link>
+                            )}
+                            <Link
+                              href={`/syllabi/${item.syllabusId}/versions`}
+                              className="px-2.5 py-1 rounded-lg bg-[#FEF9C3] text-[#854D0E] font-bold text-[11px]"
+                            >
+                              Compare
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: COURSES MANAGEMENT */}
       {activeTab === 'courses' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
               <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
                 <BookOpen className="w-4 h-4 text-[#005A36]" />
-                <span>[{currentDept?.code}] Department Courses & Syllabus Coverage</span>
+                <span>
+                  {isDeptHead ? `[${currentDept?.code}] Department Subjects & Syllabus Coverage` : 'Academic Subjects Overview'}
+                </span>
               </h2>
               <p className="text-xs text-slate-500">
                 {isDeptHead
-                  ? 'Add, edit, or delete courses under your department and assign faculty instructors.'
-                  : 'Read-only overview of all courses and active syllabi in your designated department.'}
+                  ? 'Add, edit, or delete courses under your department and manage electronic syllabi.'
+                  : 'Read-only overview of academic courses and active syllabi.'}
               </p>
             </div>
 
@@ -831,7 +1322,12 @@ export default function DeptHeadAndDeanDashboard() {
                   const activeSyllabus = course.syllabi?.[0];
                   return (
                     <tr key={course.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-mono font-bold text-[#005A36]">{course.code}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-[#005A36]">
+                        {course.code}
+                        {isDean && (
+                          <span className="ml-1.5 text-[10px] text-slate-500">[{course.departmentId}]</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-slate-900 font-semibold">{course.title}</td>
                       <td className="py-3 px-3 text-slate-600">
                         {course.units ?? 3} Units ({course.lecHours ?? 3}h Lec / {course.labHours ?? 0}h Lab)
@@ -861,7 +1357,7 @@ export default function DeptHeadAndDeanDashboard() {
                         )}
                       </td>
                       <td className="py-3 px-3 text-right space-x-1.5">
-                        {activeSyllabus && (
+                        {activeSyllabus ? (
                           <Link
                             href={`/syllabi/${activeSyllabus.id}`}
                             className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
@@ -869,7 +1365,15 @@ export default function DeptHeadAndDeanDashboard() {
                             <Eye className="w-3 h-3 text-[#005A36]" />
                             <span>View Syllabus</span>
                           </Link>
-                        )}
+                        ) : isDeptHead ? (
+                          <Link
+                            href={`/syllabi/new?subjectId=${course.id}`}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] text-[#854D0E]"
+                          >
+                            <PlusCircle className="w-3 h-3" />
+                            <span>Create Syllabus</span>
+                          </Link>
+                        ) : null}
                         {isDeptHead && (
                           <>
                             <button
@@ -878,7 +1382,7 @@ export default function DeptHeadAndDeanDashboard() {
                               className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-[#005A36] border border-emerald-200 cursor-pointer"
                             >
                               <Edit3 className="w-3 h-3" />
-                              <span>Edit Course</span>
+                              <span>Edit</span>
                             </button>
                             <button
                               type="button"
@@ -899,8 +1403,8 @@ export default function DeptHeadAndDeanDashboard() {
         </div>
       )}
 
-      {/* TAB 3: DEPARTMENT FACULTY DIRECTORY */}
-      {activeTab === 'faculty' && (
+      {/* TAB 5: DEPARTMENT FACULTY DIRECTORY (DEPT HEAD) */}
+      {isDeptHead && activeTab === 'faculty' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
@@ -912,7 +1416,6 @@ export default function DeptHeadAndDeanDashboard() {
                 Faculty members assigned to [{currentDept?.code}] and their assigned courses.
               </p>
             </div>
-
             <div className="flex items-center space-x-2">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -924,16 +1427,13 @@ export default function DeptHeadAndDeanDashboard() {
                   className="text-xs bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:border-[#005A36] focus:bg-white"
                 />
               </div>
-
-              {isDeptHead && (
-                <button
-                  onClick={() => setCreateFacultyModal(true)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white flex items-center space-x-1.5 cursor-pointer shadow-sm"
-                >
-                  <UserPlus className="w-3.5 h-3.5 text-[#FEF08A]" />
-                  <span>Add Faculty</span>
-                </button>
-              )}
+              <button
+                onClick={() => setCreateFacultyModal(true)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#00472A] text-white flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-[#FEF08A]" />
+                <span>Add Faculty</span>
+              </button>
             </div>
           </div>
 
@@ -946,7 +1446,7 @@ export default function DeptHeadAndDeanDashboard() {
                   <th className="py-2.5 px-3">Email</th>
                   <th className="py-2.5 px-3">Assigned Courses</th>
                   <th className="py-2.5 px-3">Status</th>
-                  {isDeptHead && <th className="py-2.5 px-3 text-right">Actions</th>}
+                  <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -988,20 +1488,18 @@ export default function DeptHeadAndDeanDashboard() {
                           {fac.accountStatus}
                         </span>
                       </td>
-                      {isDeptHead && (
-                        <td className="py-3 px-3 text-right">
-                          <button
-                            onClick={() => handleToggleFacultyStatus(fac)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer border ${
-                              fac.accountStatus === 'Active'
-                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                            }`}
-                          >
-                            {fac.accountStatus === 'Active' ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </td>
-                      )}
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          onClick={() => handleToggleFacultyStatus(fac)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer border ${
+                            fac.accountStatus === 'Active'
+                              ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          {fac.accountStatus === 'Active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1011,7 +1509,7 @@ export default function DeptHeadAndDeanDashboard() {
         </div>
       )}
 
-      {/* TAB 4: PENDING FACULTY REGISTRATIONS */}
+      {/* TAB 6: PENDING FACULTY REGISTRATIONS (DEPT HEAD) */}
       {isDeptHead && activeTab === 'registrations' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h2 className="font-bold text-base text-slate-900">Pending Faculty Self-Registrations</h2>
@@ -1055,22 +1553,113 @@ export default function DeptHeadAndDeanDashboard() {
         </div>
       )}
 
+      {/* MODAL: APPROVE VERSION WITH REVIEW COMMENTS */}
+      {approvingVersion && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-[#005A36]">
+                Approve [{approvingVersion.syllabus?.subject?.code}] {formatVersionLabel(approvingVersion)}
+              </h3>
+              <button onClick={() => setApprovingVersion(null)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                Approving these proposed changes automatically generates the next official version (<strong>Version {(approvingVersion.syllabus?.currentVersionNumber || 1) + 1}</strong>) while retaining all previous versions in revision history.
+              </p>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Review Comments (Optional)</label>
+                <textarea
+                  rows={3}
+                  value={approveComments}
+                  onChange={(e) => setApproveComments(e.target.value)}
+                  placeholder="Add review comments..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-900"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setApprovingVersion(null)}
+                  className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={processingId === approvingVersion.id}
+                  onClick={handleConfirmApprove}
+                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer"
+                >
+                  {processingId === approvingVersion.id ? 'Approving...' : 'Confirm & Make Effective'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REJECT VERSION WITH MANDATORY FEEDBACK */}
+      {rejectingVersion && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-rose-700">
+                Reject [{rejectingVersion.syllabus?.subject?.code}] Version {rejectingVersion.versionNumber}
+              </h3>
+              <button onClick={() => setRejectingVersion(null)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                This proposed version remains in version history and the author will receive your feedback to revise and resubmit. Any existing effective approved syllabus stays unchanged.
+              </p>
+              <label className="block font-bold text-slate-700">Rejection Reason / Review Feedback *</label>
+              <textarea
+                rows={4}
+                required
+                value={rejectRemarks}
+                onChange={(e) => setRejectRemarks(e.target.value)}
+                placeholder="Provide clear, actionable revision feedback..."
+                className="w-full bg-slate-50 border border-rose-300 rounded-xl p-3 text-slate-900"
+              />
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectingVersion(null)}
+                  className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!rejectRemarks.trim() || processingId === rejectingVersion.id}
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer disabled:opacity-50"
+                >
+                  {processingId === rejectingVersion.id ? 'Returning...' : 'Confirm Rejection'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: ADD / EDIT COURSE (DEPARTMENT HEAD) */}
       {courseModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-[#005A36]">
                 {editingCourse ? `Edit Course: [${editingCourse.code}]` : 'Add New Department Course'}
               </h3>
-              <button
-                onClick={() => setCourseModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
+              <button onClick={() => setCourseModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <form onSubmit={handleSaveCourse} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
@@ -1093,14 +1682,11 @@ export default function DeptHeadAndDeanDashboard() {
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-bold"
                   >
                     {[1, 2, 3, 4, 5].map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
+                      <option key={u} value={u}>{u}</option>
                     ))}
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Course Title *</label>
                 <input
@@ -1108,42 +1694,23 @@ export default function DeptHeadAndDeanDashboard() {
                   required
                   value={courseTitle}
                   onChange={(e) => setCourseTitle(e.target.value)}
-                  placeholder="Course title"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Lec Hours</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={courseLecHours}
-                    onChange={(e) => setCourseLecHours(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                  />
+                  <input type="number" min={0} value={courseLecHours} onChange={(e) => setCourseLecHours(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Lab Hours</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={courseLabHours}
-                    onChange={(e) => setCourseLabHours(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                  />
+                  <input type="number" min={0} value={courseLabHours} onChange={(e) => setCourseLabHours(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Year Level</label>
-                  <select
-                    value={courseYearLevel}
-                    onChange={(e) => setCourseYearLevel(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                  >
+                  <select value={courseYearLevel} onChange={(e) => setCourseYearLevel(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2">
                     <option value="1st Year">1st Year</option>
                     <option value="2nd Year">2nd Year</option>
                     <option value="3rd Year">3rd Year</option>
@@ -1152,25 +1719,16 @@ export default function DeptHeadAndDeanDashboard() {
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Semester</label>
-                  <select
-                    value={courseSemester}
-                    onChange={(e) => setCourseSemester(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                  >
+                  <select value={courseSemester} onChange={(e) => setCourseSemester(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2">
                     <option value="1st Semester">1st Semester</option>
                     <option value="2nd Semester">2nd Semester</option>
                     <option value="Summer">Summer</option>
                   </select>
                 </div>
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Assigned Faculty Instructor</label>
-                <select
-                  value={courseProfessor}
-                  onChange={(e) => setCourseProfessor(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                >
+                <select value={courseProfessor} onChange={(e) => setCourseProfessor(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2">
                   <option value="">-- Select Department Faculty --</option>
                   {facultyList.map((f) => (
                     <option key={f.id} value={f.fullName}>
@@ -1179,40 +1737,19 @@ export default function DeptHeadAndDeanDashboard() {
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Prerequisite</label>
-                <input
-                  type="text"
-                  value={coursePrereq}
-                  onChange={(e) => setCoursePrereq(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                />
+                <input type="text" value={coursePrereq} onChange={(e) => setCoursePrereq(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={courseDescription}
-                  onChange={(e) => setCourseDescription(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                />
+                <textarea rows={2} value={courseDescription} onChange={(e) => setCourseDescription(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
               </div>
-
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setCourseModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
-                >
+                <button type="button" onClick={() => setCourseModalOpen(false)} className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer">
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#00472A] text-white cursor-pointer"
-                >
+                <button type="submit" disabled={formSubmitting} className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#00472A] text-white cursor-pointer">
                   {formSubmitting ? 'Saving...' : editingCourse ? 'Save Course Changes' : 'Create Course'}
                 </button>
               </div>
@@ -1221,49 +1758,58 @@ export default function DeptHeadAndDeanDashboard() {
         </div>
       )}
 
-      {/* MODAL: REJECT SYLLABUS WITH FEEDBACK */}
-      {rejectingSyllabus && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+      {/* MODAL: DENY OR REVOKE FACULTY EDIT PERMISSION */}
+      {editReqModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">
-                Return Syllabus for Revision: [{rejectingSyllabus.subject?.code || rejectingSyllabus.course?.code}]
+                {editReqModal.action === 'REVOKE' ? 'Revoke Edit Permission' : 'Deny Edit Permission Request'}
               </h3>
               <button
-                onClick={() => setRejectingSyllabus(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                type="button"
+                onClick={() => setEditReqModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <div className="space-y-3 text-xs">
-              <label className="block font-bold text-slate-700">Revision Remarks / Feedback *</label>
+            <p className="text-slate-600">
+              {editReqModal.action === 'REVOKE' ? 'Revoking edit access for' : 'Denying edit permission request from'}{' '}
+              <strong className="text-slate-900">{editReqModal.request.faculty?.fullName}</strong> on{' '}
+              <strong className="text-[#005A36] font-mono">
+                [{editReqModal.request.syllabus?.subject?.code}]
+              </strong>{' '}
+              {editReqModal.request.syllabus?.subject?.title}.
+            </p>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Reason / Remarks <span className="text-rose-600">*</span>
+              </label>
               <textarea
                 rows={3}
-                required
-                value={rejectRemarks}
-                onChange={(e) => setRejectRemarks(e.target.value)}
-                placeholder="Provide feedback for the faculty author..."
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-900"
+                value={editReqRemarks}
+                onChange={(e) => setEditReqRemarks(e.target.value)}
+                placeholder="Explain why the request is being denied or revoked..."
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
               />
-              <div className="flex justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setRejectingSyllabus(null)}
-                  className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!rejectRemarks.trim() || processingId === rejectingSyllabus.id}
-                  onClick={() => handleSyllabusDecision(rejectingSyllabus.id, 'Reject', rejectRemarks)}
-                  className="px-4 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer disabled:opacity-50"
-                >
-                  Return for Revision
-                </button>
-              </div>
+            </div>
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditReqModal(null)}
+                className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!editReqRemarks.trim() || processingId === `edit-req-${editReqModal.request.id}`}
+                onClick={handleConfirmDenyOrRevokeEditPermission}
+                className="px-4 py-2 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer disabled:opacity-50"
+              >
+                {editReqModal.action === 'REVOKE' ? 'Confirm Revoke' : 'Confirm Deny'}
+              </button>
             </div>
           </div>
         </div>
@@ -1271,18 +1817,14 @@ export default function DeptHeadAndDeanDashboard() {
 
       {/* MODAL: CREATE FACULTY ACCOUNT (DEPARTMENT HEAD) */}
       {createFacultyModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900">Add Department Faculty</h3>
-              <button
-                onClick={() => setCreateFacultyModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
+              <button onClick={() => setCreateFacultyModal(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <form onSubmit={handleCreateFaculty} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Faculty ID Number (5 Digits) *</label>
@@ -1297,56 +1839,23 @@ export default function DeptHeadAndDeanDashboard() {
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono text-slate-900"
                 />
               </div>
-
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newFacultyName}
-                  onChange={(e) => setNewFacultyName(e.target.value)}
-                  placeholder="e.g. Engr. Juan Dela Cruz"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                />
+                <input type="text" required value={newFacultyName} onChange={(e) => setNewFacultyName(e.target.value)} placeholder="e.g. Engr. Juan Dela Cruz" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
               </div>
-
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Institutional Email *</label>
-                <input
-                  type="email"
-                  required
-                  value={newFacultyEmail}
-                  onChange={(e) => setNewFacultyEmail(e.target.value)}
-                  placeholder="name@usjr.edu.ph"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
-                />
+                <input type="email" required value={newFacultyEmail} onChange={(e) => setNewFacultyEmail(e.target.value)} placeholder="name@usjr.edu.ph" className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2" />
               </div>
-
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Initial Password *</label>
-                <input
-                  type="text"
-                  required
-                  minLength={6}
-                  value={newFacultyPassword}
-                  onChange={(e) => setNewFacultyPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono text-slate-900"
-                />
+                <input type="text" required minLength={6} value={newFacultyPassword} onChange={(e) => setNewFacultyPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono" />
               </div>
-
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setCreateFacultyModal(false)}
-                  className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer"
-                >
+                <button type="button" onClick={() => setCreateFacultyModal(false)} className="px-4 py-2 rounded-xl font-semibold bg-slate-100 text-slate-700 cursor-pointer">
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#00472A] text-white cursor-pointer"
-                >
+                <button type="submit" disabled={formSubmitting} className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#00472A] text-white cursor-pointer">
                   {formSubmitting ? 'Creating...' : 'Create Faculty Account'}
                 </button>
               </div>

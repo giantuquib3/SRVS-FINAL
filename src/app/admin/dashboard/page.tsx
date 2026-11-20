@@ -9,9 +9,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  History,
   Shield,
-  Layers,
   ArrowUpRight,
   RefreshCw,
   Eye,
@@ -339,7 +337,7 @@ export default function AdminDashboard() {
                         {u.role}
                       </span>
                       {(u.departmentCode || u.department?.code) && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-2xs">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-sm">
                           [{u.departmentCode || u.department?.code}]
                         </span>
                       )}

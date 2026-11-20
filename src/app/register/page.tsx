@@ -1,26 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   BookOpen,
-  User,
   Mail,
   Lock,
-  Building,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
   CreditCard,
   Info,
-  GraduationCap,
   Briefcase
 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/departments';
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [departments, setDepartments] = useState<any[]>(DEPARTMENTS);
   const [formData, setFormData] = useState({
     firstName: '',

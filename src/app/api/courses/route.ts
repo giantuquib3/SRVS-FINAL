@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { GET as getSubjects, POST as createSubject, PUT as updateSubject, DELETE as deleteSubject } from '../subjects/route';
 
 export const dynamic = 'force-dynamic';

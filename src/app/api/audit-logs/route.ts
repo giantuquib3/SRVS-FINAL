@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
-import { getDepartmentName } from '@/lib/departments';
 
 export const dynamic = 'force-dynamic';
 

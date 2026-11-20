@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { idNumber, userId, email, fullName, role, departmentId, password, accountStatus, academicRank, yearLevel, program } = body;
+    const { idNumber, userId, email, fullName, role, departmentId, password, accountStatus, academicRank } = body;
 
     const cleanId = String(idNumber || userId || '').trim();
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -183,9 +183,16 @@ export async function POST(req: NextRequest) {
     if (sessionUser.role === 'Admin') {
       if (normalizedRole === 'DepartmentHead' || normalizedRole === 'Educator') {
         const cleanDept = departmentId ? String(departmentId).trim().toUpperCase() : '';
-        if (!cleanDept || !isValidDepartmentCode(cleanDept)) {
+        if (!cleanDept) {
           return NextResponse.json(
-            { error: `${normalizedRole} must be assigned to a valid engineering department (CPE, EE, CE, ECE, IE, ME).` },
+            { error: `${normalizedRole} must be assigned to a valid academic department.` },
+            { status: 400 }
+          );
+        }
+        const existsDept = await prisma.department.findUnique({ where: { id: cleanDept } });
+        if (!existsDept && !isValidDepartmentCode(cleanDept)) {
+          return NextResponse.json(
+            { error: `Department "${cleanDept}" was not found.` },
             { status: 400 }
           );
         }
@@ -224,8 +231,11 @@ export async function POST(req: NextRequest) {
       ? String(sessionUser.departmentId).toUpperCase()
       : (departmentId ? String(departmentId).trim().toUpperCase() : null);
 
-    if (deptCode && !isValidDepartmentCode(deptCode)) {
-      return NextResponse.json({ error: 'departmentId must be one of CPE, EE, CE, ECE, IE, ME.' }, { status: 400 });
+    if (deptCode) {
+      const existsDept = await prisma.department.findUnique({ where: { id: deptCode } });
+      if (!existsDept && !isValidDepartmentCode(deptCode)) {
+        return NextResponse.json({ error: `Invalid departmentId "${deptCode}".` }, { status: 400 });
+      }
     }
 
     const existing = await prisma.user.findFirst({
@@ -319,7 +329,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, idNumber, action, role, newRole, departmentId, accountStatus, fullName, academicRank, yearLevel, program, reason, rejectionReason } = body;
+    const { userId, idNumber, action, role, newRole, departmentId, accountStatus, fullName, academicRank, reason, rejectionReason } = body;
 
     const targetIdStr = String(userId || idNumber || '').trim();
     const targetId = parseInt(targetIdStr, 10);

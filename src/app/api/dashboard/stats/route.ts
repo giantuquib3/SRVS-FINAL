@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { getDepartmentName } from '@/lib/departments';
 import { SYLLABUS_STATUS } from '@/lib/status';
+import { countPendingEditRequestsForDepartment, listEditRequests } from '@/lib/edit-permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
           pendingSyllabi: pendingApprovals,
         },
         passwordResetRequests,
-        recentActivities: recentLogs.map((l) => ({
+        recentActivities: recentLogs.map((l: any) => ({
           id: l.id,
           actionType: l.actionType,
           description: l.description,
@@ -83,7 +84,8 @@ export async function GET(req: NextRequest) {
     // ─── DEAN & DEPARTMENT HEAD ──────────────────────────────────────────────
     if (user.role === 'DepartmentHead' || user.role === 'Dean') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
-      const deptName = getDepartmentName(deptCode);
+      const dbDept = deptCode ? await prisma.department.findUnique({ where: { id: deptCode } }) : null;
+      const deptName = dbDept?.name || getDepartmentName(deptCode);
 
       if (user.role === 'DepartmentHead' && !deptCode) {
         return NextResponse.json({
@@ -101,37 +103,41 @@ export async function GET(req: NextRequest) {
             educatorsCount: 0,
             pendingRegistrations: 0,
             pendingApprovals: 0,
+            pendingEditRequests: 0,
             missingSyllabi: 0,
           },
         });
       }
 
       const deptWhere = deptCode ? { departmentId: deptCode } : {};
+      const versionDeptWhere = deptCode ? { syllabus: { departmentId: deptCode } } : {};
 
       const [
         totalSubjects,
         totalSyllabi,
         draftSyllabi,
-        submittedSyllabi,
-        endorsedSyllabi,
+        submittedVersions,
+        deanPendingVersions,
         approvedSyllabi,
-        rejectedSyllabi,
+        rejectedVersions,
         educatorsCount,
         pendingRegistrations,
+        pendingEditRequests,
       ] = await Promise.all([
         prisma.subject.count({ where: deptWhere }),
         prisma.syllabus.count({ where: deptWhere }),
-        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.DRAFT, ...deptWhere } }),
-        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.SUBMITTED, ...deptWhere } }),
-        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.UNDER_REVIEW, ...deptWhere } }),
+        prisma.syllabusVersion.count({ where: { approvalStatus: SYLLABUS_STATUS.DRAFT, ...versionDeptWhere } }),
+        prisma.syllabusVersion.count({ where: { approvalStatus: SYLLABUS_STATUS.SUBMITTED, ...versionDeptWhere } }),
+        prisma.syllabusVersion.count({ where: { approvalStatus: SYLLABUS_STATUS.UNDER_REVIEW, ...versionDeptWhere } }),
         prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.APPROVED, ...deptWhere } }),
-        prisma.syllabus.count({ where: { status: SYLLABUS_STATUS.REJECTED, ...deptWhere } }),
+        prisma.syllabusVersion.count({ where: { approvalStatus: SYLLABUS_STATUS.REJECTED, ...versionDeptWhere } }),
         prisma.user.count({ where: { role: { in: ['Educator', 'Faculty'] }, ...deptWhere } }),
         prisma.user.count({ where: { accountStatus: 'PendingApproval', role: { in: ['Educator', 'Faculty'] }, ...deptWhere } }),
+        countPendingEditRequestsForDepartment(deptCode),
       ]);
 
-      // For Dept Head, action queue is SUBMITTED (from Faculty); for Dean, action queue is UNDER_REVIEW (endorsed by Dept Head)
-      const pendingApprovals = user.role === 'Dean' ? endorsedSyllabi : submittedSyllabi;
+      // Dept Head action queue = Faculty submissions (SUBMITTED); Dean action queue = Dept Head submissions (UNDER_REVIEW)
+      const pendingApprovals = user.role === 'Dean' ? deanPendingVersions : submittedVersions;
       const missingSyllabi = Math.max(0, totalSubjects - approvedSyllabi);
 
       return NextResponse.json({
@@ -139,16 +145,17 @@ export async function GET(req: NextRequest) {
         department: deptCode ? { id: deptCode, code: deptCode, name: deptName } : null,
         stats: {
           totalSubjects,
-          totalCourses: totalSubjects, // Alias
+          totalCourses: totalSubjects,
           totalSyllabi,
           draftSyllabi,
-          submittedSyllabi,
-          endorsedSyllabi,
+          submittedSyllabi: submittedVersions,
+          endorsedSyllabi: deanPendingVersions,
           approvedSyllabi,
-          rejectedSyllabi,
+          rejectedSyllabi: rejectedVersions,
           educatorsCount,
           pendingRegistrations,
           pendingApprovals,
+          pendingEditRequests,
           missingSyllabi,
         },
       });
@@ -157,17 +164,26 @@ export async function GET(req: NextRequest) {
     // ─── FACULTY (EDUCATOR) ──────────────────────────────────────────────────
     if (user.role === 'Educator' || user.role === 'Faculty') {
       const deptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
+      const dbDept = deptCode ? await prisma.department.findUnique({ where: { id: deptCode } }) : null;
+      const deptName = dbDept?.name || getDepartmentName(deptCode);
       const educatorIntId = !isNaN(parseInt(currentUserId, 10)) ? parseInt(currentUserId, 10) : 0;
 
-      const [totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount, recentSyllabi] =
+      const deptWhere = deptCode ? { departmentId: deptCode } : {};
+
+      const [totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount, recentSyllabi, myEditReqs] =
         await Promise.all([
-          prisma.syllabus.count({ where: { instructorId: educatorIntId } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.DRAFT } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] } } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.APPROVED } }),
-          prisma.syllabus.count({ where: { instructorId: educatorIntId, status: SYLLABUS_STATUS.REJECTED } }),
+          prisma.syllabus.count({ where: deptWhere }),
+          prisma.syllabusVersion.count({ where: { editorId: educatorIntId, approvalStatus: SYLLABUS_STATUS.DRAFT } }),
+          prisma.syllabusVersion.count({
+            where: {
+              editorId: educatorIntId,
+              approvalStatus: { in: [SYLLABUS_STATUS.SUBMITTED, SYLLABUS_STATUS.UNDER_REVIEW] },
+            },
+          }),
+          prisma.syllabus.count({ where: { ...deptWhere, status: SYLLABUS_STATUS.APPROVED } }),
+          prisma.syllabusVersion.count({ where: { editorId: educatorIntId, approvalStatus: SYLLABUS_STATUS.REJECTED } }),
           prisma.syllabus.findMany({
-            where: { instructorId: educatorIntId },
+            where: deptWhere,
             orderBy: { updatedAt: 'desc' },
             take: 5,
             include: {
@@ -175,6 +191,7 @@ export async function GET(req: NextRequest) {
               versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
             },
           }),
+          listEditRequests({ facultyId: educatorIntId }),
         ]);
 
       const formattedSyllabi = (recentSyllabi as any[]).map((s: any) => ({
@@ -187,8 +204,16 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({
         role: 'Educator',
-        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
-        stats: { totalMySyllabi, draftCount, submittedCount, approvedCount, rejectedCount },
+        department: deptCode ? { id: deptCode, code: deptCode, name: deptName } : null,
+        stats: {
+          totalMySyllabi,
+          draftCount,
+          submittedCount,
+          approvedCount,
+          rejectedCount,
+          grantedEditPermissions: myEditReqs.filter((r) => r.status === 'APPROVED').length,
+          pendingEditRequests: myEditReqs.filter((r) => r.status === 'PENDING').length,
+        },
         recentSyllabi: formattedSyllabi,
       });
     }

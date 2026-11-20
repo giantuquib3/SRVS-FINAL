@@ -76,7 +76,7 @@ export default function LoginPage() {
           break;
       }
       router.refresh();
-    } catch (err: any) {
+    } catch {
       setError('Connection error. Could not connect to PostgreSQL backend.');
       setLoading(false);
     }
@@ -115,7 +115,7 @@ export default function LoginPage() {
           'Password reset request sent! The System Administrator has been notified to reset your password.'
       );
       setResetEmail('');
-    } catch (err: any) {
+    } catch {
       setResetError('Connection error. Please try again.');
     } finally {
       setResetLoading(false);
@@ -149,10 +149,10 @@ export default function LoginPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700">
-                ID Number
+                ID Number or Institutional Email
               </label>
               <span className="text-[10px] text-slate-500 font-semibold">
-                (e.g. 00000)
+                (e.g. 10001 or @usjr.edu.ph)
               </span>
             </div>
             <div className="relative">
@@ -161,7 +161,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter ID number"
+                placeholder="Enter ID number or @usjr.edu.ph email"
                 required
                 className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36] transition-colors"
               />

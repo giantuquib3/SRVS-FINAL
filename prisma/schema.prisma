@@ -19,18 +19,19 @@ datasource db {
 //     (prisma/sql/student-subjects-columns.sql).
 //   - Row level security enabled on student_subjects (blocks the public Supabase REST API).
 
-// 1. Academic Departments (Institutional Engineering Departments)
+// 1. Academic Departments (All Institutional Departments)
 model Department {
-  id          String   @id // String ID: CPE, EE, CE, ECE, IE, ME
+  id          String   @id // Department code e.g. CPE, EE, CE, ECE, IE, ME, etc.
   code        String   @unique
   name        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users   User[]
-  subjects Subject[]
-  syllabi Syllabus[]
+  users        User[]
+  subjects     Subject[]
+  syllabi      Syllabus[]
+  editRequests SyllabusEditRequest[]
 
   @@map("departments")
 }
@@ -60,9 +61,11 @@ model User {
   enrollmentsCreated  StudentSubject[]  @relation("StudentSubjectsEnrolledBy")
 
   // Revisions & Audits
-  editedVersions    SyllabusVersion[] @relation("EditorVersions")
-  submittedVersions SyllabusVersion[] @relation("SubmittedVersions")
-  reviewedVersions  SyllabusVersion[] @relation("ReviewedVersions")
+  editedVersions    SyllabusVersion[]     @relation("EditorVersions")
+  submittedVersions SyllabusVersion[]     @relation("SubmittedVersions")
+  reviewedVersions  SyllabusVersion[]     @relation("ReviewedVersions")
+  editRequests      SyllabusEditRequest[] @relation("FacultyEditRequests")
+  reviewedEditReqs  SyllabusEditRequest[] @relation("DeptHeadReviewedEditRequests")
   auditLogs         AuditLog[]
 
   @@index([role])
@@ -142,7 +145,8 @@ model Syllabus {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  versions SyllabusVersion[]
+  versions     SyllabusVersion[]
+  editRequests SyllabusEditRequest[]
 
   @@index([subjectId])
   @@index([departmentId])
@@ -178,6 +182,7 @@ model SyllabusVersion {
   reviewedById    Int?      // INTEGER references users.id
   reviewedBy      User?     @relation("ReviewedVersions", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
+  reviewComments  String?
   rejectionReason String?
 
   createdAt DateTime @default(now())
@@ -187,6 +192,30 @@ model SyllabusVersion {
   @@index([syllabusId])
   @@index([approvalStatus])
   @@map("syllabus_versions")
+}
+
+// 6b. Faculty Edit Permission Requests (Department Head grants permission before Faculty may edit)
+model SyllabusEditRequest {
+  id            Int        @id @default(autoincrement())
+  syllabusId    Int
+  syllabus      Syllabus   @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  facultyId     Int
+  faculty       User       @relation("FacultyEditRequests", fields: [facultyId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  reason        String
+  status        String     @default("PENDING") // PENDING, APPROVED, REJECTED, COMPLETED
+  reviewedById  Int?
+  reviewedBy    User?      @relation("DeptHeadReviewedEditRequests", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewRemarks String?
+  requestedAt   DateTime   @default(now())
+  reviewedAt    DateTime?
+  updatedAt     DateTime   @default(now()) @updatedAt
+
+  @@index([syllabusId])
+  @@index([facultyId])
+  @@index([departmentId, status])
+  @@map("syllabus_edit_requests")
 }
 
 // 7. System Audit Trail

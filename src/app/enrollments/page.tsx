@@ -5,14 +5,8 @@ import Link from 'next/link';
 import {
   GraduationCap,
   Plus,
-  Search,
-  Filter,
-  Users,
-  CheckCircle2,
   AlertCircle,
   X,
-  BookOpen,
-  ArrowLeft,
   Trash2
 } from 'lucide-react';
 
@@ -240,7 +234,7 @@ export default function EnrollmentsPage() {
                         <p className="text-[10px] text-slate-500 font-mono">{en.student?.email || `ID: ${en.studentId}`}</p>
                         {en.student?.departmentCode && (
                           <div className="mt-1 flex items-center space-x-1">
-                            <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-2xs">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[10px] font-extrabold font-mono shadow-sm">
                               [{en.student.departmentCode}]
                             </span>
                             <span className="text-[10px] text-slate-500 truncate max-w-[120px]" title={en.student.departmentName}>
@@ -256,7 +250,7 @@ export default function EnrollmentsPage() {
                       <td className="py-3 px-3 text-slate-600">
                         <div className="space-y-0.5">
                           {currentSubj?.department?.code && (
-                            <span className="inline-block px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-bold font-mono border border-slate-200">
+                            <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold font-mono border border-slate-200">
                               {currentSubj.department.code}
                             </span>
                           )}

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
+import { PROPOSAL_VERSION_OFFSET, SYLLABUS_STATUS } from '@/lib/status';
+import { getFacultyEditPermissionForSyllabus } from '@/lib/edit-permissions';
 
 export async function POST(
   req: NextRequest,
@@ -9,15 +11,14 @@ export async function POST(
 ) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'DepartmentHead')) {
-      return NextResponse.json({ error: 'Unauthorized: Only educators or department heads can restore versions.' }, { status: 403 });
+    if (!user || (user.role !== 'Educator' && user.role !== 'Faculty' && user.role !== 'DepartmentHead')) {
+      return NextResponse.json({ error: 'Unauthorized: Only Faculty or Department Heads can restore versions.' }, { status: 403 });
     }
 
     const syllabusId = parseInt(params.id, 10);
     if (isNaN(syllabusId)) return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });
 
     const { versionNumber } = await req.json();
-
     if (!versionNumber) {
       return NextResponse.json({ error: 'Target version number is required.' }, { status: 400 });
     }
@@ -30,9 +31,19 @@ export async function POST(
     if (!syllabus) return NextResponse.json({ error: 'Syllabus not found.' }, { status: 404 });
 
     const currentUserIdInt = parseInt(user.id, 10) || 0;
+    const userDeptCode = user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
 
-    if (user.role === 'Educator' && syllabus.instructorId !== currentUserIdInt) {
-      return NextResponse.json({ error: 'You may only restore versions on your own syllabi.' }, { status: 403 });
+    if (!userDeptCode || syllabus.departmentId.toUpperCase() !== userDeptCode) {
+      return NextResponse.json({ error: 'Forbidden: You may only restore versions within your assigned department.' }, { status: 403 });
+    }
+
+    if (user.role === 'Educator' || user.role === 'Faculty') {
+      const perm = await getFacultyEditPermissionForSyllabus(syllabus.id, currentUserIdInt);
+      if (!perm.hasPermission) {
+        return NextResponse.json({
+          error: 'Edit permission required: You must obtain edit permission from your Department Head before restoring a syllabus version.',
+        }, { status: 403 });
+      }
     }
 
     const historicalVersion = await prisma.syllabusVersion.findUnique({
@@ -43,14 +54,34 @@ export async function POST(
       return NextResponse.json({ error: `Version ${versionNumber} does not exist.` }, { status: 404 });
     }
 
-    const latestVersion = await prisma.syllabusVersion.findFirst({
+    const existingVersions = await prisma.syllabusVersion.findMany({
       where: { syllabusId },
-      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true, approvalStatus: true },
     });
-    const newVersionNumber = (latestVersion?.versionNumber || 0) + 1;
-    const changeSummary = `Restored from Version ${historicalVersion.versionNumber} (${new Date(historicalVersion.createdAt).toLocaleDateString()})`;
+    const maxApproved = existingVersions
+      .filter((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED && v.versionNumber <= PROPOSAL_VERSION_OFFSET)
+      .reduce((m: number, v: any) => Math.max(m, v.versionNumber), 0);
+    const maxProposal = existingVersions
+      .filter((v: any) => v.versionNumber > PROPOSAL_VERSION_OFFSET)
+      .reduce((m: number, v: any) => Math.max(m, v.versionNumber), PROPOSAL_VERSION_OFFSET);
+    const newVersionNumber = maxProposal + 1;
+    const proposalNumber = newVersionNumber - PROPOSAL_VERSION_OFFSET;
+    const targetVersionNumber = maxApproved + 1;
+    const changeSummary = `Restored content from Version ${historicalVersion.versionNumber} (${new Date(historicalVersion.createdAt).toLocaleDateString()}) as Draft Proposal #${proposalNumber}`;
 
-    const result = await prisma.$transaction(async (tx) => {
+    const cleanContent =
+      historicalVersion.content && typeof historicalVersion.content === 'object'
+        ? { ...(historicalVersion.content as any) }
+        : {};
+    delete cleanContent._reviewMeta;
+    cleanContent._proposalMeta = {
+      proposalNumber,
+      baseVersionNumber: syllabus.currentVersionNumber,
+      targetVersionNumber,
+    };
+
+    // Never overwrite previous versions and never replace currently approved syllabus!
+    const result = await prisma.$transaction(async (tx: any) => {
       const restoredVersion = await tx.syllabusVersion.create({
         data: {
           syllabusId,
@@ -60,7 +91,7 @@ export async function POST(
           changeType: 'Restore',
           statusAtSave: 'DRAFT',
           approvalStatus: 'DRAFT',
-          content: historicalVersion.content as any,
+          content: cleanContent,
           fileName: historicalVersion.fileName,
           fileUrl: historicalVersion.fileUrl,
           fileType: historicalVersion.fileType,
@@ -77,14 +108,14 @@ export async function POST(
       userDisplayName: user.fullName,
       actionType: 'RestoreVersion',
       resultStatus: 'Success',
-      description: `Restored syllabus [${syllabus.subject.code}] to v${historicalVersion.versionNumber}, creating new v${newVersionNumber} [Draft]`,
-      entityType: 'Syllabus',
-      entityId: String(syllabus.id),
+      description: `Restored syllabus [${syllabus.subject.code}] from v${historicalVersion.versionNumber}, creating Draft Proposal #${proposalNumber} (Target v${targetVersionNumber})`,
+      entityType: 'SyllabusVersion',
+      entityId: String(result.version.id),
     });
 
     return NextResponse.json({
       success: true,
-      message: `Version ${historicalVersion.versionNumber} restored as new Version ${newVersionNumber}.`,
+      message: `Version ${historicalVersion.versionNumber} restored as Draft Proposal #${proposalNumber}. Submit it for approval to generate Version ${targetVersionNumber}.`,
       syllabus: result.syllabus,
       version: result.version,
     });

@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       orderBy: { createdAt: 'desc' },
     });
 
-    const latestReview = auditLogs.find((l) => ['StudentRegistrationApproved', 'StudentRegistrationRejected', 'ApproveUser', 'RejectUser'].includes(l.actionType));
+    const latestReview = auditLogs.find((l: any) => ['StudentRegistrationApproved', 'StudentRegistrationRejected', 'ApproveUser', 'RejectUser'].includes(l.actionType));
 
     return NextResponse.json({
       registration: {

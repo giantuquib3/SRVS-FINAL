@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  Users,
   ArrowLeft,
   RefreshCw,
   Search,
@@ -12,7 +11,6 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
-  GraduationCap,
   Briefcase
 } from 'lucide-react';
 
@@ -335,9 +333,8 @@ export default function DeptUsersManagementPage() {
               onChange={(e) => setRoleFilter(e.target.value)}
               className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
             >
-              <option value="">All Roles</option>
-              <option value="Educator">Educator / Faculty</option>
-              <option value="Student">Student</option>
+              <option value="">All Faculty</option>
+              <option value="Educator">Faculty / Educator</option>
             </select>
           </div>
         </div>
@@ -420,7 +417,7 @@ export default function DeptUsersManagementPage() {
                       {u.departmentCode || u.departmentId || u.department?.code ? (
                         <div className="space-y-0.5">
                           <div className="flex items-center space-x-1.5">
-                            <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-2xs">
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-sm">
                               [{u.departmentCode || u.departmentId || u.department?.code}]
                             </span>
                           </div>
@@ -440,7 +437,7 @@ export default function DeptUsersManagementPage() {
                               (code: string) => (
                                 <span
                                   key={String(code).trim()}
-                                  className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs"
+                                  className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm"
                                 >
                                   {String(code).trim()}
                                 </span>

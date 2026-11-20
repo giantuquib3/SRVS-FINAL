@@ -15,9 +15,12 @@ import {
   Edit3,
   Trash2,
   FileEdit,
-  Eye
+  Eye,
+  KeyRound,
+  Clock,
 } from 'lucide-react';
 import { syllabusStatusLabel } from '@/lib/status';
+import RequestEditPermissionModal from '@/components/RequestEditPermissionModal';
 
 export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -47,6 +50,12 @@ export default function SubjectsPage() {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [requestTarget, setRequestTarget] = useState<{
+    syllabusId: number;
+    code: string;
+    title: string;
+    currentVersionNumber: number;
+  } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type });
@@ -81,7 +90,7 @@ export default function SubjectsPage() {
             .then((fData) => {
               if (fData?.faculty) setDeptFaculty(fData.faculty);
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       }
     } catch (err) {
@@ -218,11 +227,10 @@ export default function SubjectsPage() {
     <div className="space-y-8">
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-2 text-xs font-semibold ${
-            toast.type === 'success'
-              ? 'bg-emerald-900 text-white border-emerald-700'
-              : 'bg-rose-900 text-white border-rose-700'
-          }`}
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-2 text-xs font-semibold ${toast.type === 'success'
+            ? 'bg-emerald-900 text-white border-emerald-700'
+            : 'bg-rose-900 text-white border-rose-700'
+            }`}
         >
           {toast.type === 'success' ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-300" />
@@ -241,7 +249,7 @@ export default function SubjectsPage() {
               Academic Curriculum Catalog
             </span>
             {currentUser?.departmentCode && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-2xs">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm">
                 Department: [{currentUser.departmentCode}] {currentUser.departmentName || currentUser.departmentCode}
               </span>
             )}
@@ -253,8 +261,8 @@ export default function SubjectsPage() {
             {canEditCourses
               ? 'Manage and edit courses under your department, assign faculty instructors, and oversee syllabus status.'
               : canAuthorSyllabus
-              ? 'View courses under your department and create or edit course syllabi for Department Head approval.'
-              : 'Browse academic courses and view official course syllabi.'}
+                ? 'View courses under your department and create or edit course syllabi for Department Head approval.'
+                : 'Browse academic courses and view official course syllabi.'}
           </p>
         </div>
 
@@ -265,7 +273,7 @@ export default function SubjectsPage() {
               className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-2"
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Create / Upload Syllabus</span>
+              <span>Create Electronic Syllabus</span>
             </Link>
           )}
           {canEditCourses && (
@@ -424,15 +432,14 @@ export default function SubjectsPage() {
                         </span>
                         {currentUser?.role !== 'Registrar' && currentUser?.role !== 'VPAcademics' ? (
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              activeSyllabus.status === 'APPROVED'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : activeSyllabus.status === 'UNDER_REVIEW'
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${activeSyllabus.status === 'APPROVED'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : activeSyllabus.status === 'UNDER_REVIEW'
                                 ? 'bg-purple-50 text-purple-800 border-purple-200'
                                 : activeSyllabus.status === 'SUBMITTED'
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
                           >
                             {syllabusStatusLabel(activeSyllabus.status)}
                           </span>
@@ -459,15 +466,37 @@ export default function SubjectsPage() {
                           <Eye className="w-3 h-3 text-[#005A36]" />
                           <span>View</span>
                         </Link>
-                        {canAuthorSyllabus && (
-                          <Link
-                            href={`/syllabi/${activeSyllabus.id}/edit`}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] font-bold text-[11px]"
-                          >
-                            <FileEdit className="w-3 h-3 text-[#CA8A04]" />
-                            <span>Edit Syllabus</span>
-                          </Link>
-                        )}
+                        {canAuthorSyllabus &&
+                          (currentUser?.role === 'DepartmentHead' || activeSyllabus.editPermissionStatus === 'APPROVED' ? (
+                            <Link
+                              href={`/syllabi/${activeSyllabus.id}/edit`}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#005A36] hover:bg-[#004529] text-white font-bold text-[11px]"
+                            >
+                              <FileEdit className="w-3 h-3 text-[#FEF08A]" />
+                              <span>Edit Syllabus</span>
+                            </Link>
+                          ) : activeSyllabus.editPermissionStatus === 'PENDING' ? (
+                            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[11px]">
+                              <Clock className="w-3 h-3" />
+                              <span>Permission Pending</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRequestTarget({
+                                  syllabusId: activeSyllabus.id,
+                                  code: subject.code,
+                                  title: subject.title,
+                                  currentVersionNumber: activeSyllabus.currentVersionNumber || 1,
+                                })
+                              }
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] cursor-pointer"
+                            >
+                              <KeyRound className="w-3 h-3 text-[#CA8A04]" />
+                              <span>Request Edit</span>
+                            </button>
+                          ))}
                       </>
                     ) : canAuthorSyllabus ? (
                       <Link
@@ -670,6 +699,21 @@ export default function SubjectsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {requestTarget && (
+        <RequestEditPermissionModal
+          isOpen={Boolean(requestTarget)}
+          syllabusId={requestTarget.syllabusId}
+          subjectCode={requestTarget.code}
+          subjectTitle={requestTarget.title}
+          currentVersionNumber={requestTarget.currentVersionNumber}
+          onClose={() => setRequestTarget(null)}
+          onSuccess={(msg) => {
+            showToast(msg, 'success');
+            fetchSubjects();
+          }}
+        />
       )}
     </div>
   );

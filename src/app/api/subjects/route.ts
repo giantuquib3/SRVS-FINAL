@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSessionFromRequest } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
-import { getDepartmentName, isValidDepartmentCode } from '@/lib/departments';
-import { SYLLABUS_STATUS } from '@/lib/status';
+import { getDepartmentName } from '@/lib/departments';
+import { SYLLABUS_STATUS, DEFAULT_ACADEMIC_YEAR } from '@/lib/status';
+import { createDefaultSyllabusContent } from '@/lib/syllabus-template';
+import { getFacultyEditPermissionsMap } from '@/lib/edit-permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +101,7 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { code: 'asc' },
       include: {
+        department: true,
         syllabi: {
           where: user?.role === 'Student' ? { status: SYLLABUS_STATUS.APPROVED } : undefined,
           orderBy: { updatedAt: 'desc' },
@@ -138,8 +141,19 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    const isFacultyUser = user?.role === 'Educator' || user?.role === 'Faculty';
+    const currentUserIdInt = user ? parseInt(user.id, 10) || 0 : 0;
+    const allSyllabusIds = isFacultyUser
+      ? subjects.flatMap((s: any) => (s.syllabi || []).map((sy: any) => sy.id))
+      : [];
+    const editPermMap =
+      isFacultyUser && currentUserIdInt > 0 && allSyllabusIds.length > 0
+        ? await getFacultyEditPermissionsMap(currentUserIdInt, allSyllabusIds)
+        : new Map();
+
     const formatted = subjects.map((s: any) => {
       const deptCode = String(s.departmentId || '');
+      const deptName = s.department?.name || getDepartmentName(deptCode);
       const studentEnrollment = user?.role === 'Student' ? studentEnrollmentMap.get(s.code.toUpperCase()) || null : null;
       const enrollmentStatus = studentEnrollment?.status || null;
       const isEnrolled = user?.role === 'Student' ? enrollmentStatus === 'ENROLLED' : true;
@@ -163,6 +177,14 @@ export async function GET(req: NextRequest) {
             enrolledAt: ss.createdAt,
           }))
         : undefined;
+      const enrichedSyllabi = (s.syllabi || []).map((sy: any) => ({
+        ...sy,
+        editPermissionStatus: isFacultyUser
+          ? editPermMap.get(sy.id)?.status || 'NONE'
+          : user?.role === 'DepartmentHead'
+          ? 'DIRECT_ACCESS'
+          : 'READ_ONLY',
+      }));
       return {
         id: s.id,
         code: s.code,
@@ -176,7 +198,7 @@ export async function GET(req: NextRequest) {
         semester: s.semester,
         departmentId: deptCode,
         professorName: assignedProf,
-        department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+        department: { id: deptCode, code: deptCode, name: deptName },
         isEnrolled,
         enrollmentStatus,
         enrollmentId: studentEnrollment?.id ?? null,
@@ -184,7 +206,7 @@ export async function GET(req: NextRequest) {
         enrollmentSemester: studentEnrollment?.semester ?? null,
         enrolledCount: s._count?.studentSubjects ?? 0,
         enrolledStudents,
-        syllabi: user?.role === 'Student' && !isEnrolled ? [] : s.syllabi,
+        syllabi: user?.role === 'Student' && !isEnrolled ? [] : enrichedSyllabi,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
       };
@@ -233,8 +255,16 @@ export async function POST(req: NextRequest) {
       ? String(departmentId).trim().toUpperCase()
       : user.departmentId ? String(user.departmentId).trim().toUpperCase() : null;
 
-    if (!deptCode || !isValidDepartmentCode(deptCode)) {
-      return NextResponse.json({ error: 'A valid department code is required (CPE, EE, CE, ECE, IE, ME).' }, { status: 400 });
+    if (!deptCode) {
+      return NextResponse.json({ error: 'A valid department code is required.' }, { status: 400 });
+    }
+
+    const dbDepartment = await prisma.department.findUnique({ where: { id: deptCode } });
+    if (!dbDepartment) {
+      return NextResponse.json(
+        { error: `Department "${deptCode}" was not found in the system.` },
+        { status: 400 }
+      );
     }
 
     // Department Isolation: Department Head can only create subjects in their own department
@@ -267,6 +297,58 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Automatically provision the initial pre-existing Electronic Syllabus template (Version 1, APPROVED)
+    let instructorUser = resolvedProfessorName
+      ? await prisma.user.findFirst({
+          where: {
+            fullName: { equals: resolvedProfessorName, mode: 'insensitive' },
+            departmentId: deptCode,
+          },
+          select: { id: true },
+        })
+      : null;
+    if (!instructorUser) {
+      instructorUser = await prisma.user.findFirst({
+        where: { role: { in: ['Educator', 'Faculty'] }, departmentId: deptCode, accountStatus: 'Active' },
+        select: { id: true },
+      });
+    }
+    const creatorIdInt = parseInt(user.id, 10) || 0;
+    const instructorIdInt = instructorUser?.id ?? creatorIdInt;
+    const initialTemplate = createDefaultSyllabusContent(subject, dbDepartment.name || getDepartmentName(deptCode));
+    const now = new Date();
+
+    await prisma.syllabus.create({
+      data: {
+        subjectId: subject.id,
+        instructorId: instructorIdInt,
+        departmentId: deptCode,
+        academicYear: DEFAULT_ACADEMIC_YEAR,
+        semester: (semester === '2nd Semester' || semester === 'Summer') ? semester : '1st Semester',
+        section: 'A',
+        status: SYLLABUS_STATUS.APPROVED,
+        currentVersionNumber: 1,
+        reviewedAt: now,
+        reviewedByUserId: creatorIdInt,
+        reviewerRemarks: `Initial syllabus (Version 1) — ${dbDepartment.name}`,
+        versions: {
+          create: {
+            versionNumber: 1,
+            editorId: creatorIdInt,
+            changeSummary: `Initial syllabus for ${subject.code} (Version 1)`,
+            changeType: 'Create',
+            statusAtSave: SYLLABUS_STATUS.APPROVED,
+            approvalStatus: SYLLABUS_STATUS.APPROVED,
+            content: initialTemplate as any,
+            submittedById: creatorIdInt,
+            submittedAt: now,
+            reviewedById: creatorIdInt,
+            reviewedAt: now,
+          },
+        },
+      },
+    });
+
     await logAuditEvent({
       userId: user.id,
       userDisplayName: user.fullName,
@@ -290,7 +372,7 @@ export async function POST(req: NextRequest) {
       semester: subject.semester,
       departmentId: deptCode,
       professorName: resolvedProfessorName,
-      department: { id: deptCode, code: deptCode, name: getDepartmentName(deptCode) },
+      department: { id: deptCode, code: deptCode, name: dbDepartment.name || getDepartmentName(deptCode) },
       createdAt: subject.createdAt,
       updatedAt: subject.updatedAt,
     };

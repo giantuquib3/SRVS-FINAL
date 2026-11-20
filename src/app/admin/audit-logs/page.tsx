@@ -3,13 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  Shield,
   Search,
-  Filter,
   ArrowLeft,
-  Calendar,
-  Clock,
-  User,
   RefreshCw
 } from 'lucide-react';
 
@@ -156,7 +151,7 @@ export default function AuditLogsPage() {
                     <div className="flex items-center space-x-1.5 mt-0.5">
                       <span className="text-[10px] text-slate-500 font-mono">{log.user?.role || ''}</span>
                       {log.user?.departmentCode && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-2xs">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-sm">
                           [{log.user.departmentCode}]
                         </span>
                       )}

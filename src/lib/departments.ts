@@ -53,7 +53,7 @@ export function isValidDepartmentCode(code?: string | null): code is DepartmentC
 }
 
 export function getDepartmentName(code?: string | null): string {
-  if (!code) return 'General Engineering';
+  if (!code) return 'Academic Department';
   const match = DEPARTMENTS.find((d) => d.code.toUpperCase() === code.trim().toUpperCase());
   return match ? match.name : code;
 }

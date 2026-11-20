@@ -1,10 +1,6 @@
 'use client';
 
-
-//testing testing testing
-
-
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -12,17 +8,13 @@ import {
   Shield,
   Layers,
   GraduationCap,
-  Users,
-  GitBranch,
-  History,
-  CheckCircle2,
   ArrowRight,
   Sparkles,
 } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const loading = true;
 
   useEffect(() => {
     fetch('/api/auth/me')
