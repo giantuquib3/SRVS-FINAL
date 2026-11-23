@@ -7,15 +7,13 @@ import { isValidDepartmentCode } from '@/lib/departments';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, idNumber, username, employeeId, studentId, password, firstName, lastName, fullName, role, departmentId, program, yearLevel, academicRank } = body;
+    const { email, idNumber, username, employeeId, password, firstName, lastName, fullName, role, departmentId, academicRank } = body;
 
     const cleanIdStr = idNumber !== undefined && idNumber !== null
       ? String(idNumber).trim()
       : (username !== undefined && username !== null
         ? String(username).trim()
-        : (studentId !== undefined && studentId !== null
-          ? String(studentId).trim()
-          : (employeeId !== undefined && employeeId !== null ? String(employeeId).trim() : '')));
+        : (employeeId !== undefined && employeeId !== null ? String(employeeId).trim() : ''));
 
     const cleanEmail = (email || '').trim().toLowerCase();
     const rawName = fullName || (firstName && lastName ? `${String(firstName).trim()} ${String(lastName).trim()}` : '');
@@ -36,7 +34,6 @@ export async function POST(req: NextRequest) {
     }
 
     const targetRole = 'Educator';
-    const isFaculty = true;
 
     // ID Format validation
     if (!/^\d{5}$/.test(cleanIdStr)) {
@@ -92,9 +89,7 @@ export async function POST(req: NextRequest) {
         role: targetRole,
         departmentId: deptCode,
         accountStatus: initialStatus,
-        academicRank: isFaculty ? (academicRank ? String(academicRank).trim() : 'Faculty') : null,
-        yearLevel: !isFaculty ? (yearLevel || '1st Year') : null,
-        program: !isFaculty && program ? String(program).trim() : null,
+        academicRank: academicRank ? String(academicRank).trim() : 'Faculty',
         mustChangePassword: false,
       },
     });

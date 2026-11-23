@@ -60,11 +60,11 @@ const openApiSpec = {
     },
     {
       "name": "2. Users & Administration",
-      "description": "Master institutional user directory (Admins, Department Heads, Educators, and Students), account approvals, role assignments, and deactivation."
+      "description": "Master institutional user directory (Admins, Registrars, VP-Academics, Deans, Department Heads, and Faculty), account approvals, role assignments, and deactivation."
     },
     {
       "name": "2b. Department Head Administration",
-      "description": "Department-level administrator endpoints strictly scoped to the Department Head assigned department (CPE, EE, CE, ECE, IE, ME). Department Heads can create Faculty/Educators and Students with temporary passwords (mustChangePassword=true), view department users, and review/approve/reject student self-registrations."
+      "description": "Department-level administrator endpoints strictly scoped to the Department Head assigned department (CPE, EE, CE, ECE, IE, ME). Department Heads can create Faculty accounts with temporary passwords (mustChangePassword=true), view department faculty, and approve or reject faculty self-registrations."
     },
     {
       "name": "3. Departments",
@@ -75,27 +75,23 @@ const openApiSpec = {
       "description": "Academic subjects curriculum catalog (e.g. Programming, Networking, Mathematics), credit units, lecture/lab hours, prerequisites, and department assignments. /api/courses is supported as an alias."
     },
     {
-      "name": "5. Enrollments",
-      "description": "Student ⟷ subject enrollments stored in the student_subjects junction table (many-to-many: one student, many subjects; one subject, many students). Each student can be enrolled in a subject only once (UNIQUE studentId + subjectId)."
-    },
-    {
-      "name": "6. Syllabus Management",
+      "name": "5. Syllabus Management",
       "description": "Syllabus drafting, single PDF document uploads (max 20MB, DOCX not allowed), revision authoring, and version tracking."
     },
     {
-      "name": "7. Syllabus Review & Approval",
+      "name": "6. Syllabus Review & Approval",
       "description": "Department Head review workflow: Draft -> Submitted -> Under Review -> Approved / Rejected, remarks, and previous version comparisons."
     },
     {
-      "name": "8. Audit Logs",
-      "description": "Institutional security audit trails recording authentication, syllabus revisions, course catalog modifications, and enrollment changes."
+      "name": "7. Audit Logs",
+      "description": "Institutional security audit trails recording authentication, syllabus revisions, and course catalog modifications."
     },
     {
-      "name": "9. Dashboard / System Health",
+      "name": "8. Dashboard / System Health",
       "description": "Role-scoped dashboard analytics and database connection latency diagnostics."
     },
     {
-      "name": "10. Notifications & Announcements",
+      "name": "9. Notifications & Announcements",
       "description": "In-app notifications and department announcements. NOTE: currently stub implementations — no database table backs them yet, so GET always returns an empty list."
     }
   ],
@@ -120,12 +116,12 @@ const openApiSpec = {
                 "properties": {
                   "idNumber": {
                     "type": "integer",
-                    "example": 2022012708,
-                    "description": "Institutional user ID number (10 digits for Students, 5 digits for Educators/DeptHeads, or 0 for Admin). Can also pass string via username."
+                    "example": 10018,
+                    "description": "Institutional user ID number (5 digits for staff, or 0 for Admin). Can also pass string via username."
                   },
                   "username": {
                     "type": "string",
-                    "example": "2022012708",
+                    "example": "10018",
                     "description": "User login ID identifier (alias of idNumber / email)"
                   },
                   "password": {
@@ -143,7 +139,7 @@ const openApiSpec = {
                 }
               },
               "example": {
-                "idNumber": 2022012708,
+                "idNumber": 10018,
                 "password": "Password123!"
               }
             }
@@ -160,11 +156,11 @@ const openApiSpec = {
                 "example": {
                   "success": true,
                   "user": {
-                    "id": 2022012708,
-                    "idNumber": 2022012708,
+                    "id": 10018,
+                    "idNumber": 10018,
                     "email": "gian@usjr.edu.ph",
                     "fullName": "Gian Carlo",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "departmentName": "Computer Engineering Department"
                   }
@@ -210,8 +206,8 @@ const openApiSpec = {
         "tags": [
           "1. Authentication"
         ],
-        "summary": "Self-Register Student or Faculty Account",
-        "description": "Public self-registration for Students (10-digit ID) and Faculty (5-digit ID). Accounts start with PendingApproval status.",
+        "summary": "Self-Register Faculty Account",
+        "description": "Public self-registration for Faculty (5-digit ID). Accounts start with PendingApproval status until the Department Head approves them.",
         "operationId": "registerUser",
         "requestBody": {
           "required": true,
@@ -230,8 +226,8 @@ const openApiSpec = {
                 "properties": {
                   "idNumber": {
                     "type": "integer",
-                    "example": 2022012708,
-                    "description": "Student ID number — exactly 10 digits"
+                    "example": 10018,
+                    "description": "Faculty ID number — exactly 5 digits"
                   },
                   "email": {
                     "type": "string",
@@ -256,12 +252,11 @@ const openApiSpec = {
                   "role": {
                     "type": "string",
                     "enum": [
-                      "Student",
                       "Faculty",
                       "Educator"
                     ],
-                    "example": "Student",
-                    "description": "Account role (Student or Faculty/Educator). Admin and DepartmentHead self-registration is blocked with 403."
+                    "example": "Faculty",
+                    "description": "Optional; only Faculty/Educator may self-register. Other roles are blocked with 403."
                   },
                   "departmentId": {
                     "type": "string",
@@ -284,30 +279,10 @@ const openApiSpec = {
                     "example": "10001",
                     "description": "5-digit Faculty ID number alias"
                   },
-                  "studentId": {
-                    "type": "string",
-                    "example": "2022012708",
-                    "description": "10-digit Student ID number alias"
-                  },
                   "fullName": {
                     "type": "string",
                     "example": "Gian Tuquib",
                     "description": "Full legal name"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering",
-                    "description": "Academic degree program for students"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "enum": [
-                      "1st Year",
-                      "2nd Year",
-                      "3rd Year",
-                      "4th Year"
-                    ],
-                    "example": "1st Year"
                   },
                   "academicRank": {
                     "type": "string",
@@ -317,12 +292,12 @@ const openApiSpec = {
                 }
               },
               "example": {
-                "idNumber": 2022012708,
+                "idNumber": 10018,
                 "email": "gian@usjr.edu.ph",
                 "password": "Password123!",
                 "firstName": "Gian",
                 "lastName": "Carlo",
-                "role": "Student",
+                "role": "Educator",
                 "departmentId": "CPE"
               }
             }
@@ -339,11 +314,11 @@ const openApiSpec = {
                 "example": {
                   "message": "Account registered successfully! Your account is pending administrator approval before you can log in.",
                   "user": {
-                    "id": 2022012708,
-                    "idNumber": 2022012708,
+                    "id": 10018,
+                    "idNumber": 10018,
                     "email": "gian@usjr.edu.ph",
                     "fullName": "Gian Carlo",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "accountStatus": "PendingApproval"
                   }
@@ -352,7 +327,7 @@ const openApiSpec = {
             }
           },
           "400": {
-            "description": "Validation failed: Student ID must be 10 digits, institutional email format, password length, or invalid department code.",
+            "description": "Validation failed: Faculty ID must be 5 digits, institutional email format, password length, or invalid department code.",
             "content": {
               "application/json": {
                 "schema": {
@@ -362,7 +337,7 @@ const openApiSpec = {
             }
           },
           "403": {
-            "description": "Forbidden: only Student accounts can be self-registered. Educator, Department Head, and Admin accounts must be created by an Admin.",
+            "description": "Forbidden: only Faculty accounts can self-register. Other roles are created by an Admin.",
             "content": {
               "application/json": {
                 "schema": {
@@ -380,113 +355,6 @@ const openApiSpec = {
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/api/auth/register/student": {
-      "post": {
-        "tags": [
-          "1. Authentication"
-        ],
-        "summary": "Student Self-Registration (10-Digit ID)",
-        "description": "Dedicated student self-registration endpoint. Student ID must be exactly 10 digits and institutional email must end with `@usjr.edu.ph`. Saved with `PendingApproval` status and automatically routed to the Department Head.",
-        "operationId": "registerStudent",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "idNumber",
-                  "fullName",
-                  "email",
-                  "password",
-                  "departmentId"
-                ],
-                "properties": {
-                  "idNumber": {
-                    "type": "integer",
-                    "example": 2022012708,
-                    "description": "Student ID (exactly 10 digits)"
-                  },
-                  "fullName": {
-                    "type": "string",
-                    "example": "Juan Dela Cruz",
-                    "description": "Full student name"
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "juan@usjr.edu.ph",
-                    "description": "Institutional email ending with @usjr.edu.ph"
-                  },
-                  "password": {
-                    "type": "string",
-                    "format": "password",
-                    "minLength": 6,
-                    "example": "StudentPass123!"
-                  },
-                  "departmentId": {
-                    "type": "string",
-                    "enum": [
-                      "CPE",
-                      "EE",
-                      "CE",
-                      "ECE",
-                      "IE",
-                      "ME"
-                    ],
-                    "example": "CPE",
-                    "description": "Academic department code"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "enum": [
-                      "1st Year",
-                      "2nd Year",
-                      "3rd Year",
-                      "4th Year"
-                    ],
-                    "example": "1st Year"
-                  },
-                  "studentId": {
-                    "type": "string",
-                    "example": "2022012708",
-                    "description": "10-digit Student ID alias"
-                  },
-                  "username": {
-                    "type": "string",
-                    "example": "2022012708",
-                    "description": "Student ID alias"
-                  },
-                  "firstName": {
-                    "type": "string",
-                    "example": "Gian"
-                  },
-                  "lastName": {
-                    "type": "string",
-                    "example": "Tuquib"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Student registered successfully with PendingApproval status."
-          },
-          "400": {
-            "description": "Validation failed (ID not 10 digits, invalid email, short password)."
-          },
-          "409": {
-            "description": "Account with this ID or email already exists."
           }
         }
       }
@@ -660,7 +528,7 @@ const openApiSpec = {
                 "properties": {
                   "idNumber": {
                     "type": "integer",
-                    "example": 2022012708
+                    "example": 10018
                   },
                   "email": {
                     "type": "string",
@@ -712,7 +580,7 @@ const openApiSpec = {
           "1. Authentication"
         ],
         "summary": "Get Authenticated Session Profile",
-        "description": "Returns profile details and active course enrollments of the currently logged-in user. **No parameters or request body** — the user is identified from the session cookie.",
+        "description": "Returns profile details of the currently logged-in user. **No parameters or request body** — the user is identified from the session cookie.",
         "operationId": "getCurrentSession",
         "security": [
           {
@@ -734,17 +602,15 @@ const openApiSpec = {
                 },
                 "example": {
                   "user": {
-                    "id": 2022012708,
-                    "idNumber": 2022012708,
+                    "id": 10018,
+                    "idNumber": 10018,
                     "email": "gian@usjr.edu.ph",
                     "fullName": "Gian Carlo",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "departmentCode": "CPE",
                     "departmentName": "Computer Engineering Department",
-                    "yearLevel": "1st Year",
-                    "enrolledSubjects": "CPE101",
-                    "enrollments": []
+                    "yearLevel": "1st Year"
                   }
                 }
               }
@@ -769,7 +635,7 @@ const openApiSpec = {
           "2. Users & Administration"
         ],
         "summary": "List Institutional Users",
-        "description": "Retrieve users list. Department Heads automatically only view Educators and Students within their assigned department (Department Isolation). Admins view all users.",
+        "description": "Retrieve users list. Department Heads automatically only view Faculty within their assigned department (Department Isolation). Admins view all users.",
         "operationId": "getUsers",
         "parameters": [
           {
@@ -777,7 +643,7 @@ const openApiSpec = {
             "in": "query",
             "schema": {
               "type": "integer",
-              "example": 2022012708
+              "example": 10018
             },
             "description": "Filter by exact numeric ID number"
           },
@@ -789,8 +655,7 @@ const openApiSpec = {
               "enum": [
                 "Admin",
                 "DepartmentHead",
-                "Educator",
-                "Student"
+                "Educator"
               ]
             }
           },
@@ -874,19 +739,16 @@ const openApiSpec = {
                 "example": {
                   "users": [
                     {
-                      "id": 2022012708,
-                      "idNumber": 2022012708,
+                      "id": 10018,
+                      "idNumber": 10018,
                       "email": "gian@usjr.edu.ph",
                       "fullName": "Gian Carlo",
-                      "role": "Student",
+                      "role": "Educator",
                       "departmentId": "CPE",
                       "departmentName": "Computer Engineering Department",
                       "accountStatus": "Active",
                       "academicRank": null,
                       "yearLevel": "1st Year",
-                      "enrolledCourses": [
-                        "CPE101"
-                      ],
                       "createdAt": "2026-09-01T08:00:00.000Z"
                     }
                   ],
@@ -895,7 +757,6 @@ const openApiSpec = {
                     "total": 1,
                     "deptHeads": 0,
                     "educators": 0,
-                    "students": 1,
                     "admins": 0
                   }
                 }
@@ -912,7 +773,7 @@ const openApiSpec = {
           "2. Users & Administration"
         ],
         "summary": "Create Admin or Department Head Account (Admin Only)",
-        "description": "Administrators can provision only Admin and Department Head accounts. Students and Faculty must self-register through the public registration portal.",
+        "description": "Administrators can provision Admin, Registrar, VP-Academics, Dean, Department Head, and Faculty accounts. Department Heads can create Faculty accounts in their department.",
         "operationId": "createUser",
         "requestBody": {
           "required": true,
@@ -983,20 +844,6 @@ const openApiSpec = {
                   "academicRank": {
                     "type": "string",
                     "example": "Department Chairperson"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "enum": [
-                      "1st Year",
-                      "2nd Year",
-                      "3rd Year",
-                      "4th Year"
-                    ],
-                    "example": "1st Year"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
                   }
                 }
               },
@@ -1078,7 +925,7 @@ const openApiSpec = {
                 "properties": {
                   "idNumber": {
                     "type": "integer",
-                    "example": 2022012708
+                    "example": 10018
                   },
                   "action": {
                     "type": "string",
@@ -1095,8 +942,7 @@ const openApiSpec = {
                     "enum": [
                       "Admin",
                       "DepartmentHead",
-                      "Educator",
-                      "Student"
+                      "Educator"
                     ]
                   },
                   "departmentId": {
@@ -1129,8 +975,7 @@ const openApiSpec = {
                     "enum": [
                       "Admin",
                       "DepartmentHead",
-                      "Educator",
-                      "Student"
+                      "Educator"
                     ],
                     "example": "DepartmentHead",
                     "description": "Updated user role"
@@ -1143,20 +988,6 @@ const openApiSpec = {
                     "type": "string",
                     "example": "Associate Professor"
                   },
-                  "yearLevel": {
-                    "type": "string",
-                    "enum": [
-                      "1st Year",
-                      "2nd Year",
-                      "3rd Year",
-                      "4th Year"
-                    ],
-                    "example": "2nd Year"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
-                  },
                   "reason": {
                     "type": "string",
                     "example": "Administrative account update"
@@ -1168,7 +999,7 @@ const openApiSpec = {
                 }
               },
               "example": {
-                "idNumber": 2022012708,
+                "idNumber": 10018,
                 "action": "Approve"
               }
             }
@@ -1194,11 +1025,11 @@ const openApiSpec = {
                 "example": {
                   "success": true,
                   "user": {
-                    "id": 2022012708,
-                    "idNumber": 2022012708,
+                    "id": 10018,
+                    "idNumber": 10018,
                     "email": "gian@usjr.edu.ph",
                     "fullName": "Gian Carlo",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "departmentName": "Computer Engineering Department",
                     "accountStatus": "Active"
@@ -1217,7 +1048,7 @@ const openApiSpec = {
           "2. Users & Administration"
         ],
         "summary": "Deactivate User Account (Audit-Preserving)",
-        "description": "Deactivates an account to prevent login while preserving all institutional audit trails, syllabus revisions, and enrollment histories intact.",
+        "description": "Deactivates an account to prevent login while preserving all institutional audit trails, and syllabus revisions intact.",
         "operationId": "deactivateUser",
         "parameters": [
           {
@@ -1226,7 +1057,7 @@ const openApiSpec = {
             "required": true,
             "schema": {
               "type": "integer",
-              "example": 2022012708
+              "example": 10018
             },
             "description": "Institutional ID number of user to deactivate"
           },
@@ -1266,7 +1097,7 @@ const openApiSpec = {
                 },
                 "example": {
                   "success": true,
-                  "message": "User account 2022012708 deactivated successfully. Institutional audit records and author history preserved."
+                  "message": "User account 10018 deactivated successfully. Institutional audit records and author history preserved."
                 }
               }
             }
@@ -1280,149 +1111,13 @@ const openApiSpec = {
         }
       }
     },
-    "/api/students": {
-      "get": {
-        "tags": [
-          "2. Users & Administration"
-        ],
-        "summary": "List Enrolled Students Directory (Admin / Department Head)",
-        "description": "Retrieve students with enrolled course lists. Department Heads are restricted to their assigned department.",
-        "operationId": "getStudents",
-        "parameters": [
-          {
-            "name": "studentId",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 2022012708
-            },
-            "description": "Filter by student 10-digit ID number"
-          },
-          {
-            "name": "idNumber",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 2022012708
-            },
-            "description": "Alternative alias for student ID number"
-          },
-          {
-            "name": "departmentId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "CPE",
-                "EE",
-                "CE",
-                "ECE",
-                "IE",
-                "ME"
-              ]
-            },
-            "description": "Filter by department code"
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "Gian"
-            },
-            "description": "Search by full name, email, or ID number"
-          },
-          {
-            "name": "department",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "CPE",
-                "EE",
-                "CE",
-                "ECE",
-                "IE",
-                "ME"
-              ]
-            },
-            "description": "Department code filter (alias of departmentId)"
-          },
-          {
-            "name": "userId",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Student ID filter (alias of studentId / idNumber)"
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Student primary key ID filter (alias of studentId / idNumber)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of students.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "students": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      }
-                    },
-                    "count": {
-                      "type": "integer",
-                      "example": 1
-                    }
-                  }
-                },
-                "example": {
-                  "students": [
-                    {
-                      "id": 2022012708,
-                      "idNumber": "2022012708",
-                      "fullName": "Gian Carlo",
-                      "email": "gian@usjr.edu.ph",
-                      "department": "CPE",
-                      "departmentName": "Computer Engineering Department",
-                      "yearLevel": "4th Year",
-                      "accountStatus": "Active",
-                      "enrolledCourses": [
-                        1,
-                        2
-                      ]
-                    }
-                  ],
-                  "count": 1
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized."
-          },
-          "403": {
-            "description": "Forbidden: Requires Admin or Department Head role."
-          }
-        }
-      }
-    },
     "/api/department-head/pending-users": {
       "get": {
         "tags": [
           "2b. Department Head Administration"
         ],
         "summary": "List Pending User Registrations (Department Head / Admin)",
-        "description": "Retrieve pending Student and Faculty self-registration requests belonging strictly to the Department Head assigned department (`PendingApproval` status). Department isolation is enforced server-side. Returns array of pending users by default or detailed summary when `?format=detailed` is requested.",
+        "description": "Retrieve pending Faculty self-registration requests belonging strictly to the Department Head assigned department (`PendingApproval` status). Department isolation is enforced server-side. Returns array of pending users by default or detailed summary when `?format=detailed` is requested.",
         "operationId": "getPendingUsers",
         "parameters": [
           {
@@ -1431,7 +1126,6 @@ const openApiSpec = {
             "schema": {
               "type": "string",
               "enum": [
-                "student",
                 "faculty",
                 "all"
               ]
@@ -1477,15 +1171,15 @@ const openApiSpec = {
         ],
         "responses": {
           "200": {
-            "description": "Array or detailed list of pending student and faculty registrations.",
+            "description": "Array or detailed list of pending faculty registrations.",
             "content": {
               "application/json": {
                 "example": [
                   {
-                    "id": 2022012708,
-                    "idNumber": 2022012708,
-                    "role": "Student",
-                    "type": "Student",
+                    "id": 10018,
+                    "idNumber": 10018,
+                    "role": "Educator",
+                    "type": "Faculty",
                     "name": "Juan Dela Cruz",
                     "fullName": "Juan Dela Cruz",
                     "email": "juan@usjr.edu.ph",
@@ -1528,7 +1222,7 @@ const openApiSpec = {
           "2b. Department Head Administration"
         ],
         "summary": "Approve User Registration (Department Head / Admin)",
-        "description": "Approve a pending Student or Faculty registration request (`PendingApproval -> Active`). Server strictly verifies that the user belongs to the Department Head assigned department. Cross-department approvals return HTTP 403 Forbidden. Records `StudentApproved` or `FacultyApproved` in the audit trail.",
+        "description": "Approve a pending Faculty registration request (`PendingApproval -> Active`). Server strictly verifies that the user belongs to the Department Head assigned department. Cross-department approvals return HTTP 403 Forbidden. Records `FacultyApproved` in the audit trail.",
         "operationId": "approveDepartmentUser",
         "parameters": [
           {
@@ -1537,9 +1231,9 @@ const openApiSpec = {
             "required": true,
             "schema": {
               "type": "integer",
-              "example": 2022012708
+              "example": 10018
             },
-            "description": "User numeric ID (10 digits for student, 5 digits for faculty)"
+            "description": "Faculty numeric ID (5 digits)"
           }
         ],
         "responses": {
@@ -1549,11 +1243,11 @@ const openApiSpec = {
               "application/json": {
                 "example": {
                   "success": true,
-                  "message": "Student registration for Juan Dela Cruz has been approved. The user may now log in.",
+                  "message": "Faculty registration for Juan Dela Cruz has been approved. The user may now log in.",
                   "user": {
-                    "id": 2022012708,
+                    "id": 10018,
                     "fullName": "Juan Dela Cruz",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "accountStatus": "Active"
                   }
@@ -1579,7 +1273,7 @@ const openApiSpec = {
           "2b. Department Head Administration"
         ],
         "summary": "Reject User Registration (Department Head / Admin)",
-        "description": "Reject a pending Student or Faculty registration request (`PendingApproval -> Rejected`). Rejection reason is saved and returned when user attempts to sign in. Server enforces strict department scoping. Records `StudentRejected` or `FacultyRejected` in audit trail.",
+        "description": "Reject a pending Faculty registration request (`PendingApproval -> Rejected`). Rejection reason is saved and returned when user attempts to sign in. Server enforces strict department scoping. Records `FacultyRejected` in audit trail.",
         "operationId": "rejectDepartmentUser",
         "parameters": [
           {
@@ -1588,7 +1282,7 @@ const openApiSpec = {
             "required": true,
             "schema": {
               "type": "integer",
-              "example": 2022012708
+              "example": 10018
             },
             "description": "User numeric ID"
           }
@@ -1607,7 +1301,7 @@ const openApiSpec = {
                 }
               },
               "example": {
-                "reason": "Invalid student ID number."
+                "reason": "Invalid faculty ID number."
               }
             }
           }
@@ -1619,14 +1313,14 @@ const openApiSpec = {
               "application/json": {
                 "example": {
                   "success": true,
-                  "message": "Student registration for Juan Dela Cruz has been rejected.",
+                  "message": "Faculty registration for Juan Dela Cruz has been rejected.",
                   "user": {
-                    "id": 2022012708,
+                    "id": 10018,
                     "fullName": "Juan Dela Cruz",
-                    "role": "Student",
+                    "role": "Educator",
                     "departmentId": "CPE",
                     "accountStatus": "Rejected",
-                    "rejectionReason": "Invalid student ID number."
+                    "rejectionReason": "Invalid faculty ID number."
                   }
                 }
               }
@@ -2052,675 +1746,13 @@ const openApiSpec = {
         }
       }
     },
-    "/api/department-head/students": {
-      "get": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "List Department Students (Department Head / Admin)",
-        "description": "Retrieve students belonging strictly to the Department Head assigned department. Department isolation is strictly enforced server-side.",
-        "operationId": "getDepartmentStudents",
-        "parameters": [
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Keyword search by full name, email, or 10-digit student ID"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "Active",
-                "PendingApproval",
-                "Rejected",
-                "Deactivated"
-              ]
-            }
-          },
-          {
-            "name": "yearLevel",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "1st Year",
-                "2nd Year",
-                "3rd Year",
-                "4th Year"
-              ]
-            }
-          },
-          {
-            "name": "departmentId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "CPE",
-                "EE",
-                "CE",
-                "ECE",
-                "IE",
-                "ME"
-              ]
-            },
-            "description": "Department filter (Administrator use; Department Heads are strictly scoped to their assigned department)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of department students.",
-            "content": {
-              "application/json": {
-                "example": {
-                  "students": [
-                    {
-                      "id": 2026010001,
-                      "idNumber": 2026010001,
-                      "email": "m.santos@usjr.edu.ph",
-                      "fullName": "Maria Santos",
-                      "role": "Student",
-                      "departmentId": "CPE",
-                      "departmentName": "Computer Engineering Department",
-                      "yearLevel": "1st Year",
-                      "program": "BS Computer Engineering",
-                      "accountStatus": "Active",
-                      "mustChangePassword": false,
-                      "enrolledCourses": [
-                        "CPE101"
-                      ]
-                    }
-                  ],
-                  "total": 1,
-                  "departmentId": "CPE"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden: Department Head or Admin access required."
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Create Student Account in Department (Department Head / Admin)",
-        "description": "Allows a Department Head to create a new Student account strictly within their own assigned department with temporary password and `MustChangePassword = true`. Cross-department creation is blocked server-side.",
-        "operationId": "createDepartmentStudent",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "idNumber",
-                  "fullName",
-                  "email"
-                ],
-                "properties": {
-                  "idNumber": {
-                    "type": "integer",
-                    "example": 2026010001,
-                    "description": "Student ID number (must be exactly 10 digits)"
-                  },
-                  "fullName": {
-                    "type": "string",
-                    "example": "Maria Santos",
-                    "description": "Student full name"
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "m.santos@usjr.edu.ph",
-                    "description": "Institutional email"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "example": "1st Year"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
-                  },
-                  "password": {
-                    "type": "string",
-                    "example": "USJR@Student2026"
-                  },
-                  "studentId": {
-                    "type": "integer",
-                    "example": 2022012708,
-                    "description": "Student 10-digit ID (alias of idNumber)"
-                  },
-                  "userId": {
-                    "type": "integer",
-                    "example": 2022012708,
-                    "description": "Student 10-digit ID (alias of idNumber)"
-                  },
-                  "departmentId": {
-                    "type": "string",
-                    "enum": [
-                      "CPE",
-                      "EE",
-                      "CE",
-                      "ECE",
-                      "IE",
-                      "ME"
-                    ],
-                    "example": "CPE"
-                  },
-                  "accountStatus": {
-                    "type": "string",
-                    "enum": [
-                      "Active",
-                      "PendingApproval",
-                      "Rejected",
-                      "Deactivated"
-                    ],
-                    "example": "Active"
-                  }
-                }
-              },
-              "example": {
-                "idNumber": 2026010001,
-                "fullName": "Maria Santos",
-                "email": "m.santos@usjr.edu.ph",
-                "yearLevel": "1st Year",
-                "program": "BS Computer Engineering",
-                "password": "USJR@Student2026"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Student account created successfully.",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": true,
-                  "message": "Student account created successfully for Maria Santos.",
-                  "user": {
-                    "id": 2026010001,
-                    "idNumber": 2026010001,
-                    "email": "m.santos@usjr.edu.ph",
-                    "fullName": "Maria Santos",
-                    "role": "Student",
-                    "departmentId": "CPE",
-                    "departmentName": "Computer Engineering Department",
-                    "yearLevel": "1st Year",
-                    "program": "BS Computer Engineering",
-                    "accountStatus": "Active",
-                    "mustChangePassword": true
-                  },
-                  "temporaryPassword": "USJR@Student2026"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation failed (e.g. ID not 10 digits)."
-          },
-          "403": {
-            "description": "Forbidden: Cannot create students outside assigned department."
-          },
-          "409": {
-            "description": "User with this ID or email already exists."
-          }
-        }
-      }
-    },
-    "/api/department-head/students/{id}": {
-      "put": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Update / Activate / Deactivate Department Student (Department Head / Admin)",
-        "description": "Update student details or activate/deactivate account. Server enforces that the target student belongs strictly to the Department Head assigned department.",
-        "operationId": "updateDepartmentStudent",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 2026010001
-            },
-            "description": "10-digit student ID"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "fullName": {
-                    "type": "string",
-                    "example": "Maria Santos"
-                  },
-                  "email": {
-                    "type": "string",
-                    "example": "m.santos@usjr.edu.ph"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "example": "2nd Year"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
-                  },
-                  "accountStatus": {
-                    "type": "string",
-                    "enum": [
-                      "Active",
-                      "Deactivated"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Student account updated successfully."
-          },
-          "403": {
-            "description": "Forbidden: Target student belongs to another department."
-          },
-          "404": {
-            "description": "Student not found."
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Retrieve Department Student by ID",
-        "description": "Fetches details of an individual student within the Department Head assigned department.",
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Student 10-digit ID number"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Student details retrieved.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "user": {
-                      "$ref": "#/components/schemas/User"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid student ID."
-          },
-          "403": {
-            "description": "Forbidden — cross-department access prohibited."
-          },
-          "404": {
-            "description": "Student not found."
-          },
-          "500": {
-            "description": "Internal server error."
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Partial Update Department Student (PATCH Alias)",
-        "description": "Updates student record, year level, degree program, account status, or resets password.",
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Student 10-digit ID number"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "fullName": {
-                    "type": "string",
-                    "example": "Maria Santos"
-                  },
-                  "email": {
-                    "type": "string",
-                    "example": "m.santos@usjr.edu.ph"
-                  },
-                  "yearLevel": {
-                    "type": "string",
-                    "example": "2nd Year"
-                  },
-                  "program": {
-                    "type": "string",
-                    "example": "BS Computer Engineering"
-                  },
-                  "accountStatus": {
-                    "type": "string",
-                    "enum": [
-                      "Active",
-                      "Deactivated"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Student account updated successfully."
-          },
-          "403": {
-            "description": "Forbidden: Target student belongs to another department."
-          },
-          "404": {
-            "description": "Student not found."
-          }
-        }
-      }
-    },
-    "/api/department-head/student-registrations": {
-      "get": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "List Student Self-Registration Requests (Department Head / Admin)",
-        "description": "Retrieve pending student self-registration requests belonging strictly to the Department Head assigned department (`PendingApproval` status). Allows Department Heads to review incoming registrations before granting login access.",
-        "operationId": "getStudentRegistrations",
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "PendingApproval",
-                "Active",
-                "Rejected",
-                "all"
-              ],
-              "default": "PendingApproval"
-            },
-            "description": "Filter by registration status"
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Search by student name, email, or ID"
-          },
-          {
-            "name": "departmentId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "CPE",
-                "EE",
-                "CE",
-                "ECE",
-                "IE",
-                "ME"
-              ]
-            },
-            "description": "Department filter (Administrator use; Department Heads are strictly scoped to their assigned department)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of student registration requests for the department.",
-            "content": {
-              "application/json": {
-                "example": {
-                  "registrations": [
-                    {
-                      "id": 2022010099,
-                      "idNumber": 2022010099,
-                      "studentId": "2022010099",
-                      "email": "student.pending@usjr.edu.ph",
-                      "fullName": "Pending Approval User",
-                      "role": "Student",
-                      "departmentId": "CPE",
-                      "departmentName": "Computer Engineering Department",
-                      "program": "BS Computer Engineering",
-                      "yearLevel": "1st Year",
-                      "accountStatus": "PendingApproval",
-                      "rejectionReason": null,
-                      "reviewedBy": null,
-                      "reviewedAt": null,
-                      "createdAt": "2026-03-01T10:00:00.000Z"
-                    }
-                  ],
-                  "total": 1,
-                  "departmentId": "CPE"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden: Requires Department Head or Admin role."
-          }
-        }
-      }
-    },
-    "/api/department-head/student-registrations/{id}": {
-      "get": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "View Single Student Registration Request (Department Head / Admin)",
-        "description": "View full registration details and audit review history for a specific student registration request. Department isolation is strictly enforced.",
-        "operationId": "getStudentRegistrationById",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 2022010099
-            },
-            "description": "Student 10-digit ID"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Registration request details with review audit history."
-          },
-          "403": {
-            "description": "Forbidden: Registration belongs to another department."
-          },
-          "404": {
-            "description": "Registration record not found."
-          }
-        }
-      }
-    },
-    "/api/department-head/student-registrations/{id}/approve": {
-      "post": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Approve Student Registration Request (Department Head / Admin)",
-        "description": "Approve a pending student self-registration request (`PendingApproval -> Active`). Once approved, the student is allowed to log in. Cross-department approval is strictly blocked (HTTP 403). Records `StudentRegistrationApproved` in audit trail.",
-        "operationId": "approveStudentRegistration",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 2022010099
-            },
-            "description": "Student 10-digit ID"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Student registration approved successfully.",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": true,
-                  "message": "Student registration for Pending Approval User has been approved. The student may now log in.",
-                  "student": {
-                    "id": 2022010099,
-                    "email": "student.pending@usjr.edu.ph",
-                    "fullName": "Pending Approval User",
-                    "role": "Student",
-                    "departmentId": "CPE",
-                    "departmentName": "Computer Engineering Department",
-                    "accountStatus": "Active"
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden: Student belongs to another department."
-          },
-          "404": {
-            "description": "Student registration record not found."
-          }
-        }
-      }
-    },
-    "/api/department-head/student-registrations/{id}/reject": {
-      "post": {
-        "tags": [
-          "2b. Department Head Administration"
-        ],
-        "summary": "Reject Student Registration Request (Department Head / Admin)",
-        "description": "Reject a pending student self-registration request (`PendingApproval -> Rejected`). The rejection reason is stored and returned to the student if they attempt to log in. Records `StudentRegistrationRejected` in audit trail.",
-        "operationId": "rejectStudentRegistration",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 2022010099
-            },
-            "description": "Student 10-digit ID"
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "reason": {
-                    "type": "string",
-                    "example": "Unverified enrolled ID number."
-                  },
-                  "rejectionReason": {
-                    "type": "string",
-                    "example": "Unverified enrolled ID number."
-                  }
-                }
-              },
-              "example": {
-                "reason": "Student ID does not match department master enrollment records. Please visit the Department office."
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Student registration rejected successfully.",
-            "content": {
-              "application/json": {
-                "example": {
-                  "success": true,
-                  "message": "Student registration for Pending Approval User has been rejected.",
-                  "student": {
-                    "id": 2022010099,
-                    "email": "student.pending@usjr.edu.ph",
-                    "fullName": "Pending Approval User",
-                    "role": "Student",
-                    "departmentId": "CPE",
-                    "accountStatus": "Rejected",
-                    "rejectionReason": "Student ID does not match department master enrollment records."
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden: Student belongs to another department."
-          },
-          "404": {
-            "description": "Student registration record not found."
-          }
-        }
-      }
-    },
     "/api/departments": {
       "get": {
         "tags": [
           "3. Departments"
         ],
         "summary": "List Academic Engineering Departments",
-        "description": "Returns the 6 institutional engineering departments (CPE, EE, CE, ECE, IE, ME) with real-time course, student, and faculty counts.",
+        "description": "Returns the 6 institutional engineering departments (CPE, EE, CE, ECE, IE, ME) with real-time course and faculty counts.",
         "operationId": "getDepartments",
         "parameters": [
           {
@@ -2760,7 +1792,6 @@ const openApiSpec = {
                         "courses": 13,
                         "users": 5,
                         "educators": 2,
-                        "students": 2,
                         "syllabi": 3
                       }
                     },
@@ -2774,7 +1805,6 @@ const openApiSpec = {
                         "courses": 8,
                         "users": 3,
                         "educators": 1,
-                        "students": 1,
                         "syllabi": 1
                       }
                     }
@@ -2837,15 +1867,6 @@ const openApiSpec = {
               ]
             },
             "description": "Department code filter"
-          },
-          {
-            "name": "yearLevel",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "1st Year"
-            },
-            "description": "Academic year level filter"
           },
           {
             "name": "semester",
@@ -3024,642 +2045,13 @@ const openApiSpec = {
         }
       }
     },
-    "/api/enrollments": {
-      "get": {
-        "tags": [
-          "5. Enrollments"
-        ],
-        "summary": "List Student–Subject Enrollments",
-        "description": "Lists rows of the student_subjects junction table joined with the student (users) and subject (subjects), including the subject's latest APPROVED syllabus. Students only see their own enrollments; Department Heads see enrollments for subjects in their department; Administrators see all; Educators are forbidden. Student names come from users.fullName and subject titles from subjects.title (neither is stored on student_subjects). Returns status = ENROLLED unless ?status= is given.",
-        "operationId": "getEnrollments",
-        "parameters": [
-          {
-            "name": "studentId",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 2022012708
-            },
-            "description": "Student ID (ignored for Students — they always see their own). Alias: idNumber"
-          },
-          {
-            "name": "subjectId",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 3
-            },
-            "description": "Subject primary key (subjects.id). Alias: courseId"
-          },
-          {
-            "name": "subjectCode",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "CPE301"
-            },
-            "description": "Subject code. Alias: courseCode"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "ENROLLED",
-                "COMPLETED",
-                "DROPPED",
-                "ALL"
-              ],
-              "default": "ENROLLED"
-            },
-            "description": "Enrollment status filter; ALL returns every status"
-          },
-          {
-            "name": "semester",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "1st Semester",
-                "2nd Semester",
-                "Summer"
-              ]
-            }
-          },
-          {
-            "name": "academicYear",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "2026-2027"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of enrollments.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "enrollments": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Enrollment"
-                      }
-                    },
-                    "total": {
-                      "type": "integer",
-                      "example": 1
-                    }
-                  }
-                },
-                "example": {
-                  "enrollments": [
-                    {
-                      "id": 21,
-                      "studentId": 2022012708,
-                      "studentName": "Gian Carlo Tuquib",
-                      "subjectId": 3,
-                      "courseId": 3,
-                      "status": "ENROLLED",
-                      "academicYear": "2026-2027",
-                      "semester": "1st Semester",
-                      "enrolledById": 10001,
-                      "enrolledBy": {
-                        "id": 10001,
-                        "fullName": "Engr. CPE Chairperson",
-                        "role": "DepartmentHead"
-                      },
-                      "createdAt": "2026-10-23T08:00:00.000Z",
-                      "student": {
-                        "id": 2022012708,
-                        "idNumber": 2022012708,
-                        "fullName": "Gian Carlo Tuquib",
-                        "email": "gian.tuquib@usjr.edu.ph",
-                        "departmentId": "CPE",
-                        "yearLevel": "3rd Year"
-                      },
-                      "subject": {
-                        "id": 3,
-                        "code": "CPE301",
-                        "title": "Computer Architecture and Organization",
-                        "units": 3,
-                        "departmentId": "CPE",
-                        "professorName": "Dr. Alan Turing",
-                        "department": {
-                          "id": "CPE",
-                          "code": "CPE",
-                          "name": "Computer Engineering Department"
-                        },
-                        "activeSyllabus": {
-                          "id": 1,
-                          "status": "APPROVED",
-                          "academicYear": "2026-2027",
-                          "semester": "1st Semester",
-                          "currentVersionNumber": 2
-                        }
-                      }
-                    }
-                  ],
-                  "total": 1
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not authenticated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Role not permitted to list enrollments (e.g. Educator).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "5. Enrollments"
-        ],
-        "summary": "Enroll Student in a Subject",
-        "description": "Creates a student_subjects row. A student may be enrolled in many subjects and a subject may have many students, but the same student can be enrolled in a given subject only once (checked by the API and enforced by the uq_student_subjects UNIQUE constraint). The student must exist and have role Student (also enforced by a database trigger); the subject must exist (foreign keys). Students can only enroll themselves; Department Heads only within their own department; Educators are forbidden. The session user is recorded as enrolledById.",
-        "operationId": "createEnrollment",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "studentId": {
-                    "type": "integer",
-                    "example": 2022012708,
-                    "description": "Student University ID (users.id). Required for Admin/DepartmentHead; ignored for Students (the session user is used). Alias: idNumber"
-                  },
-                  "subjectId": {
-                    "type": "integer",
-                    "example": 3,
-                    "description": "Subject ID (subjects.id). Alias: courseId"
-                  },
-                  "subjectCode": {
-                    "type": "string",
-                    "example": "CPE301",
-                    "description": "Alternative to subjectId. Alias: courseCode"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "ENROLLED",
-                      "COMPLETED",
-                      "DROPPED"
-                    ],
-                    "example": "ENROLLED",
-                    "description": "Default ENROLLED. Students may only create ENROLLED records.",
-                    "default": "ENROLLED"
-                  },
-                  "academicYear": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{4}$",
-                    "example": "2026-2027",
-                    "description": "School year the student takes the subject (CHECK: YYYY-YYYY).",
-                    "default": "2026-2027"
-                  },
-                  "semester": {
-                    "type": "string",
-                    "enum": [
-                      "1st Semester",
-                      "2nd Semester",
-                      "Summer"
-                    ],
-                    "example": "1st Semester",
-                    "default": "1st Semester"
-                  }
-                }
-              },
-              "example": {
-                "studentId": 2022012708,
-                "subjectId": 3,
-                "semester": "1st Semester",
-                "academicYear": "2026-2027",
-                "status": "ENROLLED"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Student enrolled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "enrollment": {
-                      "$ref": "#/components/schemas/Enrollment"
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "enrollment": {
-                    "id": 21,
-                    "studentId": 2022012708,
-                    "studentName": "Gian Carlo Tuquib",
-                    "subjectId": 3,
-                    "courseId": 3,
-                    "status": "ENROLLED",
-                    "academicYear": "2026-2027",
-                    "semester": "1st Semester",
-                    "enrolledById": 10001,
-                    "enrolledBy": {
-                      "id": 10001,
-                      "fullName": "Engr. CPE Chairperson",
-                      "role": "DepartmentHead"
-                    },
-                    "createdAt": "2026-10-23T08:00:00.000Z",
-                    "student": {
-                      "id": 2022012708,
-                      "idNumber": 2022012708,
-                      "fullName": "Gian Carlo Tuquib",
-                      "email": "gian.tuquib@usjr.edu.ph",
-                      "departmentId": "CPE",
-                      "yearLevel": "3rd Year"
-                    },
-                    "subject": {
-                      "id": 3,
-                      "code": "CPE301",
-                      "title": "Computer Architecture and Organization",
-                      "units": 3,
-                      "departmentId": "CPE",
-                      "professorName": "Dr. Alan Turing",
-                      "department": {
-                        "id": "CPE",
-                        "code": "CPE",
-                        "name": "Computer Engineering Department"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing/invalid studentId, invalid status / academicYear / semester, or the user is not a Student.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": "User Dr. Alan Turing (ID: 10001) has role \"DepartmentHead\". Only users whose role is \"Student\" may be enrolled in subjects."
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not authenticated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Role not permitted, or department isolation violated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Student or subject not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": "Subject not found. Please provide a valid subjectId or subjectCode."
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The student is already enrolled in this subject.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                },
-                "example": {
-                  "error": "Gian Carlo Tuquib is already enrolled in [CPE301] Computer Architecture and Organization."
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "5. Enrollments"
-        ],
-        "summary": "Update Enrollment Status / Term",
-        "description": "Changes the status (e.g. mark COMPLETED or DROPPED), academic year or semester of one enrollment. Admin or Department Head (own department only). The change is written to the audit log. studentId and subjectId cannot be changed — delete and re-create the enrollment instead.",
-        "operationId": "updateEnrollment",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "id"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "integer",
-                    "example": 21,
-                    "description": "student_subjects.id"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "ENROLLED",
-                      "COMPLETED",
-                      "DROPPED"
-                    ],
-                    "example": "ENROLLED",
-                    "description": "Enrollment status (CHECK constraint). Only ENROLLED gives the student access to the approved syllabus."
-                  },
-                  "academicYear": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{4}$",
-                    "example": "2026-2027",
-                    "description": "School year the student takes the subject (CHECK: YYYY-YYYY)."
-                  },
-                  "semester": {
-                    "type": "string",
-                    "enum": [
-                      "1st Semester",
-                      "2nd Semester",
-                      "Summer"
-                    ],
-                    "example": "1st Semester"
-                  }
-                }
-              },
-              "example": {
-                "id": 21,
-                "status": "COMPLETED"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Enrollment updated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "enrollment": {
-                      "$ref": "#/components/schemas/Enrollment"
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "enrollment": {
-                    "id": 21,
-                    "studentId": 2022012708,
-                    "studentName": "Gian Carlo Tuquib",
-                    "subjectId": 3,
-                    "courseId": 3,
-                    "status": "COMPLETED",
-                    "academicYear": "2026-2027",
-                    "semester": "1st Semester",
-                    "enrolledById": 10001,
-                    "enrolledBy": {
-                      "id": 10001,
-                      "fullName": "Engr. CPE Chairperson",
-                      "role": "DepartmentHead"
-                    },
-                    "createdAt": "2026-10-23T08:00:00.000Z",
-                    "student": {
-                      "id": 2022012708,
-                      "idNumber": 2022012708,
-                      "fullName": "Gian Carlo Tuquib",
-                      "email": "gian.tuquib@usjr.edu.ph",
-                      "departmentId": "CPE",
-                      "yearLevel": "3rd Year"
-                    },
-                    "subject": {
-                      "id": 3,
-                      "code": "CPE301",
-                      "title": "Computer Architecture and Organization",
-                      "units": 3,
-                      "departmentId": "CPE",
-                      "professorName": "Dr. Alan Turing",
-                      "department": {
-                        "id": "CPE",
-                        "code": "CPE",
-                        "name": "Computer Engineering Department"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing id, nothing to update, or an invalid status / academicYear / semester.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not authenticated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not an Admin / Department Head, or the subject belongs to another department.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Enrollment not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "5. Enrollments"
-        ],
-        "summary": "Unenroll Student from Subject",
-        "description": "Deletes a student_subjects row, identified by its id or by studentId + subjectId/subjectCode. Students may only remove their own enrollments; Department Heads only within their department. The action is recorded in the audit log.",
-        "operationId": "deleteEnrollment",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 21
-            },
-            "description": "Enrollment primary key (student_subjects.id) — preferred"
-          },
-          {
-            "name": "studentId",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 2022012708
-            },
-            "description": "Student ID (ignored for Students). Alias: idNumber"
-          },
-          {
-            "name": "subjectId",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "example": 3
-            },
-            "description": "Subject ID. Alias: courseId"
-          },
-          {
-            "name": "subjectCode",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "CPE301"
-            },
-            "description": "Subject code. Alias: courseCode"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Student unenrolled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "message": "Student unenrolled successfully."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Neither an enrollment id nor studentId + subjectId/subjectCode was provided.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not authenticated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed to manage this enrollment.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Enrollment not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/syllabi": {
       "get": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "List Syllabi Catalog",
-        "description": "Retrieve syllabus repository records. Department Heads and Educators are restricted to their assigned department. Students only see approved syllabi for courses they are enrolled in.",
+        "description": "Retrieve syllabus repository records. Department Heads and Educators are restricted to their assigned department. Registrar and VP-Academics can view all departments.",
         "operationId": "getSyllabi",
         "parameters": [
           {
@@ -3838,7 +2230,7 @@ const openApiSpec = {
       },
       "post": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Create or Submit New Syllabus (Educator / Dept Head)",
         "description": "Creates Version 1 of a syllabus. Uploader identity (`instructorId`) is strictly verified from authenticated session. Revisions follow workflow: `Draft` -> `Submitted` -> `Under Review` -> `Approved` / `Rejected`.",
@@ -4029,7 +2421,7 @@ const openApiSpec = {
     "/api/syllabi/{id}": {
       "get": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Get Syllabus Details & Version History",
         "description": "Retrieve full syllabus record, all sequential versions, review feedback, and document attachments.",
@@ -4076,7 +2468,7 @@ const openApiSpec = {
             }
           },
           "403": {
-            "description": "Forbidden: Department isolation or student not enrolled in course."
+            "description": "Forbidden: department isolation."
           },
           "404": {
             "description": "Syllabus not found."
@@ -4085,7 +2477,7 @@ const openApiSpec = {
       },
       "patch": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Submit Syllabus Revision (Create New Version)",
         "description": "Authors and Department Heads submit sequential syllabus versions (e.g. Version 2, 3) with change summary.",
@@ -4233,7 +2625,7 @@ const openApiSpec = {
       },
       "put": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Submit Syllabus Revision (PUT Alias)",
         "description": "PUT alias for PATCH /api/syllabi/{id} allowing full revision update or draft save.",
@@ -4348,7 +2740,7 @@ const openApiSpec = {
       },
       "delete": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Delete Syllabus",
         "description": "Delete a syllabus record by ID (Admin or Department Head for assigned department).",
@@ -4400,7 +2792,7 @@ const openApiSpec = {
     "/api/syllabi/upload": {
       "post": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Upload Syllabus Document (PDF Only, Max 20MB)",
         "description": "Upload a syllabus file attachment. The SRVS system strictly accepts **PDF syllabi only** (`.pdf`). Maximum file size is **20 MB**. DOCX and other document formats are rejected.",
@@ -4477,7 +2869,7 @@ const openApiSpec = {
     "/api/syllabi/{id}/versions": {
       "get": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Get All Revision Versions for Syllabus",
         "description": "Retrieve full chronological version history, snapshots, and diff content for a syllabus by ID.",
@@ -4540,7 +2932,7 @@ const openApiSpec = {
             "description": "Unauthorized."
           },
           "403": {
-            "description": "Forbidden outside assigned department or student access."
+            "description": "Forbidden outside assigned department."
           },
           "404": {
             "description": "Syllabus not found."
@@ -4551,7 +2943,7 @@ const openApiSpec = {
     "/api/syllabi/{id}/submit": {
       "post": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Submit Syllabus for Department Head Review",
         "description": "Transitions a syllabus from `Draft` to `Submitted` status, notifying the Department Head for review.",
@@ -4632,7 +3024,7 @@ const openApiSpec = {
     "/api/syllabi/{id}/restore": {
       "post": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Restore Historical Syllabus Version",
         "description": "Restores a previous historical version, creating a new Draft version snapshot.",
@@ -4727,7 +3119,7 @@ const openApiSpec = {
     "/api/syllabus-approvals": {
       "get": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "List Pending Syllabus Approvals (Department Head / Admin)",
         "description": "Retrieve pending submissions awaiting review. Department Heads strictly view submissions belonging to their assigned department (Department Isolation).",
@@ -4888,7 +3280,7 @@ const openApiSpec = {
       },
       "post": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Approve or Reject Syllabus Version (Department Head)",
         "description": "Department Heads approve or reject submissions. Reviewer identity (`reviewedById`) is strictly recorded from the authenticated session. Department Heads can only review their department.",
@@ -4920,7 +3312,7 @@ const openApiSpec = {
                   },
                   "patch": {
                     "tags": [
-                      "7. Syllabus Review & Approval"
+                      "6. Syllabus Review & Approval"
                     ],
                     "summary": "Review Syllabus Version (PATCH Alias)",
                     "description": "PATCH alias for POST /api/syllabus-approvals allowing Department Head to approve, reject, or place under review.",
@@ -5030,7 +3422,7 @@ const openApiSpec = {
       },
       "patch": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Submit Review Action on Syllabus Version (PATCH Alias)",
         "description": "Performs review action (Approve, Reject, or Under_Review) on a submitted syllabus version. Reviewer identity derived from authenticated session.",
@@ -5119,7 +3511,7 @@ const openApiSpec = {
     "/api/syllabus-approvals/{id}": {
       "get": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Get Approval Request Details with Version Comparison",
         "description": "Retrieve detailed approval request including course metadata, submitted outcomes, and previous approved version for diff comparison.",
@@ -5149,7 +3541,7 @@ const openApiSpec = {
                     "/api/syllabus-approvals/{id}/approve": {
                       "post": {
                         "tags": [
-                          "7. Syllabus Review & Approval"
+                          "6. Syllabus Review & Approval"
                         ],
                         "summary": "Approve Syllabus Version by ID",
                         "description": "Department Head direct approval endpoint for a specific syllabus version ID.",
@@ -5201,7 +3593,7 @@ const openApiSpec = {
                     "/api/syllabus-approvals/{id}/reject": {
                       "post": {
                         "tags": [
-                          "7. Syllabus Review & Approval"
+                          "6. Syllabus Review & Approval"
                         ],
                         "summary": "Reject Syllabus Version by ID",
                         "description": "Department Head direct rejection endpoint with required rejection feedback reason.",
@@ -5277,7 +3669,7 @@ const openApiSpec = {
     "/api/syllabi/{id}/review": {
       "post": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Review & Approve or Reject Syllabus (Department Head / Admin)",
         "description": "Department Head decision on syllabus. Action must be `Approve` or `Reject`. Reviewer identity is securely verified from authenticated session cookie.",
@@ -5376,7 +3768,7 @@ const openApiSpec = {
     "/api/audit-logs": {
       "get": {
         "tags": [
-          "8. Audit Logs"
+          "7. Audit Logs"
         ],
         "summary": "Inspect System Security & Activity Audit Trail (Admin Only)",
         "description": "System Administrators can inspect immutable event logs tracking authentication, registrations, course alterations, syllabus submissions, and approvals.",
@@ -5404,7 +3796,7 @@ const openApiSpec = {
             "in": "query",
             "schema": {
               "type": "integer",
-              "example": 2022012708
+              "example": 10018
             },
             "description": "Filter by user ID number"
           },
@@ -5445,13 +3837,13 @@ const openApiSpec = {
                   "logs": [
                     {
                       "id": 1,
-                      "userId": 2022012708,
+                      "userId": 10018,
                       "userDisplayName": "Gian Carlo",
                       "actionType": "Login",
                       "resultStatus": "Success",
-                      "description": "User successfully logged in as [Student]",
+                      "description": "User successfully logged in as [Educator]",
                       "entityType": "User",
-                      "entityId": "2022012708",
+                      "entityId": "10018",
                       "ipAddress": "127.0.0.1",
                       "createdAt": "2026-09-29T10:00:00.000Z"
                     }
@@ -5469,10 +3861,10 @@ const openApiSpec = {
     "/api/dashboard/stats": {
       "get": {
         "tags": [
-          "9. Dashboard / System Health"
+          "8. Dashboard / System Health"
         ],
         "summary": "Get Role-Scoped Dashboard Analytics",
-        "description": "Returns real-time analytics tailored to the authenticated user role: institutional metrics for Admin, departmental overview for Department Head, course & syllabus stats for Educator, enrolled courses for Student.",
+        "description": "Returns real-time analytics tailored to the authenticated user role: institutional metrics for Admin, departmental overview for Department Head, and course & syllabus stats for Educator.",
         "operationId": "getDashboardStats",
         "responses": {
           "200": {
@@ -5506,7 +3898,6 @@ const openApiSpec = {
                     "approvedSyllabi": 7,
                     "rejectedSyllabi": 0,
                     "educatorsCount": 5,
-                    "studentsCount": 22,
                     "pendingRegistrations": 1,
                     "pendingApprovals": 1,
                     "missingSyllabi": 6
@@ -5524,7 +3915,7 @@ const openApiSpec = {
     "/api/system/db-status": {
       "get": {
         "tags": [
-          "9. Dashboard / System Health"
+          "8. Dashboard / System Health"
         ],
         "summary": "Live Database Health & Latency Diagnostics",
         "description": "Live PostgreSQL connection check, query latency test, and table row counts across all core entities.",
@@ -5567,7 +3958,6 @@ const openApiSpec = {
                     "departments": 6,
                     "users": 31,
                     "subjects": 14,
-                    "enrollments": 18,
                     "syllabi": 14,
                     "syllabus_versions": 24,
                     "audit_logs": 25
@@ -5641,7 +4031,7 @@ const openApiSpec = {
           "9. Notifications & Announcements"
         ],
         "summary": "Create and Broadcast Announcement (Admin / Department Head)",
-        "description": "Broadcasts an announcement notification to all active educators and students in the specified department.",
+        "description": "Broadcasts an announcement notification to all active faculty in the specified department.",
         "security": [
           {
             "bearerAuth": []
@@ -5877,7 +4267,7 @@ const openApiSpec = {
           "4. Academic Subjects (Curriculum)"
         ],
         "summary": "List Academic Subjects Curriculum Catalog",
-        "description": "Retrieve academic subjects catalog (e.g. Programming, Networking, Mathematics). Non-admin users are strictly scoped to subjects within their assigned department (Department Isolation). Students also receive isEnrolled status flags for each subject.",
+        "description": "Retrieve academic subjects catalog (e.g. Programming, Networking, Mathematics). Non-admin users are strictly scoped to subjects within their assigned department (Department Isolation).",
         "operationId": "getSubjects",
         "parameters": [
           {
@@ -5922,15 +4312,6 @@ const openApiSpec = {
               ]
             },
             "description": "Department code filter"
-          },
-          {
-            "name": "yearLevel",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "example": "1st Year"
-            },
-            "description": "Academic year level filter"
           },
           {
             "name": "semester",
@@ -6112,7 +4493,7 @@ const openApiSpec = {
     "/api/syllabi/{id}/versions/{version}/submit": {
       "post": {
         "tags": [
-          "6. Syllabus Management"
+          "5. Syllabus Management"
         ],
         "summary": "Submit Specific Syllabus Version for Department Review",
         "description": "Transitions a specific draft version of a syllabus into SUBMITTED status and notifies the Department Head.",
@@ -6205,7 +4586,7 @@ const openApiSpec = {
     "/api/syllabus-approvals/{id}/approve": {
       "post": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Direct Approve Syllabus Version (Department Head / Admin)",
         "description": "Approves the specified syllabus version, archives prior active versions for this course, marks the syllabus as APPROVED, and notifies the educator.",
@@ -6288,7 +4669,7 @@ const openApiSpec = {
     "/api/syllabus-approvals/{id}/reject": {
       "post": {
         "tags": [
-          "7. Syllabus Review & Approval"
+          "6. Syllabus Review & Approval"
         ],
         "summary": "Direct Reject Syllabus Version with Actionable Feedback",
         "description": "Returns the specified syllabus version to the educator author with required revision remarks and feedback (Requirement 11).",
@@ -6420,12 +4801,12 @@ const openApiSpec = {
         "properties": {
           "id": {
             "type": "integer",
-            "example": 2022012708,
+            "example": 10018,
             "description": "Institutional ID number"
           },
           "idNumber": {
             "type": "integer",
-            "example": 2022012708,
+            "example": 10018,
             "description": "Institutional ID number"
           },
           "email": {
@@ -6442,10 +4823,9 @@ const openApiSpec = {
             "enum": [
               "Admin",
               "DepartmentHead",
-              "Educator",
-              "Student"
+              "Educator"
             ],
-            "example": "Student"
+            "example": "Faculty"
           },
           "departmentId": {
             "type": "string",
@@ -6478,15 +4858,6 @@ const openApiSpec = {
             "nullable": true,
             "example": null
           },
-          "yearLevel": {
-            "type": "string",
-            "nullable": true,
-            "example": "1st Year"
-          },
-          "enrolledSubjects": {
-            "type": "string",
-            "example": "CPE101"
-          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -6516,9 +4887,6 @@ const openApiSpec = {
                 "type": "integer"
               },
               "educators": {
-                "type": "integer"
-              },
-              "students": {
                 "type": "integer"
               },
               "admins": {
@@ -6555,10 +4923,6 @@ const openApiSpec = {
                 "example": 13
               },
               "educators": {
-                "type": "integer",
-                "example": 2
-              },
-              "students": {
                 "type": "integer",
                 "example": 2
               },
@@ -6651,10 +5015,6 @@ const openApiSpec = {
               }
             }
           },
-          "isEnrolled": {
-            "type": "boolean",
-            "example": true
-          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -6662,101 +5022,6 @@ const openApiSpec = {
           "updatedAt": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "Enrollment": {
-        "type": "object",
-        "description": "A student_subjects row (UNIQUE studentId + subjectId) returned with the joined student and subject.",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "example": 21,
-            "description": "student_subjects.id"
-          },
-          "studentId": {
-            "type": "integer",
-            "example": 2022012708,
-            "description": "FK → users.id (fk_student_subjects_student)"
-          },
-          "studentName": {
-            "type": "string",
-            "example": "Gian Carlo Tuquib",
-            "description": "From users.fullName via join (not stored)"
-          },
-          "subjectId": {
-            "type": "integer",
-            "example": 3,
-            "description": "FK → subjects.id (fk_student_subjects_subject)"
-          },
-          "courseId": {
-            "type": "integer",
-            "example": 3,
-            "description": "Backwards-compatibility alias for subjectId"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ENROLLED",
-              "COMPLETED",
-              "DROPPED"
-            ],
-            "example": "ENROLLED",
-            "description": "Enrollment status (CHECK constraint). Only ENROLLED gives the student access to the approved syllabus."
-          },
-          "academicYear": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{4}$",
-            "example": "2026-2027",
-            "description": "School year the student takes the subject (CHECK: YYYY-YYYY)."
-          },
-          "semester": {
-            "type": "string",
-            "enum": [
-              "1st Semester",
-              "2nd Semester",
-              "Summer"
-            ],
-            "example": "1st Semester"
-          },
-          "enrolledById": {
-            "type": "integer",
-            "nullable": true,
-            "example": 10001,
-            "description": "FK → users.id (fk_student_subjects_enrolled_by): who created the enrollment"
-          },
-          "enrolledBy": {
-            "type": "object",
-            "nullable": true,
-            "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "fullName": {
-                "type": "string"
-              },
-              "role": {
-                "type": "string"
-              }
-            }
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "student": {
-            "$ref": "#/components/schemas/UserProfile"
-          },
-          "subject": {
-            "$ref": "#/components/schemas/Subject"
-          },
-          "course": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Subject"
-              }
-            ],
-            "description": "Backwards-compatibility alias for subject"
           }
         }
       },
@@ -6955,7 +5220,7 @@ const openApiSpec = {
           "userId": {
             "type": "integer",
             "nullable": true,
-            "example": 2022012708
+            "example": 10018
           },
           "userDisplayName": {
             "type": "string",
@@ -6977,7 +5242,7 @@ const openApiSpec = {
           },
           "description": {
             "type": "string",
-            "example": "User successfully logged in as [Student]"
+            "example": "User successfully logged in as [Educator]"
           },
           "entityType": {
             "type": "string",
@@ -6987,7 +5252,7 @@ const openApiSpec = {
           "entityId": {
             "type": "string",
             "nullable": true,
-            "example": "2022012708"
+            "example": "10018"
           },
           "ipAddress": {
             "type": "string",
@@ -7084,14 +5349,6 @@ const openApiSpec = {
                 "example": "Computer Engineering Department"
               }
             }
-          },
-          "isEnrolled": {
-            "type": "boolean",
-            "example": true
-          },
-          "enrolledStudentsCount": {
-            "type": "integer",
-            "example": 5
           },
           "createdAt": {
             "type": "string",

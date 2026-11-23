@@ -12,9 +12,7 @@ async function checkDatabase() {
       totalAdmins,
       totalDeptHeads,
       totalEducators,
-      totalStudents,
       subjects,
-      studentSubjects,
       syllabi,
       versions,
       logs,
@@ -24,9 +22,7 @@ async function checkDatabase() {
       prisma.user.count({ where: { role: 'Admin' } }),
       prisma.user.count({ where: { role: 'DepartmentHead' } }),
       prisma.user.count({ where: { role: 'Educator' } }),
-      prisma.user.count({ where: { role: 'Student' } }),
       prisma.subject.count(),
-      prisma.studentSubject.count(),
       prisma.syllabus.count(),
       prisma.syllabusVersion.count(),
       prisma.auditLog.count(),
@@ -41,12 +37,11 @@ async function checkDatabase() {
     console.log(`Roundtrip Latency: ${latency} ms`);
     console.log(`Connection Status: HEALTHY & ONLINE\n`);
 
-    console.log('Organized Relational Database Tables (7 Core Tables):');
+    console.log('Organized Relational Database Tables (6 Core Tables):');
     console.table({
       'departments': { Records: totalDepts, PK_Type: 'String (Code: CPE, EE, CE, etc.)', Description: 'Academic Engineering Departments' },
-      'users': { Records: totalUsers, PK_Type: 'INTEGER (University ID)', Description: `Master User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators}), Students (${totalStudents})` },
+      'users': { Records: totalUsers, PK_Type: 'INTEGER (University ID)', Description: `Master User Directory: Admins (${totalAdmins}), DeptHeads (${totalDeptHeads}), Educators (${totalEducators})` },
       'subjects': { Records: subjects, PK_Type: 'INTEGER (SERIAL)', Description: 'Curriculum Catalog linked to departments(id)' },
-      'student_subjects': { Records: studentSubjects, PK_Type: 'INTEGER (IDENTITY)', Description: 'Student ↔ subject associations linked to users(id) & subjects(id), UNIQUE(studentId, subjectId)' },
       'syllabi': { Records: syllabi, PK_Type: 'INTEGER (SERIAL)', Description: 'Master Syllabi linked to subjects(id) & users(id)' },
       'syllabus_versions': { Records: versions, PK_Type: 'INTEGER (SERIAL)', Description: 'Revision History linked to syllabi(id) & users(id)' },
       'audit_logs': { Records: logs, PK_Type: 'INTEGER (SERIAL)', Description: 'Security & Audit Trail linked to users(id)' },

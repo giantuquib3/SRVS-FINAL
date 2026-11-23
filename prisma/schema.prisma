@@ -13,11 +13,6 @@ datasource db {
 // applied with `node scripts/migrate-db-integrity.js`; `prisma db push` leaves them in place):
 //   - CHECK constraints on users.role / accountStatus, syllabi.status / semester,
 //     syllabus_versions.approvalStatus / statusAtSave, subjects.semester (allowed values: src/lib/status.ts)
-//   - Trigger student_subjects_enforce_rules (prisma/sql/student-subjects.sql): only users with
-//     role 'Student' can be associated with subjects.
-//   - CHECK constraints on student_subjects.status / semester / academicYear
-//     (prisma/sql/student-subjects-columns.sql).
-//   - Row level security enabled on student_subjects (blocks the public Supabase REST API).
 
 // 1. Academic Departments (All Institutional Departments)
 model Department {
@@ -36,29 +31,25 @@ model Department {
   @@map("departments")
 }
 
-// 2. Master User Directory (Admins, Department Heads, Educators, and Students)
+// 2. Master User Directory (Admin, Registrar, VP-Academics, Dean, Department Heads, Faculty)
 model User {
-  id            Int         @id // University ID: 0 (Admin), 5 digits (Faculty/DeptHead), 10 digits / numeric (Student)
+  id            Int         @id // University ID: 0 (Admin), 5 digits (all other staff)
   email         String      @unique
   passwordHash  String
   fullName      String
-  role          String      @default("Student") // Admin, DepartmentHead, Educator, Student
+  role          String      @default("Educator") // Admin, Registrar, VPAcademics, Dean, DepartmentHead, Educator
   departmentId  String?     // CPE, EE, CE, ECE, IE, ME (References Department.id)
   department    Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   academicRank  String?     // Department Chairperson, Assistant Professor, Instructor, etc.
-  yearLevel     String?     // 1st Year, 2nd Year, 3rd Year, 4th Year
   accountStatus      String      @default("Active") // Active, PendingApproval, Rejected, Deactivated
   mustChangePassword Boolean?    @default(false)
   rejectionReason    String?
-  program            String?     // Degree program e.g. BS Computer Engineering
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @default(now()) @updatedAt
 
   // Relational Connections
   syllabiAuthored     Syllabus[]        @relation("InstructorSyllabi")
   syllabiReviewed     Syllabus[]        @relation("DeptHeadReviewedSyllabi")
-  studentSubjects     StudentSubject[]  @relation("StudentSubjects")
-  enrollmentsCreated  StudentSubject[]  @relation("StudentSubjectsEnrolledBy")
 
   // Revisions & Audits
   editedVersions    SyllabusVersion[]     @relation("EditorVersions")
@@ -92,38 +83,13 @@ model Subject {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  syllabi         Syllabus[]
-  studentSubjects StudentSubject[]
+  syllabi Syllabus[]
 
   @@index([departmentId])
   @@map("subjects")
 }
 
-// 4. Student <-> Subject associations (junction table: many Students <-> many Subjects)
-//    Names / titles are NOT stored here; read them from users.fullName and subjects.title.
-model StudentSubject {
-  id        Int      @id @default(autoincrement())
-  studentId Int      // References users.id (role = Student, enforced by trigger)
-  student   User     @relation("StudentSubjects", fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_student_subjects_student")
-  subjectId Int      // References subjects.id
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_student_subjects_subject")
-  createdAt DateTime @default(now()) @db.Timestamp(6)
-
-  // Describe this student's enrollment in this subject
-  status       String  @default("ENROLLED")     // ENROLLED, COMPLETED, DROPPED (CHECK constraint)
-  academicYear String  @default("2026-2027")    // e.g. "2026-2027" (CHECK constraint: YYYY-YYYY)
-  semester     String  @default("1st Semester") // 1st Semester, 2nd Semester, Summer (CHECK constraint)
-  enrolledById Int?                             // References users.id: who created the enrollment
-  enrolledBy   User?   @relation("StudentSubjectsEnrolledBy", fields: [enrolledById], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_student_subjects_enrolled_by")
-
-  @@unique([studentId, subjectId], map: "uq_student_subjects")
-  @@index([subjectId])
-  @@index([enrolledById])
-  @@index([status])
-  @@map("student_subjects")
-}
-
-// 5. Master Syllabi Approvals
+// 4. Master Syllabi Approvals
 model Syllabus {
   id                   Int             @id @default(autoincrement()) // INTEGER primary key
   subjectId            Int             // INTEGER references subjects.id
@@ -155,7 +121,7 @@ model Syllabus {
   @@map("syllabi")
 }
 
-// 6. Syllabus Versions & Revision Tracking
+// 5. Syllabus Versions & Revision Tracking
 model SyllabusVersion {
   id              Int      @id @default(autoincrement()) // INTEGER primary key
   syllabusId      Int      // INTEGER references syllabi.id
@@ -194,7 +160,7 @@ model SyllabusVersion {
   @@map("syllabus_versions")
 }
 
-// 6b. Faculty Edit Permission Requests (Department Head grants permission before Faculty may edit)
+// 5b. Faculty Edit Permission Requests (Department Head grants permission before Faculty may edit)
 model SyllabusEditRequest {
   id            Int        @id @default(autoincrement())
   syllabusId    Int
@@ -218,16 +184,16 @@ model SyllabusEditRequest {
   @@map("syllabus_edit_requests")
 }
 
-// 7. System Audit Trail
+// 6. System Audit Trail
 model AuditLog {
   id              Int      @id @default(autoincrement()) // INTEGER primary key
   userId          Int?     // INTEGER references users.id
   user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   userDisplayName String?
-  actionType      String   // Login, Register, ApproveUser, RejectUser, CreateCourse, EnrollStudent, SubmitSyllabus, etc.
+  actionType      String   // Login, Register, ApproveUser, RejectUser, CreateCourse, SubmitSyllabus, etc.
   resultStatus    String   @default("Success") // Success, Failed, Warning
   description     String
-  entityType      String?  // User, Course, Syllabus, Enrollment
+  entityType      String?  // User, Course, Syllabus
   entityId        String?
   ipAddress       String?
   createdAt       DateTime @default(now())

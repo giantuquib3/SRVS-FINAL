@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyPassword, signToken } from '@/lib/auth';
 import { logAuditEvent } from '@/lib/audit';
 import { getDepartmentName } from '@/lib/departments';
+import { isSupportedRole } from '@/lib/status';
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,6 +55,10 @@ export async function POST(req: NextRequest) {
     }
 
     const role = matchedUser.role;
+
+    if (!isSupportedRole(role)) {
+      return NextResponse.json({ error: 'This account type is no longer supported in SRVS.' }, { status: 403 });
+    }
 
     if (matchedUser.accountStatus === 'PendingApproval') {
       return NextResponse.json({

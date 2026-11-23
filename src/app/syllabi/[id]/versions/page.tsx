@@ -1,31 +1,12 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import {
-  History,
-  GitCompare,
-  RotateCcw,
-  Eye,
-  ArrowLeft,
-  CheckCircle2,
-  AlertTriangle,
-  Send,
-  Clock,
-  XCircle,
-  FileEdit,
-  ShieldCheck,
-} from 'lucide-react';
+import { AlertTriangle, GitCompare, RotateCcw } from 'lucide-react';
 import SyllabusVersionCompare from '@/components/SyllabusVersionCompare';
-import {
-  isPendingReview,
-  syllabusStatusLabel,
-  getApprovalRouteLabel,
-  roleLabel,
-  formatVersionLabel,
-  formatShortVersionLabel,
-} from '@/lib/status';
+import { Alert, Badge, Card, EmptyState, LoadingState, Modal, PageHeader, StatusBadge, formatDate } from '@/components/ui';
+import { formatShortVersionLabel, formatVersionLabel, roleLabel } from '@/lib/status';
 import { extractReviewComments } from '@/lib/syllabus-template';
 
 function VersionHistoryInner() {
@@ -45,7 +26,6 @@ function VersionHistoryInner() {
   const [versionB, setVersionB] = useState<number>(1);
   const [showDiff, setShowDiff] = useState(Boolean(compareAParam || compareBParam));
 
-  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [targetRestoreVersion, setTargetRestoreVersion] = useState<any>(null);
   const [restoring, setRestoring] = useState(false);
   const [submittingVersion, setSubmittingVersion] = useState<number | null>(null);
@@ -58,27 +38,22 @@ function VersionHistoryInner() {
         fetch(`/api/syllabi/${id}/versions`),
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
       ]);
-
       const vData = await vRes.json();
       if (vData.error) {
         setError(vData.error);
       } else {
         setData(vData);
-        if (vData.versions && vData.versions.length > 0) {
-          const sorted = vData.versions;
-          const defaultB = compareBParam ? Number(compareBParam) : sorted[0].versionNumber;
-          const defaultA = compareAParam
-            ? Number(compareAParam)
-            : sorted.length > 1
-            ? sorted[1].versionNumber
-            : sorted[0].versionNumber;
-          setVersionB(defaultB);
-          setVersionA(defaultA);
+        const sorted = vData.versions || [];
+        if (sorted.length > 0) {
+          setVersionB(compareBParam ? Number(compareBParam) : sorted[0].versionNumber);
+          setVersionA(
+            compareAParam ? Number(compareAParam) : sorted.length > 1 ? sorted[1].versionNumber : sorted[0].versionNumber
+          );
         }
       }
       if (uRes?.user) setCurrentUser(uRes.user);
     } catch {
-      setError('Failed to retrieve version history.');
+      setError('Failed to load version history.');
     } finally {
       setLoading(false);
     }
@@ -89,21 +64,19 @@ function VersionHistoryInner() {
   }, [id]);
 
   const handleSubmitVersion = async (versionNum: number) => {
-    const targetReviewer = currentUser?.role === 'DepartmentHead' ? 'Dean' : 'Department Head';
-    if (!confirm(`Submit Version ${versionNum} for ${targetReviewer} approval?`)) return;
+    const reviewer = currentUser?.role === 'DepartmentHead' ? 'the Dean' : 'your Department Head';
+    if (!confirm(`Submit this version to ${reviewer} for approval?`)) return;
     setSubmittingVersion(versionNum);
     setActionMsg('');
     try {
       const res = await fetch(`/api/syllabi/${id}/versions/${versionNum}/submit`, { method: 'POST' });
       const resData = await res.json();
       if (res.ok) {
-        setActionMsg(resData.message || `Version ${versionNum} submitted for ${targetReviewer} approval.`);
+        setActionMsg(resData.message || `Submitted to ${reviewer}.`);
         await fetchVersions();
       } else {
-        alert(resData.error || 'Failed to submit version for approval.');
+        alert(resData.error || 'Failed to submit version.');
       }
-    } catch {
-      alert('Connection error submitting version.');
     } finally {
       setSubmittingVersion(null);
     }
@@ -121,116 +94,90 @@ function VersionHistoryInner() {
       });
       const resData = await res.json();
       if (res.ok) {
-        setRestoreModalOpen(false);
         setTargetRestoreVersion(null);
-        setActionMsg(resData.message || 'Historical version restored as a new draft version.');
+        setActionMsg(resData.message || 'Restored as a new draft.');
         await fetchVersions();
       } else {
         alert(resData.error || 'Failed to restore version.');
       }
-    } catch {
-      alert('Error connecting to server.');
     } finally {
       setRestoring(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-3">
-          <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-[#005A36] animate-spin" />
-          <p className="text-slate-500 text-xs font-semibold">Loading version history...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingState className="min-h-[60vh]" />;
 
   if (error || !data) {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center space-y-4">
-        <AlertTriangle className="w-12 h-12 text-[#CA8A04] mx-auto" />
-        <h2 className="text-xl font-bold text-slate-800">{error || 'Versions Not Found'}</h2>
-        <Link
-          href="/"
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] text-white"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back</span>
-        </Link>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title={error || 'Version history not found'}
+        action={
+          <Link href={`/syllabi/${id}`} className="btn btn-primary">
+            Back to syllabus
+          </Link>
+        }
+      />
     );
   }
 
   const { syllabus, versions } = data;
   const canEditOrRestore = Boolean(data.canEdit);
-
   const currentUserIdInt = parseInt(currentUser?.id || '0', 10) || 0;
   const objA = versions.find((v: any) => v.versionNumber === Number(versionA)) || versions[versions.length - 1];
   const objB = versions.find((v: any) => v.versionNumber === Number(versionB)) || versions[0];
-  const effectiveApproved = versions.find(
+  const effective = versions.find(
     (v: any) => v.approvalStatus === 'APPROVED' && v.versionNumber === syllabus.currentVersionNumber
   );
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-6 py-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <div className="flex items-center space-x-3">
-          <Link
-            href={`/syllabi/${id}`}
-            className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-extrabold text-[#005A36] font-mono">{syllabus.course.code}</span>
-              <span className="text-slate-400">•</span>
-              <span className="text-slate-600 font-medium">
-                {syllabus.semester}, {syllabus.academicYear}
-              </span>
-              <span className="text-slate-400">•</span>
-              <span className="text-slate-500 font-mono text-[11px]">
-                Syllabus #{syllabus.id} • Subject #{syllabus.subjectId}
-              </span>
-            </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 mt-0.5">
-              Immutable Version History & Side-by-Side Comparison
-            </h1>
-          </div>
-        </div>
+  const compareWith = (v: any) => {
+    const target = effective && effective.versionNumber !== v.versionNumber ? effective.versionNumber : versions[0].versionNumber;
+    setVersionA(Math.min(v.versionNumber, target));
+    setVersionB(Math.max(v.versionNumber, target));
+    setShowDiff(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-        <div className="flex items-center gap-2">
-          {canEditOrRestore && (
-            <Link
-              href={`/syllabi/${id}/edit`}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center gap-1.5 shadow-sm"
-            >
-              <FileEdit className="w-3.5 h-3.5 text-[#005A36]" />
-              <span>Create New Revision</span>
-            </Link>
-          )}
-          <button
-            onClick={() => setShowDiff(!showDiff)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm ${
-              showDiff ? 'bg-[#005A36] text-white' : 'bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30'
-            }`}
-          >
-            <GitCompare className="w-3.5 h-3.5" />
-            <span>{showDiff ? 'Hide Side-by-Side Compare' : 'Compare Two Versions Side-by-Side'}</span>
-          </button>
-        </div>
-      </div>
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        backHref={`/syllabi/${id}`}
+        eyebrow={
+          <>
+            <span className="code">{syllabus.course.code}</span>
+            <span>{syllabus.course.title}</span>
+          </>
+        }
+        title="Version history"
+        description={
+          <>
+            Every edit creates a new version; nothing is overwritten.
+            {effective && <> Version {effective.versionNumber} is in effect.</>}
+          </>
+        }
+        actions={
+          <>
+            {versions.length > 1 && (
+              <button onClick={() => setShowDiff(!showDiff)} className="btn btn-secondary">
+                <GitCompare className="h-4 w-4" />
+                {showDiff ? 'Hide comparison' : 'Compare versions'}
+              </button>
+            )}
+            {canEditOrRestore && (
+              <Link href={`/syllabi/${id}/edit`} className="btn btn-primary">
+                New revision
+              </Link>
+            )}
+          </>
+        }
+      />
 
       {actionMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-[#005A36] shrink-0" />
-          <span>{actionMsg}</span>
-        </div>
+        <Alert tone="success" onClose={() => setActionMsg('')}>
+          {actionMsg}
+        </Alert>
       )}
 
-      {/* Side-by-Side Version Comparison */}
       {showDiff && objA && objB && (
         <SyllabusVersionCompare
           versionA={objA}
@@ -238,52 +185,27 @@ function VersionHistoryInner() {
           subject={syllabus.subject || syllabus.course}
           departmentName={syllabus.department?.name || syllabus.departmentId}
           versions={versions}
-          onSelectVersionA={(n) => setVersionA(n)}
-          onSelectVersionB={(n) => setVersionB(n)}
+          onSelectVersionA={setVersionA}
+          onSelectVersionB={setVersionB}
         />
       )}
 
-      {/* Version History Table */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-              <History className="w-4 h-4 text-[#005A36]" />
-              <span>Complete Immutable Revision Log</span>
-            </h2>
-            <p className="text-xs text-slate-500">
-              Every edit automatically creates a new version. Previous versions are never overwritten or deleted.
-              {effectiveApproved && (
-                <>
-                  {' '}
-                  Current Effective Syllabus: <strong className="text-[#005A36]">Version {effectiveApproved.versionNumber}</strong>.
-                </>
-              )}
-            </p>
-          </div>
-          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#FEF9C3] text-[#854D0E] border border-[#CA8A04]/30">
-            {versions.length} Recorded {versions.length === 1 ? 'Version' : 'Versions'}
-          </span>
-        </div>
-
+      <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="data-table">
             <thead>
-              <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/70">
-                <th className="py-2.5 px-3">Version</th>
-                <th className="py-2.5 px-3">Change Summary & Review Feedback</th>
-                <th className="py-2.5 px-3">Editor (Author)</th>
-                <th className="py-2.5 px-3">Approval Status & Route</th>
-                <th className="py-2.5 px-3">Reviewer / Approver</th>
-                <th className="py-2.5 px-3">Modified Date</th>
-                <th className="py-2.5 px-3 text-right">Actions</th>
+              <tr>
+                <th>Version</th>
+                <th>Changes</th>
+                <th>Author</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {versions.map((v: any) => {
                 const isEffective = v.approvalStatus === 'APPROVED' && v.versionNumber === syllabus.currentVersionNumber;
-                const isPending = isPendingReview(v.approvalStatus);
-                const isApproved = v.approvalStatus === 'APPROVED';
                 const isDraft = v.approvalStatus === 'DRAFT';
                 const isRejected = v.approvalStatus === 'REJECTED';
                 const comments = extractReviewComments(v);
@@ -294,165 +216,72 @@ function VersionHistoryInner() {
                     (currentUser?.role === 'DepartmentHead' && v.approvalStatus === 'SUBMITTED'));
 
                 return (
-                  <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-3 font-bold align-top">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[#005A36] text-xs font-mono whitespace-nowrap">
-                          {formatShortVersionLabel(v)}
-                        </span>
-                        {isEffective && (
-                          <span className="inline-block w-fit text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold">
-                            Effective Active
-                          </span>
-                        )}
-                      </div>
+                  <tr key={v.id}>
+                    <td className="whitespace-nowrap">
+                      <span className="font-mono text-sm font-medium text-slate-900">{formatShortVersionLabel(v)}</span>
+                      {isEffective && (
+                        <div className="mt-1">
+                          <Badge tone="green">In effect</Badge>
+                        </div>
+                      )}
                     </td>
-
-                    <td className="py-3.5 px-3 text-slate-900 font-medium max-w-sm align-top space-y-1.5">
-                      <div>{v.changeSummary || 'No change summary provided.'}</div>
+                    <td className="max-w-sm">
+                      <p className="text-slate-800">{v.changeSummary || <span className="text-slate-400">No summary</span>}</p>
                       {comments && (
-                        <div
-                          className={`p-2 rounded-lg text-[11px] border ${
-                            isRejected
-                              ? 'bg-rose-50 border-rose-200 text-rose-800'
-                              : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                          }`}
-                        >
-                          <span className="font-bold block">
-                            {isRejected ? 'Rejection Feedback:' : 'Approver Remarks:'}
-                          </span>
-                          <span className="italic">&ldquo;{comments}&rdquo;</span>
-                        </div>
+                        <p className={`mt-1 text-xs italic ${isRejected ? 'text-rose-700' : 'text-slate-500'}`}>“{comments}”</p>
                       )}
                     </td>
-
-                    <td className="py-3.5 px-3 text-slate-700 align-top">
-                      <div className="font-semibold text-slate-900 capitalize">
-                        {v.editor?.fullName || `User #${v.editorId}`}
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        ID: <span className="font-mono">{v.editorId}</span>
-                        {v.editor?.role ? ` • ${roleLabel(v.editor.role)}` : ''}
-                      </div>
+                    <td>
+                      <p className="capitalize text-slate-900">{v.editor?.fullName || `User #${v.editorId}`}</p>
+                      <p className="text-xs text-slate-500">{roleLabel(v.editor?.role)}</p>
                     </td>
-
-                    <td className="py-3.5 px-3 align-top space-y-1">
-                      {isApproved && (
-                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>APPROVED</span>
-                        </span>
-                      )}
-                      {isPending && (
-                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <Clock className="w-3 h-3 text-[#CA8A04]" />
-                          <span>{syllabusStatusLabel(v.approvalStatus)}</span>
-                        </span>
-                      )}
-                      {isDraft && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                          DRAFT
-                        </span>
-                      )}
-                      {isRejected && (
-                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                          <XCircle className="w-3 h-3 text-rose-600" />
-                          <span>REJECTED</span>
-                        </span>
-                      )}
-                      <div className="text-[10px] text-slate-500">
-                        {getApprovalRouteLabel(v.approvalStatus, v.editor?.role)}
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-3 text-slate-700 align-top">
-                      {v.reviewedBy ? (
-                        <div>
-                          <div className="font-semibold text-slate-800 capitalize">{v.reviewedBy.fullName}</div>
-                          <div className="text-[10px] text-slate-500">
-                            {roleLabel(v.reviewedBy.role)}
-                            {v.reviewedAt ? ` • ${new Date(v.reviewedAt).toLocaleDateString()}` : ''}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">Pending / N/A</span>
+                    <td>
+                      <StatusBadge status={v.approvalStatus} />
+                      {v.reviewedBy && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          by {v.reviewedBy.fullName}
+                          {v.reviewedAt ? ` · ${formatDate(v.reviewedAt)}` : ''}
+                        </p>
                       )}
                     </td>
-
-                    <td className="py-3.5 px-3 text-slate-500 align-top font-mono text-[11px]">
-                      <div>{new Date(v.createdAt).toLocaleDateString()}</div>
-                      <div className="text-[10px]">
-                        {new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-3 text-right align-top">
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <Link
-                          href={`/syllabi/${id}?version=${v.versionNumber}`}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 inline-flex items-center gap-1"
-                        >
-                          <Eye className="w-3 h-3 text-[#005A36]" />
-                          <span>View</span>
+                    <td className="whitespace-nowrap text-slate-500">{formatDate(v.createdAt, true)}</td>
+                    <td>
+                      <div className="flex justify-end gap-1.5">
+                        <Link href={`/syllabi/${id}?version=${v.versionNumber}`} className="btn btn-secondary btn-sm">
+                          View
                         </Link>
-
-                        <button
-                          onClick={() => {
-                            const compareTarget =
-                              effectiveApproved && effectiveApproved.versionNumber !== v.versionNumber
-                                ? effectiveApproved.versionNumber
-                                : versions[0].versionNumber;
-                            setVersionA(Math.min(v.versionNumber, compareTarget));
-                            setVersionB(Math.max(v.versionNumber, compareTarget));
-                            setShowDiff(true);
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 cursor-pointer"
-                        >
-                          Compare
-                        </button>
-
+                        {versions.length > 1 && (
+                          <button onClick={() => compareWith(v)} className="btn btn-ghost btn-sm">
+                            Compare
+                          </button>
+                        )}
                         {canReviewThis && (
-                          <Link
-                            href={`/department/syllabus-approvals/${v.id}`}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 inline-flex items-center gap-1"
-                          >
-                            <ShieldCheck className="w-3 h-3" />
-                            <span>Review</span>
+                          <Link href={`/department/syllabus-approvals/${v.id}`} className="btn btn-primary btn-sm">
+                            Review
                           </Link>
                         )}
-
                         {isDraft && canEditOrRestore && isSelf && (
                           <button
                             onClick={() => handleSubmitVersion(v.versionNumber)}
                             disabled={submittingVersion === v.versionNumber}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer inline-flex items-center gap-1"
+                            className="btn btn-primary btn-sm"
                           >
-                            <Send className="w-3 h-3 text-[#FEF08A]" />
-                            <span>{submittingVersion === v.versionNumber ? '...' : 'Submit'}</span>
+                            {submittingVersion === v.versionNumber ? 'Submitting…' : 'Submit'}
                           </button>
                         )}
-
                         {isRejected && canEditOrRestore && isSelf && (
-                          <Link
-                            href={`/syllabi/${id}/edit?fromVersion=${v.versionNumber}`}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center gap-1"
-                          >
-                            <FileEdit className="w-3 h-3" />
-                            <span>Revise</span>
+                          <Link href={`/syllabi/${id}/edit?fromVersion=${v.versionNumber}`} className="btn btn-primary btn-sm">
+                            Revise
                           </Link>
                         )}
-
                         {canEditOrRestore && !isEffective && !isDraft && (
                           <button
-                            onClick={() => {
-                              setTargetRestoreVersion(v);
-                              setRestoreModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#FEF9C3] hover:bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30 cursor-pointer inline-flex items-center gap-1"
-                            title="Copy this snapshot into a new Draft version"
+                            onClick={() => setTargetRestoreVersion(v)}
+                            className="btn btn-ghost btn-icon"
+                            title="Restore as a new draft"
+                            aria-label="Restore as a new draft"
                           >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Restore</span>
+                            <RotateCcw className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -463,52 +292,34 @@ function VersionHistoryInner() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
-      {/* Restore Confirmation Modal */}
-      {restoreModalOpen && targetRestoreVersion && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4 text-slate-900">
-            <h3 className="text-base font-extrabold text-[#005A36] flex items-center gap-2">
-              <RotateCcw className="w-4 h-4" />
-              <span>Restore {formatVersionLabel(targetRestoreVersion)} as Draft Proposal</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              This will create a new <strong>Draft Proposal</strong> copied from {formatVersionLabel(targetRestoreVersion)}. All existing versions and the currently effective approved syllabus remain preserved in revision history.
-            </p>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setRestoreModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={restoring}
-                onClick={handleRestoreConfirm}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer"
-              >
-                {restoring ? 'Restoring...' : 'Create Restored Draft'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={Boolean(targetRestoreVersion)}
+        onClose={() => setTargetRestoreVersion(null)}
+        title={`Restore ${targetRestoreVersion ? formatVersionLabel(targetRestoreVersion) : ''}?`}
+        footer={
+          <>
+            <button type="button" onClick={() => setTargetRestoreVersion(null)} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="button" disabled={restoring} onClick={handleRestoreConfirm} className="btn btn-primary">
+              {restoring ? 'Restoring…' : 'Restore as draft'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-slate-600">
+          This creates a new draft copied from that version. All existing versions, including the one in effect, are kept.
+        </p>
+      </Modal>
     </div>
   );
 }
 
 export default function VersionHistoryPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-[#005A36] animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingState className="min-h-[60vh]" />}>
       <VersionHistoryInner />
     </Suspense>
   );

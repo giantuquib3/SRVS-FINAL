@@ -76,23 +76,6 @@ export async function GET(
       enrichedVersions.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED) ||
       null;
 
-    // Student rule: ONLY currently approved syllabi for enrolled subjects
-    if (user.role === 'Student') {
-      const enrollment = await prisma.studentSubject.findFirst({
-        where: { studentId: currentUserIdInt, subjectId: syllabus.subjectId, status: 'ENROLLED' },
-      });
-      if (!enrollment) {
-        return NextResponse.json({
-          error: 'Access denied: Students may only view syllabi for their enrolled subjects.',
-        }, { status: 403 });
-      }
-      if (!approvedVersion) {
-        return NextResponse.json({
-          error: 'No approved syllabus is currently available for this subject.',
-        }, { status: 403 });
-      }
-    }
-
     const latestVersion = enrichedVersions[0] || null;
     const pendingVersion =
       enrichedVersions.find(
@@ -102,11 +85,7 @@ export async function GET(
       ) || null;
 
     let currentVersion = approvedVersion || latestVersion;
-    if (
-      user.role !== 'Student' &&
-      requestedVersionNum &&
-      !isNaN(requestedVersionNum)
-    ) {
+    if (requestedVersionNum && !isNaN(requestedVersionNum)) {
       const match = enrichedVersions.find((v: any) => v.versionNumber === requestedVersionNum);
       if (match) currentVersion = match;
     }
@@ -208,15 +187,13 @@ export async function GET(
         : null,
     };
 
-    const visibleVersions = user.role === 'Student' ? (approvedVersion ? [approvedVersion] : []) : enrichedVersions;
-
     return NextResponse.json({
       syllabus: formatted,
       currentVersion,
       effectiveVersion: approvedVersion,
-      pendingVersion: user.role === 'Student' ? null : pendingVersion,
-      latestVersion: user.role === 'Student' ? approvedVersion : latestVersion,
-      versions: visibleVersions,
+      pendingVersion,
+      latestVersion,
+      versions: enrichedVersions,
       canEdit,
       editPermission,
     });

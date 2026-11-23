@@ -1,6 +1,6 @@
 /**
  * SRVS Full Database Seed Script
- * Seeds: Departments, Admin, DepartmentHeads, Educators, Students, Subjects, Student Subjects, AuditLog
+ * Seeds: Departments, Admin, DepartmentHeads, Educators, Subjects, AuditLog
  * All users go into the unified `users` table with integer IDs.
  */
 
@@ -106,14 +106,12 @@ async function main() {
   console.log('\n\n========= SEED COMPLETE =========');
   const userCount      = await prisma.user.count();
   const subjectCount   = await prisma.subject.count();
-  const enrollCount    = await prisma.studentSubject.count();
   const auditCount     = await prisma.auditLog.count();
 
   const byRole = await prisma.user.groupBy({ by: ['role'], _count: { _all: true } });
   console.log(`Users      : ${userCount}`);
   byRole.forEach(r => console.log(`  [${r.role}] → ${r._count._all}`));
   console.log(`Subjects   : ${subjectCount}`);
-  console.log(`Enrollments: ${enrollCount}`);
   console.log(`Audit Logs : ${auditCount}`);
   console.log('=================================\n');
 }

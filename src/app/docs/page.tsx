@@ -103,25 +103,23 @@ export default function SwaggerDocsPage() {
     },
     users: {
       name: 'users',
-      description: 'Master authentication and user directory table (users) consolidating Admins, Department Heads, Educators (Faculty), and Students. Institutional user identification uses idNumber (represented by id). Single source of truth for all system accounts.',
+      description: 'Master authentication and user directory table (users) consolidating Admins, Registrars, VP-Academics, Deans, Department Heads, and Faculty. Institutional user identification uses idNumber (represented by id). Single source of truth for all system accounts.',
       badge: 'Master User Directory (users)',
-      pk: 'id (INTEGER) — Institutional idNumber (0: Admin, 5 digits: Faculty/DeptHead, 10 digits: Student)',
+      pk: 'id (INTEGER) — Institutional idNumber (0: Admin, 5 digits: all other staff)',
       fks: [
         { col: 'departmentId', target: 'departments.id', rule: 'ON DELETE SET NULL ON UPDATE CASCADE' },
       ],
       columns: [
-        { name: 'id', type: 'INTEGER', nullable: false, desc: 'Primary Key / Institutional idNumber (0: Admin, 5 digits: Faculty/DeptHead, 10 digits: Student)' },
+        { name: 'id', type: 'INTEGER', nullable: false, desc: 'Primary Key / Institutional idNumber (0: Admin, 5 digits: all other staff)' },
         { name: 'email', type: 'TEXT', nullable: false, desc: 'Institutional USJ-R email (Unique)' },
         { name: 'passwordHash', type: 'TEXT', nullable: false, desc: 'Bcrypt hashed password' },
         { name: 'fullName', type: 'TEXT', nullable: false, desc: 'Full institutional name' },
-        { name: 'role', type: 'TEXT', nullable: false, desc: 'Admin | DepartmentHead | Educator | Student (CHECK constraint)' },
+        { name: 'role', type: 'TEXT', nullable: false, desc: 'Admin | Registrar | VPAcademics | Dean | DepartmentHead | Educator (CHECK constraint)' },
         { name: 'departmentId', type: 'VARCHAR(10)', nullable: true, desc: 'FK -> departments.id (CPE, EE, CE, ECE, IE, ME)' },
         { name: 'academicRank', type: 'TEXT', nullable: true, desc: 'Chairperson, Professor, Instructor, etc.' },
-        { name: 'yearLevel', type: 'TEXT', nullable: true, desc: '1st Year, 2nd Year, 3rd Year, 4th Year (Students)' },
         { name: 'accountStatus', type: 'TEXT', nullable: false, desc: 'Active | PendingApproval | Rejected | Deactivated (CHECK constraint)' },
         { name: 'mustChangePassword', type: 'BOOLEAN', nullable: true, desc: 'Default false. Set true for newly created accounts requiring password update upon first login.' },
-        { name: 'rejectionReason', type: 'TEXT', nullable: true, desc: 'Rejection reason provided by Department Head when rejecting a pending Student or Faculty registration.' },
-        { name: 'program', type: 'TEXT', nullable: true, desc: 'Academic degree program (e.g. BS Computer Engineering, BS Civil Engineering)' },
+        { name: 'rejectionReason', type: 'TEXT', nullable: true, desc: 'Rejection reason provided by Department Head when rejecting a pending Faculty registration.' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Account creation date' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Account update date' },
       ],
@@ -149,27 +147,6 @@ export default function SwaggerDocsPage() {
         { name: 'professorName', type: 'TEXT', nullable: true, desc: 'Instructor / subject coordinator shown with the subject' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject creation date' },
         { name: 'updatedAt', type: 'TIMESTAMP', nullable: false, desc: 'Subject modification date' },
-      ],
-    },
-    student_subjects: {
-      name: 'student_subjects',
-      description: 'Many-to-many junction table between students (users) and subjects. One student can be associated with many subjects, one subject can have many students, and UNIQUE (studentId, subjectId) prevents the same student from being enrolled in a subject twice. Student names and subject titles are not stored here — they are read from users.fullName and subjects.title via joins. A trigger (student_subjects_enforce_rules) allows only users with role Student. Row level security blocks the public Supabase REST API.',
-      badge: 'Student Records',
-      pk: 'id (INTEGER IDENTITY) — UNIQUE (studentId, subjectId) [uq_student_subjects]',
-      fks: [
-        { col: 'studentId', target: 'users.id', rule: 'fk_student_subjects_student — ON DELETE NO ACTION' },
-        { col: 'subjectId', target: 'subjects.id', rule: 'fk_student_subjects_subject — ON DELETE NO ACTION (a subject with students cannot be deleted)' },
-        { col: 'enrolledById', target: 'users.id', rule: 'fk_student_subjects_enrolled_by — ON DELETE SET NULL' },
-      ],
-      columns: [
-        { name: 'id', type: 'INTEGER (IDENTITY)', nullable: false, desc: 'Primary Key (enrollment id)' },
-        { name: 'studentId', type: 'INTEGER', nullable: false, desc: 'FK -> users.id (role Student); name via users.fullName' },
-        { name: 'subjectId', type: 'INTEGER', nullable: false, desc: 'FK -> subjects.id; code / title via subjects' },
-        { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Enrollment timestamp (Default: CURRENT_TIMESTAMP)' },
-        { name: 'status', type: 'TEXT', nullable: false, desc: 'ENROLLED | COMPLETED | DROPPED (Default: ENROLLED, CHECK constraint). Only ENROLLED grants approved-syllabus access' },
-        { name: 'academicYear', type: 'TEXT', nullable: false, desc: 'School year the student takes the subject, e.g. 2026-2027 (CHECK: YYYY-YYYY)' },
-        { name: 'semester', type: 'TEXT', nullable: false, desc: '1st Semester | 2nd Semester | Summer (CHECK constraint)' },
-        { name: 'enrolledById', type: 'INTEGER', nullable: true, desc: 'FK -> users.id: Admin / Department Head / Student who created the enrollment (NULL = unknown)' },
       ],
     },
     syllabi: {
@@ -237,7 +214,7 @@ export default function SwaggerDocsPage() {
     },
     audit_logs: {
       name: 'audit_logs',
-      description: 'Comprehensive security and institutional activity audit trail logging authentication events, syllabus approvals, course creations, and enrollment changes.',
+      description: 'Comprehensive security and institutional activity audit trail logging authentication events, syllabus approvals, and course changes.',
       badge: 'Security Audit',
       pk: 'id (INTEGER SERIAL)',
       fks: [
@@ -250,7 +227,7 @@ export default function SwaggerDocsPage() {
         { name: 'actionType', type: 'TEXT', nullable: false, desc: 'Login | CreateCourse | ApproveSyllabus | etc.' },
         { name: 'resultStatus', type: 'TEXT', nullable: false, desc: 'Success | Failed | Warning' },
         { name: 'description', type: 'TEXT', nullable: false, desc: 'Human-readable action description' },
-        { name: 'entityType', type: 'TEXT', nullable: true, desc: 'User | Course | Syllabus | Enrollment' },
+        { name: 'entityType', type: 'TEXT', nullable: true, desc: 'User | Course | Syllabus' },
         { name: 'entityId', type: 'TEXT', nullable: true, desc: 'Target record identifier' },
         { name: 'ipAddress', type: 'TEXT', nullable: true, desc: 'Client IP address' },
         { name: 'createdAt', type: 'TIMESTAMP', nullable: false, desc: 'Event timestamp' },
@@ -334,11 +311,9 @@ export default function SwaggerDocsPage() {
                 <span>Depts: <strong className="text-[#005A36]">{dbStatus.tables.departments ?? 6}</strong></span>
                 <span>•</span>
                 <span>Users: <strong className="text-[#005A36]">{dbStatus.tables.users ?? 22}</strong></span>
-                <span className="text-slate-400">({dbStatus.tables.admins ?? 1} Adm, {dbStatus.tables.department_heads ?? 4} DH, {dbStatus.tables.educators ?? 5} Edu, {dbStatus.tables.students ?? 12} Stu)</span>
+                <span className="text-slate-400">({dbStatus.tables.admins ?? 1} Adm, {dbStatus.tables.department_heads ?? 4} DH, {dbStatus.tables.educators ?? 5} Faculty)</span>
                 <span>•</span>
                 <span>Courses: <strong className="text-[#005A36]">{dbStatus.tables.courses ?? 13}</strong></span>
-                <span>•</span>
-                <span>Enrollments: <strong className="text-[#005A36]">{dbStatus.tables.enrollments ?? 9}</strong></span>
                 <span>•</span>
                 <span>Syllabi: <strong className="text-[#005A36]">{dbStatus.tables.syllabi ?? 0}</strong></span>
                 <span>•</span>
@@ -442,7 +417,7 @@ export default function SwaggerDocsPage() {
                         <span>Master "admin" User Directory</span>
                       </div>
                       <p className="text-[11px] text-emerald-800 mt-1">
-                        Consolidated in base table <code className="bg-emerald-100 px-1 rounded">admin</code> where System Administrators have complete administrative oversight to view and manage all accounts (Admins, Department Heads, Educators, and Students).
+                        Consolidated in base table <code className="bg-emerald-100 px-1 rounded">admin</code> where System Administrators have complete administrative oversight to view and manage all accounts (Admins, Registrars, VP-Academics, Deans, Department Heads, and Faculty).
                       </p>
                     </div>
 
@@ -482,22 +457,19 @@ export default function SwaggerDocsPage() {
 
               <div className="p-4 bg-slate-900 text-emerald-400 rounded-xl font-mono text-xs overflow-x-auto shadow-inner border border-slate-800 leading-relaxed">
 {`┌────────────────────────────────┐         1:N         ┌────────────────────────────────┐
-│          departments           │ ──────────────────> │             admin              │
+│          departments           │ ──────────────────> │             users              │
 │  PK: id VARCHAR(10) ('CPE'...) │                     │  PK: id INTEGER (University ID)│
-│  code, name, description       │                     │  All Users: Admins, DH, Faculty│
-└────────────────────────────────┘                     │  Students managed by Admins    │
-        │ 1:N                         1:N              └────────────────────────────────┘
-        │                                                       │ 1:N
-        ▼                                                       ▼
-┌────────────────────────────────┐       1:N           ┌────────────────────────────────┐
-│            subjects            │ <────────────────── │        student_subjects        │
-│  PK: id INTEGER (SERIAL)       │                     │  PK: id INTEGER (IDENTITY)     │
-│  code (UNIQUE), title, units   │                     │  FK: studentId -> users.id     │
-│  FK: departmentId -> dept.id   │                     │  FK: subjectId -> subjects.id  │
-│  professorName (TEXT)          │                     │  UNIQUE(studentId, subjectId)  │
-└────────────────────────────────┘                     │  status, academicYear, semester│
-                                                       │  FK: enrolledById -> users.id  │
-                                                       └────────────────────────────────┘
+│  code, name, description       │                     │  Admin, Registrar, VP-Acad.,   │
+└────────────────────────────────┘                     │  Dean, Dept. Head, Faculty     │
+        │ 1:N                                          └────────────────────────────────┘
+        ▼                                                       │
+┌────────────────────────────────┐                              │
+│            subjects            │                              │
+│  PK: id INTEGER (SERIAL)       │                              │
+│  code (UNIQUE), title, units   │                              │
+│  FK: departmentId -> dept.id   │                              │
+│  professorName (TEXT)          │                              │
+└────────────────────────────────┘                              │
         │ 1:N                                                   │
         ▼                                                       │
 ┌────────────────────────────────┐                              │

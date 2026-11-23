@@ -123,6 +123,28 @@ export function roleLabel(role?: string | null): string {
   return (role && ROLE_LABEL[role]) || role || '';
 }
 
+/** Roles that can sign in to SRVS ('Faculty' is a legacy alias of 'Educator'). */
+export function isSupportedRole(role?: string | null): boolean {
+  return Boolean(role && role in ROLE_LABEL);
+}
+
+/** Landing page for each role after sign-in. */
+export function homePathForRole(role?: string | null): string {
+  switch (role) {
+    case 'Admin':
+      return '/admin/dashboard';
+    case 'Dean':
+    case 'DepartmentHead':
+      return '/dept/dashboard';
+    case 'Educator':
+    case 'Faculty':
+      return '/educator/dashboard';
+    default:
+      // Registrar and VP-Academics browse every department's syllabi
+      return '/syllabi';
+  }
+}
+
 export function isFacultyRole(role?: string | null): boolean {
   return role === 'Educator' || role === 'Faculty';
 }
@@ -151,16 +173,6 @@ export function parseSyllabusStatusParam(param?: string | null): SyllabusStatus 
   if (s === 'PENDING' || s === 'PENDING_APPROVAL') return SYLLABUS_STATUS.SUBMITTED;
   return (Object.values(SYLLABUS_STATUS) as string[]).includes(s) ? (s as SyllabusStatus) : null;
 }
-
-/** Status of a student's enrollment in a subject (student_subjects.status, CHECK constraint). */
-export const ENROLLMENT_STATUS = {
-  PENDING: 'PENDING',
-  ENROLLED: 'ENROLLED',
-  REJECTED: 'REJECTED',
-  COMPLETED: 'COMPLETED',
-  DROPPED: 'DROPPED',
-} as const;
-export const ENROLLMENT_STATUSES = Object.values(ENROLLMENT_STATUS) as string[];
 
 export const SEMESTERS = ['1st Semester', '2nd Semester', 'Summer'] as const;
 

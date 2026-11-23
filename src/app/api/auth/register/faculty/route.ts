@@ -83,8 +83,6 @@ export async function POST(req: NextRequest) {
         departmentId: deptCode,
         accountStatus: initialStatus,
         academicRank: academicRank ? String(academicRank).trim() : 'Faculty',
-        yearLevel: null,
-        program: null,
         mustChangePassword: false,
       },
     });

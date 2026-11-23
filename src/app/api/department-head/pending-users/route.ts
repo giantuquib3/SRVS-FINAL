@@ -40,13 +40,6 @@ export async function GET(req: NextRequest) {
       whereClause.departmentId = targetDeptId;
     }
 
-    const roleFilter = req.nextUrl.searchParams.get('role');
-    if (roleFilter) {
-      const normRole = roleFilter.toLowerCase();
-      if (normRole === 'student') whereClause.role = 'Student';
-      if (normRole === 'faculty' || normRole === 'educator') whereClause.role = 'Educator';
-    }
-
     const search = req.nextUrl.searchParams.get('search')?.trim();
     if (search) {
       const searchNum = parseInt(search, 10);
@@ -71,8 +64,6 @@ export async function GET(req: NextRequest) {
         departmentId: true,
         accountStatus: true,
         academicRank: true,
-        yearLevel: true,
-        program: true,
         rejectionReason: true,
         createdAt: true,
         updatedAt: true,
@@ -80,14 +71,11 @@ export async function GET(req: NextRequest) {
     });
 
     const formatted = users.map((u: any) => {
-      const isFaculty = u.role === 'Educator';
-      const displayRole = isFaculty ? 'Faculty' : 'Student';
-
       return {
         id: u.id,
         idNumber: u.id,
-        role: displayRole,
-        type: displayRole,
+        role: 'Faculty',
+        type: 'Faculty',
         name: u.fullName,
         fullName: u.fullName,
         email: u.email,
@@ -96,17 +84,14 @@ export async function GET(req: NextRequest) {
         departmentName: getDepartmentName(u.departmentId),
         status: u.accountStatus,
         accountStatus: u.accountStatus,
-        program: u.program || null,
         academicRank: u.academicRank || null,
-        yearLevel: u.yearLevel || null,
         rejectionReason: u.rejectionReason || null,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       };
     });
 
-    const studentsCount = formatted.filter((u: any) => u.type === 'Student').length;
-    const facultyCount = formatted.filter((u: any) => u.type === 'Faculty').length;
+    const facultyCount = formatted.length;
 
     const formatParam = req.nextUrl.searchParams.get('format');
     if (formatParam === 'detailed' || formatParam === 'object') {
@@ -114,7 +99,6 @@ export async function GET(req: NextRequest) {
         pendingUsers: formatted,
         total: formatted.length,
         counts: {
-          students: studentsCount,
           faculty: facultyCount,
           total: formatted.length,
         },
@@ -125,7 +109,6 @@ export async function GET(req: NextRequest) {
     // Default response: Returns array of pending users matching User Requirement 13
     const response = NextResponse.json(formatted);
     response.headers.set('X-Total-Count', String(formatted.length));
-    response.headers.set('X-Students-Count', String(studentsCount));
     response.headers.set('X-Faculty-Count', String(facultyCount));
     return response;
   } catch (error: any) {

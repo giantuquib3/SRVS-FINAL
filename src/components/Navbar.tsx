@@ -1,25 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import {
-  BookOpen,
-  LogOut,
-  Layers,
-  FileText,
-  Bell,
-  CheckCircle,
-  Menu,
-  X,
-  FileCode,
-  LayoutDashboard,
-  Users,
-  History,
-  LogIn,
-  UserPlus,
-  ChevronRight
-} from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Bell, BookOpen, ChevronDown, LogOut, Menu, X } from 'lucide-react';
+import { roleLabel } from '@/lib/status';
+import { cx } from '@/components/ui';
 
 interface UserData {
   id: string;
@@ -33,72 +19,143 @@ interface UserData {
 interface NavItem {
   label: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+}
+
+const INSTITUTIONAL_ROLES = ['Admin', 'Registrar', 'VPAcademics', 'Dean'];
+
+function navItemsFor(role: string): NavItem[] {
+  switch (role) {
+    case 'Admin':
+      return [
+        { label: 'Dashboard', href: '/admin/dashboard' },
+        { label: 'Approvals', href: '/department/syllabus-approvals' },
+        { label: 'Courses', href: '/subjects' },
+        { label: 'Users', href: '/admin/users' },
+        { label: 'Audit Logs', href: '/admin/audit-logs' },
+      ];
+    case 'Registrar':
+    case 'VPAcademics':
+      return [
+        { label: 'Syllabi', href: '/syllabi' },
+        { label: 'Courses', href: '/subjects' },
+      ];
+    case 'Dean':
+      return [
+        { label: 'Dashboard', href: '/dept/dashboard' },
+        { label: 'Approvals', href: '/department/syllabus-approvals' },
+        { label: 'Courses', href: '/subjects' },
+      ];
+    case 'DepartmentHead':
+      return [
+        { label: 'Dashboard', href: '/dept/dashboard' },
+        { label: 'Approvals', href: '/department/syllabus-approvals' },
+        { label: 'Courses', href: '/subjects' },
+        { label: 'Faculty', href: '/dept/users' },
+      ];
+    default:
+      return [
+        { label: 'Dashboard', href: '/educator/dashboard' },
+        { label: 'Courses', href: '/subjects' },
+      ];
+  }
+}
+
+function initials(name?: string) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function timeAgo(value: string) {
+  const diff = Date.now() - new Date(value).getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(value).toLocaleDateString();
+}
+
+/** Closes a popover when clicking outside its container. */
+function useClickOutside(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, onClose]);
+  return ref;
 }
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<UserData | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [authChecked, setAuthChecked] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [openMenu, setOpenMenu] = useState<'notifications' | 'user' | 'mobile' | null>(null);
+
+  const closeMenus = () => setOpenMenu(null);
+  const notifRef = useClickOutside(openMenu === 'notifications', closeMenus);
+  const userRef = useClickOutside(openMenu === 'user', closeMenus);
 
   useEffect(() => {
+    let cancelled = false;
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
+        if (cancelled) return;
+        setUser(data?.user || null);
+        setAuthChecked(true);
         if (data?.user) {
-          setUser(data.user);
           fetch('/api/notifications')
             .then((r) => (r.ok ? r.json() : { notifications: [], unreadCount: 0 }))
-            .then((notifData) => {
-              setNotifications(notifData.notifications || []);
-              setUnreadCount(notifData.unreadCount || 0);
+            .then((n) => {
+              if (cancelled) return;
+              setNotifications(n.notifications || []);
+              setUnreadCount(n.unreadCount || 0);
             })
             .catch(() => {});
-        } else {
-          setUser(null);
         }
       })
-      .catch(() => setUser(null));
-  }, [pathname]);
-
-  // Auto-close drawer and notifications when route changes
-  useEffect(() => {
-    setMobileMenuOpen(false);
-    setShowNotifications(false);
-  }, [pathname]);
-
-  // Lock background scroll when drawer is open
-  useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+      .catch(() => {
+        if (!cancelled) {
+          setUser(null);
+          setAuthChecked(true);
+        }
+      });
     return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  // Close menus on navigation
+  useEffect(() => {
+    setOpenMenu(null);
+  }, [pathname]);
+
+  // Escape closes any open menu; lock scroll while the mobile drawer is open
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpenMenu(null);
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = openMenu === 'mobile' ? 'hidden' : '';
+    return () => {
+      window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [mobileMenuOpen]);
-
-  // Escape key closes drawer and notifications
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (mobileMenuOpen) setMobileMenuOpen(false);
-        if (showNotifications) setShowNotifications(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mobileMenuOpen, showNotifications]);
+  }, [openMenu]);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
-    setMobileMenuOpen(false);
+    setOpenMenu(null);
     router.push('/login');
     router.refresh();
   };
@@ -108,474 +165,218 @@ export default function Navbar() {
     setUnreadCount(0);
   };
 
-  const getInitials = (name?: string) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'U';
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-  };
-
-  const getRoleText = (role: string) => {
-    switch (role) {
-      case 'Admin':
-        return 'System Admin';
-      case 'Registrar':
-        return 'School Registrar';
-      case 'VPAcademics':
-        return 'VP-Academics';
-      case 'Dean':
-        return 'Dean';
-      case 'DepartmentHead':
-        return 'Department Head';
-      case 'Educator':
-      case 'Faculty':
-      default:
-        return 'Faculty';
-    }
-  };
-
-  const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'Admin':
-        return <span className="bg-[#FEF08A] text-[#854D0E] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">System Admin</span>;
-      case 'Registrar':
-        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">School Registrar</span>;
-      case 'VPAcademics':
-        return <span className="bg-[#E0F2FE] text-[#0369A1] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">VP-Academics</span>;
-      case 'Dean':
-        return <span className="bg-[#F3E8FF] text-[#6B21A8] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Dean</span>;
-      case 'DepartmentHead':
-        return <span className="bg-[#FEF9C3] text-[#A16207] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Department Head</span>;
-      case 'Educator':
-      case 'Faculty':
-      default:
-        return <span className="bg-[#DCFCE7] text-[#166534] font-bold text-[11px] px-2.5 py-0.5 rounded-full shadow-sm">Faculty</span>;
-    }
-  };
-
-  const getNavItems = (): NavItem[] => {
-    if (!user) {
-      return [
-        { label: 'Sign In', href: '/login', icon: LogIn },
-        { label: 'Register Faculty', href: '/register', icon: UserPlus },
-      ];
-    }
-
-    switch (user.role) {
-      case 'Admin':
-        return [
-          { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
-          { label: 'Syllabus Approvals', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Courses Directory', href: '/subjects', icon: BookOpen },
-          { label: 'User Management', href: '/admin/users', icon: Users },
-          { label: 'System Audit Logs', href: '/admin/audit-logs', icon: History },
-        ];
-      case 'Registrar':
-      case 'VPAcademics':
-        return [
-          { label: 'All Institutional Syllabi', href: '/student/dashboard', icon: FileText },
-          { label: 'Courses Directory', href: '/subjects', icon: BookOpen },
-        ];
-      case 'Dean':
-        return [
-          { label: 'Dean Review Portal', href: '/dept/dashboard', icon: LayoutDashboard },
-          { label: 'Dept. Head Submissions Queue', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'All Academic Courses', href: '/subjects', icon: BookOpen },
-        ];
-      case 'DepartmentHead':
-        return [
-          { label: 'Dept. Head Dashboard', href: '/dept/dashboard', icon: LayoutDashboard },
-          { label: 'Syllabus Approvals (from Faculty)', href: '/department/syllabus-approvals', icon: CheckCircle },
-          { label: 'Manage Dept. Courses', href: '/subjects', icon: BookOpen },
-          { label: 'Faculty Management', href: '/dept/users', icon: Users },
-        ];
-      case 'Educator':
-      case 'Faculty':
-      default:
-        return [
-          { label: 'Faculty Dashboard', href: '/educator/dashboard', icon: LayoutDashboard },
-          { label: 'Department Courses', href: '/subjects', icon: BookOpen },
-        ];
-    }
-  };
+  const navItems = user ? navItemsFor(user.role) : [];
+  const isActive = (href: string) => pathname === href || pathname?.startsWith(`${href}/`);
+  const showDept = user && !INSTITUTIONAL_ROLES.includes(user.role) && (user.departmentName || user.departmentCode);
+  const homeHref = navItems[0]?.href || '/';
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-[#005A36] text-white shadow-md border-b-2 border-[#C99700]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left section: Hamburger Button + USJ-R Brand Logo */}
-          <div className="flex items-center space-x-3">
-            {/* Responsive Hamburger Menu Button */}
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`p-2 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-[#FEF08A] ${
-                mobileMenuOpen
-                  ? 'bg-white/25 text-[#FEF08A] ring-2 ring-[#FEF08A]/60'
-                  : 'text-white hover:bg-white/15 hover:text-[#FEF08A]'
-              }`}
-              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              aria-expanded={mobileMenuOpen}
-              title={mobileMenuOpen ? 'Close Menu' : 'Open Menu'}
-            >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6 transition-transform duration-200 rotate-90 text-[#FEF08A]" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
-            </button>
+    <header className="sticky top-0 z-50 border-b-2 border-accent-500 bg-brand-700 text-white print:hidden">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
+        {/* Mobile menu button */}
+        {user && (
+          <button
+            type="button"
+            onClick={() => setOpenMenu(openMenu === 'mobile' ? null : 'mobile')}
+            className="-ml-1.5 rounded-lg p-1.5 text-white/90 hover:bg-white/10 lg:hidden"
+            aria-label="Open navigation menu"
+            aria-expanded={openMenu === 'mobile'}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
 
-            {/* USJ-R Brand Logo */}
-            <Link href="/" className="flex items-center space-x-2.5 group">
-              <div className="w-10 h-10 rounded-xl bg-[#C99700] flex items-center justify-center shadow-md group-hover:scale-105 transition-transform text-white font-extrabold">
-                <BookOpen className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xl font-black tracking-tight text-white">USJ-R</span>
-                  <span className="text-sm font-semibold tracking-wide text-[#FEF08A] uppercase">SRVS</span>
-                </div>
-                <span className="hidden sm:block text-[10px] tracking-wider text-emerald-100/90 font-medium">
-                  University of San Jose - Recoletos
-                </span>
-              </div>
-            </Link>
-          </div>
+        {/* Brand */}
+        <Link href={homeHref} className="flex shrink-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500">
+            <BookOpen className="h-4 w-4 text-white" />
+          </span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-base font-bold tracking-tight">USJ-R</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-accent-200">SRVS</span>
+          </span>
+        </Link>
 
+        {/* Desktop navigation */}
+        {user && (
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cx(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive(item.href) ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        )}
 
-
-          {/* Right Action Menu */}
-          <div className="flex items-center space-x-2.5">
-            <Link
-              href="/docs"
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-emerald-100 hover:text-white hover:bg-white/10 flex items-center space-x-1.5 transition-colors border border-white/15"
-              title="Interactive Swagger API Documentation"
-            >
-              <FileCode className="w-3.5 h-3.5 text-[#FEF08A]" />
-              <span className="hidden md:inline font-bold">API Docs</span>
-            </Link>
-
-            {user ? (
-              <div className="flex items-center space-x-3 sm:space-x-4">
-                {/* Notification Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative p-2 rounded-lg text-white hover:bg-white/15 transition-colors cursor-pointer"
-                    aria-label="View notifications"
-                  >
-                    <Bell className="w-5 h-5" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-[#FEF08A] border-2 border-[#005A36] animate-pulse" />
-                    )}
-                  </button>
-
-                  {showNotifications && (
-                    <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 p-4 shadow-xl z-50 text-slate-800">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
-                        <span className="font-bold text-sm text-[#005A36]">Notifications</span>
-                        {unreadCount > 0 && (
-                          <button
-                            onClick={markAllRead}
-                            className="text-xs text-[#005A36] hover:underline font-semibold"
-                          >
-                            Mark all read
-                          </button>
-                        )}
-                      </div>
-                      <div className="max-h-60 overflow-y-auto space-y-2">
-                        {notifications.length === 0 ? (
-                          <p className="text-xs text-slate-500 py-3 text-center">No notifications</p>
-                        ) : (
-                          notifications.slice(0, 5).map((n) => (
-                            <div key={n.id} className="p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 text-xs space-y-1">
-                              <p className="font-semibold text-slate-800">{n.title}</p>
-                              <p className="text-slate-600">{n.message}</p>
-                              <span className="text-[10px] text-slate-400">
-                                {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          {user ? (
+            <>
+              {/* Notifications */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  type="button"
+                  onClick={() => setOpenMenu(openMenu === 'notifications' ? null : 'notifications')}
+                  className="relative rounded-lg p-2 text-white/90 hover:bg-white/10"
+                  aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ''}`}
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-400 px-1 text-[10px] font-bold text-slate-950">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
                   )}
-                </div>
+                </button>
 
-                {/* User Profile & Sign Out */}
-                <div className="flex items-center gap-3 pl-3.5 sm:pl-4 border-l border-white/15">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-xs font-bold text-[#FEF08A] shrink-0 shadow-sm">
-                      {getInitials(user.fullName)}
+                {openMenu === 'notifications' && (
+                  <div className="absolute right-0 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                      <span className="text-sm font-semibold">Notifications</span>
+                      {unreadCount > 0 && (
+                        <button type="button" onClick={markAllRead} className="text-xs font-medium text-brand-700 hover:underline">
+                          Mark all as read
+                        </button>
+                      )}
                     </div>
-                    <div className="hidden sm:flex flex-col justify-center text-left min-w-0">
-                      <p className="text-sm font-semibold text-white capitalize leading-tight tracking-tight truncate max-w-[180px]">
-                        {user.fullName}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] leading-tight">
-                        <span className="font-semibold text-[#FEF08A] whitespace-nowrap">
-                          {getRoleText(user.role)}
-                        </span>
-                        {(user.departmentName || user.departmentCode) &&
-                          user.role !== 'Admin' &&
-                          user.role !== 'Registrar' &&
-                          user.role !== 'VPAcademics' &&
-                          user.role !== 'Dean' && (
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <p className="px-4 py-8 text-center text-sm text-slate-500">You&apos;re all caught up.</p>
+                      ) : (
+                        notifications.slice(0, 8).map((n) => {
+                          const body = (
                             <>
-                              <span className="text-white/40 select-none">•</span>
-                              <span
-                                className="text-emerald-100/90 font-medium truncate max-w-[160px]"
-                                title={user.departmentName || user.departmentCode}
-                              >
-                                {user.departmentName || user.departmentCode}
-                              </span>
+                              <p className="text-sm font-medium text-slate-900">{n.title}</p>
+                              <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">{n.message}</p>
+                              <p className="mt-1 text-[11px] text-slate-400">{timeAgo(n.createdAt)}</p>
                             </>
-                          )}
-                      </div>
+                          );
+                          const cls = 'block border-b border-slate-100 px-4 py-3 last:border-0';
+                          return n.link ? (
+                            <Link key={n.id} href={n.link} className={cx(cls, 'hover:bg-slate-50')}>
+                              {body}
+                            </Link>
+                          ) : (
+                            <div key={n.id} className={cls}>
+                              {body}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                  <button
-                    onClick={handleLogout}
-                    title="Sign Out"
-                    aria-label="Sign Out"
-                    className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white/90 hover:text-white transition-all cursor-pointer shrink-0"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                </div>
+                )}
               </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Link
-                  href="/login"
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white hover:bg-white/15 transition-colors"
+
+              {/* User menu */}
+              <div className="relative" ref={userRef}>
+                <button
+                  type="button"
+                  onClick={() => setOpenMenu(openMenu === 'user' ? null : 'user')}
+                  className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-white/10"
+                  aria-label="Account menu"
+                  aria-expanded={openMenu === 'user'}
                 >
-                  Sign In
-                </Link>
-                <Link
-                  href="/register"
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 transition-all shadow"
-                >
-                  Register
-                </Link>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-accent-100">
+                    {initials(user.fullName)}
+                  </span>
+                  <span className="hidden max-w-[160px] text-left sm:block">
+                    <span className="block truncate text-sm font-medium leading-tight capitalize">{user.fullName}</span>
+                    <span className="block truncate text-[11px] leading-tight text-white/65">{roleLabel(user.role)}</span>
+                  </span>
+                  <ChevronDown className="hidden h-4 w-4 text-white/60 sm:block" />
+                </button>
+
+                {openMenu === 'user' && (
+                  <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl">
+                    <div className="border-b border-slate-100 px-4 py-3">
+                      <p className="truncate text-sm font-semibold capitalize">{user.fullName}</p>
+                      <p className="truncate text-xs text-slate-500">{user.email}</p>
+                      <p className="mt-1.5 text-xs text-slate-600">
+                        {roleLabel(user.role)}
+                        {showDept && <span className="text-slate-400"> · {user.departmentName || user.departmentCode}</span>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <LogOut className="h-4 w-4 text-slate-400" />
+                      Sign out
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : authChecked ? (
+            <>
+              <Link
+                href="/login"
+                className={cx(
+                  'rounded-md px-3 py-1.5 text-sm font-medium hover:bg-white/10',
+                  pathname === '/login' ? 'text-white' : 'text-white/80'
+                )}
+              >
+                Sign in
+              </Link>
+              <Link href="/register" className="rounded-md bg-accent-500 px-3 py-1.5 text-sm font-semibold text-slate-950 hover:bg-accent-400">
+                Register
+              </Link>
+            </>
+          ) : null}
         </div>
       </div>
 
-      {/* Responsive Slide-Over Navigation Drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true" aria-label="Navigation Menu">
-          {/* Backdrop with fade-in blur */}
-          <div
-            onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300"
-            aria-hidden="true"
-          />
-
-          {/* Slide-over Drawer Panel */}
-          <div className="fixed inset-y-0 left-0 max-w-xs sm:max-w-sm w-full bg-white shadow-2xl flex flex-col z-50 transform transition-transform duration-300 ease-out border-r border-slate-200">
-            {/* Drawer Header */}
-            <div className="bg-[#005A36] text-white p-4 flex items-center justify-between border-b-2 border-[#C99700] shadow-sm">
-              <Link
-                href="/"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center space-x-2.5 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-[#C99700] flex items-center justify-center shadow-md text-white font-black group-hover:scale-105 transition-transform">
-                  <BookOpen className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-lg font-black tracking-tight text-white">USJ-R</span>
-                    <span className="text-xs font-bold tracking-wide text-[#FEF08A] uppercase">SRVS</span>
-                  </div>
-                  <span className="block text-[10px] text-emerald-100 font-medium">
-                    Syllabus Repository System
-                  </span>
-                </div>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-1.5 rounded-lg text-emerald-100 hover:text-white hover:bg-white/15 transition-colors focus:outline-none focus:ring-2 focus:ring-[#FEF08A] cursor-pointer"
-                aria-label="Close menu"
-              >
-                <X className="w-5 h-5" />
+      {/* Mobile drawer */}
+      {user && openMenu === 'mobile' && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={closeMenus} aria-hidden="true" />
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-white text-slate-800 shadow-2xl">
+            <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
+              <span className="flex items-baseline gap-1.5 text-brand-700">
+                <span className="text-base font-bold">USJ-R</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-accent-600">SRVS</span>
+              </span>
+              <button type="button" onClick={closeMenus} className="btn btn-ghost btn-icon" aria-label="Close menu">
+                <X className="h-5 w-5" />
               </button>
             </div>
-
-            {/* Drawer Body (Scrollable) */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-5">
-              {/* User Profile Card (if logged in) */}
-              {user ? (
-                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#005A36] text-[#FEF08A] font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
-                      {getInitials(user.fullName)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900 capitalize truncate leading-tight">
-                        {user.fullName}
-                      </p>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-2.5 border-t border-emerald-200/70 flex items-center justify-between gap-2">
-                    <div>{getRoleBadge(user.role)}</div>
-                    {(user.departmentName || user.departmentCode) &&
-                      user.role !== 'Admin' &&
-                      user.role !== 'Registrar' &&
-                      user.role !== 'VPAcademics' &&
-                      user.role !== 'Dean' && (
-                        <span
-                          className="text-[11px] font-semibold text-emerald-900 truncate max-w-[170px]"
-                          title={user.departmentName || user.departmentCode}
-                        >
-                          {user.departmentName || `${user.departmentCode} Department`}
-                        </span>
-                      )}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center">
-                  <p className="text-xs font-semibold text-slate-700 mb-2">Welcome to USJ-R SRVS</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Link
-                      href="/login"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#005A36] bg-white border border-[#005A36]/30 hover:bg-emerald-50 transition-colors"
-                    >
-                      Sign In
-                    </Link>
-                    <Link
-                      href="/register"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 transition-colors shadow-sm"
-                    >
-                      Register
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-              {/* Primary Navigation Links */}
-              <div>
-                <div className="px-2 pb-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                  {user ? `${user.role} Navigation` : 'Main Menu'}
-                </div>
-                <nav className="space-y-1">
-                  {getNavItems().map((item) => {
-                    const Icon = item.icon;
-                    const isActive = pathname === item.href || (item.href !== '/' && pathname?.startsWith(item.href));
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                          isActive
-                            ? 'bg-[#005A36] text-[#FEF08A] shadow-sm font-bold pl-4 border-l-4 border-[#C99700]'
-                            : 'text-slate-700 hover:bg-emerald-50/70 hover:text-[#005A36]'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <Icon className={`w-4 h-4 ${isActive ? 'text-[#FEF08A]' : 'text-slate-500'}`} />
-                          <span>{item.label}</span>
-                        </div>
-                        <ChevronRight className={`w-3.5 h-3.5 ${isActive ? 'text-[#FEF08A]' : 'text-slate-400'}`} />
-                      </Link>
-                    );
-                  })}
-                </nav>
-              </div>
-
-              {/* System & Documentation Links */}
-              <div>
-                <div className="px-2 pb-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                  System Resources
-                </div>
-                <nav className="space-y-1">
-                  <Link
-                    href="/docs"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                      pathname === '/docs'
-                        ? 'bg-[#005A36] text-[#FEF08A] shadow-sm font-bold pl-4 border-l-4 border-[#C99700]'
-                        : 'text-slate-700 hover:bg-emerald-50/70 hover:text-[#005A36]'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <FileCode className={`w-4 h-4 ${pathname === '/docs' ? 'text-[#FEF08A]' : 'text-[#C99700]'}`} />
-                      <span>Swagger API Docs</span>
-                    </div>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                      v1.0
-                    </span>
-                  </Link>
-
-                  <Link
-                    href="/"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                      pathname === '/'
-                        ? 'bg-[#005A36] text-[#FEF08A] shadow-sm font-bold pl-4 border-l-4 border-[#C99700]'
-                        : 'text-slate-700 hover:bg-emerald-50/70 hover:text-[#005A36]'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Layers className="w-4 h-4 text-slate-500" />
-                      <span>SRVS Home Portal</span>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                  </Link>
-                </nav>
-              </div>
-
-              {/* Unread Notifications Alert (if any) */}
-              {user && unreadCount > 0 && (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs">
-                  <div className="flex items-center justify-between font-bold text-amber-900">
-                    <span className="flex items-center space-x-1.5">
-                      <Bell className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Notifications</span>
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px]">
-                      {unreadCount} unread
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNotifications(true);
-                      setMobileMenuOpen(false);
-                    }}
-                    className="mt-2 text-xs font-semibold text-[#005A36] hover:underline cursor-pointer"
-                  >
-                    View pending notifications →
-                  </button>
-                </div>
-              )}
+            <div className="border-b border-slate-100 px-4 py-3">
+              <p className="truncate text-sm font-semibold capitalize">{user.fullName}</p>
+              <p className="truncate text-xs text-slate-500">
+                {roleLabel(user.role)}
+                {showDept && ` · ${user.departmentName || user.departmentCode}`}
+              </p>
             </div>
-
-            {/* Drawer Footer */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-3">
-              {user && (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Main">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cx(
+                    'block rounded-lg px-3 py-2 text-sm font-medium',
+                    isActive(item.href) ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'
+                  )}
                 >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
-              )}
-              <div className="text-center text-[10px] text-slate-400">
-                <p className="font-semibold text-slate-500">University of San Jose - Recoletos</p>
-                <p>Caritas et Scientia • Cebu City</p>
-              </div>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <div className="border-t border-slate-200 p-2">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <LogOut className="h-4 w-4 text-slate-400" />
+                Sign out
+              </button>
             </div>
           </div>
         </div>

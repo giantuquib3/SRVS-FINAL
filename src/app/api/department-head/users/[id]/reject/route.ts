@@ -64,9 +64,8 @@ export async function POST(
       },
     });
 
-    const isStudent = updatedUser.role === 'Student';
-    const auditAction = isStudent ? 'StudentRejected' : 'FacultyRejected';
-    const displayRole = isStudent ? 'Student' : 'Faculty';
+    const auditAction = 'FacultyRejected';
+    const displayRole = 'Faculty';
 
     await logAuditEvent({
       userId: sessionUser.id,

@@ -307,8 +307,6 @@ export async function POST(req: NextRequest) {
           departmentName: getDepartmentName(newUser.departmentId),
           accountStatus: newUser.accountStatus,
           academicRank: newUser.academicRank,
-          yearLevel: newUser.yearLevel,
-          program: newUser.program,
           mustChangePassword: !!newUser.mustChangePassword,
           createdAt: newUser.createdAt,
         },
@@ -455,8 +453,6 @@ export async function PATCH(req: NextRequest) {
         departmentName: getDepartmentName(updated.departmentId),
         accountStatus: updated.accountStatus,
         academicRank: updated.academicRank,
-        yearLevel: updated.yearLevel,
-        program: updated.program,
         rejectionReason: updated.rejectionReason,
       },
     });
@@ -506,7 +502,7 @@ export async function DELETE(req: NextRequest) {
       data: { accountStatus: 'Deactivated' },
     });
 
-    const auditAction = targetUser.role === 'Student' ? 'StudentDeactivated' : targetUser.role === 'Educator' ? 'FacultyDeactivated' : 'DeactivateUser';
+    const auditAction = targetUser.role === 'Educator' ? 'FacultyDeactivated' : 'DeactivateUser';
     await logAuditEvent({
       userId: sessionUser.id,
       userDisplayName: sessionUser.fullName || sessionUser.id,

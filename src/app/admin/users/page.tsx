@@ -1,19 +1,37 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { Trash2, UserPlus, Users } from 'lucide-react';
 import {
-  Shield,
-  ArrowLeft,
-  RefreshCw,
-  Search,
-  UserPlus,
-  Trash2,
-  Edit3,
-  X,
-  AlertCircle,
-  CheckCircle2
-} from 'lucide-react';
+  Alert,
+  Badge,
+  Card,
+  DeptTag,
+  EmptyState,
+  Field,
+  LoadingState,
+  Modal,
+  PageHeader,
+  SearchInput,
+  Spinner,
+  Tabs,
+  accountStatusLabel,
+  accountStatusTone,
+  formatDate,
+} from '@/components/ui';
+import { roleLabel } from '@/lib/status';
+
+/** Roles that are institution-wide and have no department. */
+const NO_DEPT_ROLES = ['Admin', 'Registrar', 'VPAcademics', 'Dean'];
+
+const ROLE_OPTIONS = [
+  { id: 'Registrar', label: 'School Registrar' },
+  { id: 'VPAcademics', label: 'VP-Academics' },
+  { id: 'Dean', label: 'Dean' },
+  { id: 'DepartmentHead', label: 'Department Head' },
+  { id: 'Educator', label: 'Faculty' },
+  { id: 'Admin', label: 'System Administrator' },
+];
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -24,15 +42,10 @@ export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [counts, setCounts] = useState<{
-    total: number;
-    deptHeads: number;
-    educators: number;
-    students: number;
-    admins: number;
-  }>({ total: 0, deptHeads: 0, educators: 0, students: 0, admins: 0 });
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [actionMessage, setActionMessage] = useState('');
 
-  // Create User Modal State
+  // Create user
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newFullName, setNewFullName] = useState('');
   const [newUsername, setNewUsername] = useState('');
@@ -42,12 +55,16 @@ export default function UsersManagementPage() {
   const [newDeptId, setNewDeptId] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
-  const [actionMessage, setActionMessage] = useState('');
 
-  // Role Edit Modal State
+  // Change role
   const [roleModalUser, setRoleModalUser] = useState<any>(null);
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
+
+  const flash = (msg: string) => {
+    setActionMessage(msg);
+    setTimeout(() => setActionMessage(''), 4000);
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -62,7 +79,6 @@ export default function UsersManagementPage() {
         fetch('/api/departments').then((r) => r.json()),
         fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)),
       ]);
-
       setUsers(uListRes.users || []);
       if (uListRes.counts) setCounts(uListRes.counts);
       setDepartments(dRes.departments || []);
@@ -78,45 +94,21 @@ export default function UsersManagementPage() {
     fetchUsers();
   }, [statusFilter, roleFilter]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchUsers();
-  };
-
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError('');
 
     const cleanUsername = newUsername.trim();
-    if (!cleanUsername) {
-      setCreateError('Username (ID Number) is required.');
-      return;
+    if (!cleanUsername) return setCreateError('ID number is required.');
+    if (!ROLE_OPTIONS.some((r) => r.id === newRole)) return setCreateError('Please select a valid role.');
+    if (!NO_DEPT_ROLES.includes(newRole) && !newDeptId) return setCreateError('Please select a department for this role.');
+    if (!/^\d{5}$/.test(cleanUsername) && !(newRole === 'Admin' && cleanUsername === '0')) {
+      return setCreateError('ID numbers must be 5 digits (or 0 for the Super Admin).');
     }
-
-      const allowedAdminCreateRoles = ['Admin', 'Registrar', 'VPAcademics', 'Dean', 'DepartmentHead', 'Educator'];
-      if (!allowedAdminCreateRoles.includes(newRole)) {
-        setCreateError('Please select a valid institutional role.');
-        return;
-      }
-
-      if ((newRole === 'DepartmentHead' || newRole === 'Educator') && !newDeptId) {
-        setCreateError('Please select a designated department for this role.');
-        return;
-      }
-
-      if (!/^\d{5}$/.test(cleanUsername) && !(newRole === 'Admin' && cleanUsername === '0')) {
-        setCreateError('Institutional ID numbers must be 5 digits (or 0 for Super Admin).');
-        return;
-      }
-
     const cleanEmail = newEmail.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@usjr.edu.ph')) {
-      setCreateError('Institutional email is required. Email address must end with @usjr.edu.ph (e.g., user@usjr.edu.ph).');
-      return;
-    }
+    if (!cleanEmail.endsWith('@usjr.edu.ph')) return setCreateError('Email must end with @usjr.edu.ph.');
 
     setCreateLoading(true);
-
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -131,25 +123,21 @@ export default function UsersManagementPage() {
           departmentId: newDeptId || null,
         }),
       });
-
       const data = await res.json();
       if (!res.ok) {
         setCreateError(data.error || 'Failed to create user.');
-        setCreateLoading(false);
         return;
       }
-
       setCreateModalOpen(false);
       setNewFullName('');
       setNewUsername('');
       setNewEmail('');
       setNewPassword('');
       setNewDeptId('');
-      setActionMessage(`User account for ${data.user?.fullName || 'user'} (ID: ${data.user?.id || cleanUsername}) created successfully.`);
-      setTimeout(() => setActionMessage(''), 4000);
+      flash(`Account created for ${data.user?.fullName || 'user'}.`);
       await fetchUsers();
-    } catch (err) {
-      setCreateError('Connection error.');
+    } catch {
+      setCreateError('Could not connect to the server.');
     } finally {
       setCreateLoading(false);
     }
@@ -158,10 +146,9 @@ export default function UsersManagementPage() {
   const handleAction = async (userId: string, action: string, newRoleValue?: string, newDeptValue?: string | null) => {
     setProcessingId(userId);
     try {
-      const noDeptRoles = ['Admin', 'Registrar', 'VPAcademics', 'Dean'];
       const payload: any = { userId, action, newRole: newRoleValue };
       if (action === 'ChangeRole' && newRoleValue) {
-        payload.departmentId = noDeptRoles.includes(newRoleValue) ? null : (newDeptValue || null);
+        payload.departmentId = NO_DEPT_ROLES.includes(newRoleValue) ? null : newDeptValue || null;
       }
       const res = await fetch('/api/users', {
         method: 'PATCH',
@@ -169,658 +156,320 @@ export default function UsersManagementPage() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        if (action === 'ChangeRole') {
-          setRoleModalUser(null);
-        }
+        if (action === 'ChangeRole') setRoleModalUser(null);
         await fetchUsers();
       }
-    } catch (err) {
-      console.error('Action error:', err);
     } finally {
       setProcessingId(null);
     }
   };
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    if (!confirm(`Are you sure you want to delete or deactivate account for ${userName}?`)) {
-      return;
-    }
-
+    if (!confirm(`Delete or deactivate the account for ${userName}?`)) return;
     setProcessingId(userId);
     try {
-      const res = await fetch(`/api/users?userId=${userId}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/users?userId=${userId}`, { method: 'DELETE' });
       const data = await res.json();
       if (res.ok) {
-        setActionMessage(data.message || 'User removed successfully.');
-        setTimeout(() => setActionMessage(''), 4000);
+        flash(data.message || 'User removed.');
         await fetchUsers();
       } else {
         alert(data.error || 'Failed to delete user.');
       }
-    } catch (err) {
-      console.error('Delete error:', err);
     } finally {
       setProcessingId(null);
     }
   };
 
+  const openRoleModal = (u: any) => {
+    setRoleModalUser(u);
+    setSelectedRole(u.role);
+    setSelectedDeptId(NO_DEPT_ROLES.includes(u.role) ? '' : u.departmentId || u.departmentCode || '');
+  };
+
+  const tabs = [
+    { id: '', label: 'All', count: counts.total },
+    { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
+    { id: 'Educator', label: 'Faculty', count: counts.educators },
+    { id: 'Dean', label: 'Deans' },
+    { id: 'Registrar', label: 'Registrar' },
+    { id: 'VPAcademics', label: 'VP-Academics' },
+    { id: 'Admin', label: 'Admins', count: counts.admins },
+  ];
+
+  const deptSelect = (value: string, onChange: (v: string) => void, role: string) =>
+    NO_DEPT_ROLES.includes(role) ? (
+      <input type="text" disabled value="Institution-wide (no department)" className="input" />
+    ) : (
+      <select value={value} onChange={(e) => onChange(e.target.value)} required className="input">
+        <option value="">Select a department</option>
+        {departments.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.code} — {d.name}
+          </option>
+        ))}
+      </select>
+    );
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/admin/dashboard"
-            className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
-                Identity & Access
-              </span>
-              <span className="text-xs text-slate-500 font-medium">User Accounts Directory</span>
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
-              User Accounts & Role Management
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={fetchUsers}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#005A36] ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+    <div className="space-y-6">
+      <PageHeader
+        title="Users"
+        description="Create accounts, approve registrations, and manage roles."
+        actions={
+          <button onClick={() => setCreateModalOpen(true)} className="btn btn-primary">
+            <UserPlus className="h-4 w-4" />
+            New user
           </button>
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 text-[#FEF08A]" />
-            <span>Create User Account</span>
-          </button>
+        }
+      />
+
+      {actionMessage && <Alert tone="success">{actionMessage}</Alert>}
+
+      <Card>
+        <div className="px-4 pt-3">
+          <Tabs tabs={tabs} active={roleFilter} onChange={setRoleFilter} />
         </div>
-      </div>
-
-      {actionMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center space-x-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-          <span>{actionMessage}</span>
-        </div>
-      )}
-
-      {/* Role Segregation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-        {[
-          { id: '', label: 'All Users', count: counts.total },
-          { id: 'Registrar', label: 'School Registrar' },
-          { id: 'VPAcademics', label: 'VP-Academics' },
-          { id: 'Dean', label: 'Deans' },
-          { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
-          { id: 'Educator', label: 'Faculty', count: counts.educators },
-          { id: 'Admin', label: 'Administrators', count: counts.admins },
-        ].map((tab) => {
-          const active = roleFilter === tab.id;
-          return (
-            <button
-              key={tab.id || 'all'}
-              onClick={() => setRoleFilter(tab.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                active
-                  ? 'bg-[#005A36] text-white shadow-md'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-sm'
-              }`}
-            >
-              <span>{tab.label}</span>
-              {tab.count !== undefined && (
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                    active ? 'bg-[#FEF08A] text-[#854D0E]' : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <form onSubmit={handleSearchSubmit} className="flex-1 min-w-[260px] relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
-          <input
-            type="text"
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row">
+          <SearchInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search users by name, email, or username..."
-            className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-20 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
+            onChange={setSearchQuery}
+            onSubmit={fetchUsers}
+            placeholder="Search by name, email, or ID"
+            className="flex-1"
           />
-          <button
-            type="submit"
-            className="absolute right-1.5 top-1.5 px-3 py-1 bg-[#005A36] hover:bg-[#004529] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-          >
-            Search
-          </button>
-        </form>
-
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-600 font-bold">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
-            >
-              <option value="">All Statuses</option>
-              <option value="PendingApproval">Pending Approval</option>
-              <option value="Active">Active</option>
-              <option value="Deactivated">Deactivated</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-600 font-bold">Role:</span>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#005A36]"
-            >
-              <option value="">All Roles</option>
-              <option value="Registrar">School Registrar</option>
-              <option value="VPAcademics">VP-Academics</option>
-              <option value="Dean">Dean</option>
-              <option value="DepartmentHead">Department Head</option>
-              <option value="Educator">Faculty</option>
-              <option value="Admin">System Administrator</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Users Table */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <span className="text-xs font-bold text-slate-600">
-            Showing {users.length} registered accounts
-          </span>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input sm:w-44" aria-label="Status">
+            <option value="">All statuses</option>
+            <option value="PendingApproval">Pending approval</option>
+            <option value="Active">Active</option>
+            <option value="Deactivated">Deactivated</option>
+            <option value="Rejected">Rejected</option>
+          </select>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
-                <th className="py-2.5 px-3">ID Number</th>
-                <th className="py-2.5 px-3">Full Name & Email</th>
-                <th className="py-2.5 px-3">Role</th>
-                <th className="py-2.5 px-3">Department</th>
-                {roleFilter === 'Student' && (
-                  <th className="py-2.5 px-3">Enrolled Subjects (Codes)</th>
-                )}
-                <th className="py-2.5 px-3">Account Status</th>
-                <th className="py-2.5 px-3">Registered Date</th>
-                <th className="py-2.5 px-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3 px-3">
-                    <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-[#005A36]">
-                      {u.idNumber || u.username || '—'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3">
-                    <p className="font-bold text-slate-900">{u.fullName}</p>
-                    <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
-                      <span>{u.email}</span>
-                    </div>
-                    {roleFilter !== 'Student' && u.role === 'Student' && (Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.length > 0 : Boolean(u.enrolledSubjects)) && (
-                      <div className="mt-1 flex items-center space-x-1 text-[10px]">
-                        <span className="text-slate-500 font-semibold">Enrolled:</span>
-                        <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          {Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.join(', ') : u.enrolledSubjects}
-                        </span>
-                      </div>
-                    )}
-                    {u.role === 'Educator' && Array.isArray(u.assignedSubjects) && u.assignedSubjects.length > 0 && (
-                      <div className="mt-1 flex items-center space-x-1 text-[10px]">
-                        <span className="text-slate-500 font-semibold">Assigned Subjects:</span>
-                        <span className="font-mono font-bold text-[#005A36] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          {u.assignedSubjects.join(', ')}
-                        </span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-3 px-3">
-                    <button
-                      onClick={() => {
-                        setRoleModalUser(u);
-                        setSelectedRole(u.role);
-                        setSelectedDeptId(
-                          u.role === 'Admin' || u.role === 'Registrar' || u.role === 'VPAcademics' || u.role === 'Dean'
-                            ? ''
-                            : (u.departmentId || u.departmentCode || '')
-                        );
-                      }}
-                      className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 hover:bg-[#FEF08A] text-slate-800 hover:text-[#854D0E] transition-colors cursor-pointer"
-                      title="Click to change role"
-                    >
-                      <span>
-                        {u.role === 'Registrar'
-                          ? 'School Registrar'
-                          : u.role === 'VPAcademics'
-                          ? 'VP-Academics'
-                          : u.role === 'Educator'
-                          ? 'Faculty'
-                          : u.role}
-                      </span>
-                      <Edit3 className="w-2.5 h-2.5 ml-1 text-slate-400" />
-                    </button>
-                  </td>
-                  <td className="py-3 px-3">
-                    {u.role === 'Admin' || u.role === 'Registrar' || u.role === 'VPAcademics' || u.role === 'Dean' ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 select-none cursor-not-allowed">
-                        No Department (Institutional)
-                      </span>
-                    ) : (u.departmentCode || u.departmentId || u.department?.code) ? (
-                      <div className="space-y-0.5">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-50 text-[#005A36] border border-emerald-200 font-mono shadow-sm">
-                            [{u.departmentCode || u.departmentId || u.department?.code}]
-                          </span>
-                        </div>
-                        <span className="text-slate-600 text-[11px] font-medium block">
-                          {u.departmentName || u.department?.name || `${u.departmentCode || u.departmentId} Department`}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 italic text-[11px]">Unassigned</span>
-                    )}
-                  </td>
-                  {roleFilter === 'Student' && (
-                    <td className="py-3 px-3">
-                      {(Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects.length > 0 : Boolean(u.enrolledSubjects)) ? (
-                        <div className="flex flex-wrap gap-1">
-                          {(Array.isArray(u.enrolledSubjects) ? u.enrolledSubjects : String(u.enrolledSubjects).split(',')).map((code: string) => (
-                            <span
-                              key={String(code).trim()}
-                              className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-emerald-50 text-[#005A36] border border-emerald-200 shadow-sm"
-                            >
-                              {String(code).trim()}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">No enrolled subjects</span>
-                      )}
-                    </td>
-                  )}
-                  <td className="py-3 px-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        u.accountStatus === 'Active'
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : u.accountStatus === 'PendingApproval'
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : 'bg-rose-50 text-rose-700 border-rose-200'
-                      }`}
-                    >
-                      {u.accountStatus}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                    {new Date(u.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="py-3 px-3 text-right space-x-1.5">
-                    {u.accountStatus === 'PendingApproval' ? (
-                      <>
-                        <button
-                          onClick={() => handleAction(u.id, 'Approve')}
-                          disabled={processingId === u.id}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#005A36] hover:bg-[#004529] text-white transition-colors cursor-pointer shadow-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleAction(u.id, 'Reject')}
-                          disabled={processingId === u.id}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-sm"
-                        >
-                          Reject
-                        </button>
-                      </>
-                    ) : u.accountStatus === 'Active' ? (
-                      <button
-                        onClick={() => handleAction(u.id, 'Deactivate')}
-                        disabled={processingId === u.id}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 transition-colors cursor-pointer"
-                      >
-                        Deactivate
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleAction(u.id, 'Activate')}
-                        disabled={processingId === u.id}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-[#005A36] border border-slate-300 transition-colors cursor-pointer"
-                      >
-                        Activate
-                      </button>
-                    )}
-
-                    {currentUser?.id !== u.id && (
-                      <button
-                        onClick={() => handleDeleteUser(u.id, u.fullName)}
-                        disabled={processingId === u.id}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Delete User"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </td>
+        {loading ? (
+          <LoadingState />
+        ) : users.length === 0 ? (
+          <EmptyState icon={Users} title="No users found" description="Try a different search or filter." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>ID</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th>Status</th>
+                  <th>Joined</th>
+                  <th className="text-right">Actions</th>
                 </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => {
+                  const busy = processingId === u.id;
+                  return (
+                    <tr key={u.id}>
+                      <td>
+                        <p className="font-medium text-slate-900">{u.fullName}</p>
+                        <p className="text-xs text-slate-500">{u.email}</p>
+                        {u.role === 'Educator' && u.assignedSubjects?.length > 0 && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Teaches <span className="font-mono text-slate-700">{u.assignedSubjects.join(', ')}</span>
+                          </p>
+                        )}
+                      </td>
+                      <td className="font-mono text-xs text-slate-600">{u.idNumber || u.username || '—'}</td>
+                      <td className="whitespace-nowrap">{roleLabel(u.role)}</td>
+                      <td>
+                        {NO_DEPT_ROLES.includes(u.role) ? (
+                          <span className="text-xs text-slate-400">—</span>
+                        ) : u.departmentCode || u.departmentId || u.department?.code ? (
+                          <span className="flex items-center gap-1.5">
+                            <DeptTag code={u.departmentCode || u.departmentId || u.department?.code} />
+                            <span className="truncate text-xs text-slate-500">{u.departmentName || u.department?.name}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs italic text-slate-400">Unassigned</span>
+                        )}
+                      </td>
+                      <td>
+                        <Badge tone={accountStatusTone(u.accountStatus)}>{accountStatusLabel(u.accountStatus)}</Badge>
+                      </td>
+                      <td className="whitespace-nowrap text-slate-500">{formatDate(u.createdAt)}</td>
+                      <td>
+                        <div className="flex justify-end gap-1.5">
+                          {u.accountStatus === 'PendingApproval' ? (
+                            <>
+                              <button onClick={() => handleAction(u.id, 'Reject')} disabled={busy} className="btn btn-danger-outline btn-sm">
+                                Reject
+                              </button>
+                              <button onClick={() => handleAction(u.id, 'Approve')} disabled={busy} className="btn btn-primary btn-sm">
+                                Approve
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => openRoleModal(u)} className="btn btn-ghost btn-sm">
+                                Change role
+                              </button>
+                              <button
+                                onClick={() => handleAction(u.id, u.accountStatus === 'Active' ? 'Deactivate' : 'Activate')}
+                                disabled={busy}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                {u.accountStatus === 'Active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </>
+                          )}
+                          {currentUser?.id !== u.id && (
+                            <button
+                              onClick={() => handleDeleteUser(u.id, u.fullName)}
+                              disabled={busy}
+                              className="btn btn-ghost btn-icon text-slate-400 hover:text-rose-600"
+                              title="Delete user"
+                              aria-label={`Delete ${u.fullName}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Create user */}
+      <Modal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="New user"
+        description="Department applies only to Department Heads and Faculty."
+        footer={
+          <>
+            <button type="button" onClick={() => setCreateModalOpen(false)} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="submit" form="create-user-form" disabled={createLoading} className="btn btn-primary">
+              {createLoading ? <Spinner /> : 'Create user'}
+            </button>
+          </>
+        }
+      >
+        <form id="create-user-form" onSubmit={handleCreateUser} className="space-y-4">
+          {createError && <Alert tone="error">{createError}</Alert>}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Role" required>
+              <select
+                value={newRole}
+                onChange={(e) => {
+                  setNewRole(e.target.value);
+                  setNewUsername('');
+                  if (NO_DEPT_ROLES.includes(e.target.value)) setNewDeptId('');
+                }}
+                className="input"
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Department" required={!NO_DEPT_ROLES.includes(newRole)}>
+              {deptSelect(newDeptId, setNewDeptId, newRole)}
+            </Field>
+          </div>
+          <Field label="Full name" required>
+            <input type="text" required value={newFullName} onChange={(e) => setNewFullName(e.target.value)} className="input" />
+          </Field>
+          <div className="grid grid-cols-[120px_1fr] gap-3">
+            <Field label="ID number" required hint="5 digits">
+              <input
+                type="text"
+                required
+                inputMode="numeric"
+                maxLength={5}
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value.replace(/\D/g, ''))}
+                placeholder="10018"
+                className="input font-mono"
+              />
+            </Field>
+            <Field label="Email" required>
+              <input
+                type="email"
+                required
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="name@usjr.edu.ph"
+                className="input"
+              />
+            </Field>
+          </div>
+          <Field label="Temporary password" required hint="At least 6 characters">
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="input"
+            />
+          </Field>
+        </form>
+      </Modal>
+
+      {/* Change role */}
+      <Modal
+        open={Boolean(roleModalUser)}
+        onClose={() => setRoleModalUser(null)}
+        title="Change role"
+        description={roleModalUser?.fullName}
+        size="sm"
+        footer={
+          <>
+            <button type="button" onClick={() => setRoleModalUser(null)} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!NO_DEPT_ROLES.includes(selectedRole) && !selectedDeptId}
+              onClick={() => handleAction(roleModalUser.id, 'ChangeRole', selectedRole, selectedDeptId)}
+              className="btn btn-primary"
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Role">
+            <select
+              value={selectedRole}
+              onChange={(e) => {
+                setSelectedRole(e.target.value);
+                if (NO_DEPT_ROLES.includes(e.target.value)) setSelectedDeptId('');
+              }}
+              className="input"
+            >
+              {ROLE_OPTIONS.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </Field>
+          <Field label="Department" required={!NO_DEPT_ROLES.includes(selectedRole)}>
+            {deptSelect(selectedDeptId, setSelectedDeptId, selectedRole)}
+          </Field>
         </div>
-      </div>
-
-      {/* CREATE USER MODAL */}
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white max-w-md w-full p-6 rounded-2xl border border-slate-200 space-y-4 shadow-xl text-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-[#005A36] flex items-center space-x-2">
-                <UserPlus className="w-4 h-4 text-[#005A36]" />
-                <span>Create User Account</span>
-              </h3>
-              <button
-                onClick={() => setCreateModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {createError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{createError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateUser} className="space-y-3.5 text-xs">
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed">
-                <strong>Policy:</strong> Administrators may provision <strong>School Registrar</strong>, <strong>VP-Academics</strong>, <strong>Dean</strong>, <strong>Department Head</strong>, <strong>Faculty</strong>, and <strong>System Administrator</strong> accounts. Department assignment applies only to Department Heads and Faculty.
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">System Role *</label>
-                  <select
-                    value={newRole}
-                    onChange={(e) => {
-                      const nextRole = e.target.value;
-                      setNewRole(nextRole);
-                      setNewUsername('');
-                      if (
-                        nextRole === 'Registrar' ||
-                        nextRole === 'VPAcademics' ||
-                        nextRole === 'Admin' ||
-                        nextRole === 'Dean'
-                      ) {
-                        setNewDeptId('');
-                      }
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
-                  >
-                    <option value="Registrar">School Registrar</option>
-                    <option value="VPAcademics">VP-Academics</option>
-                    <option value="Dean">Dean</option>
-                    <option value="DepartmentHead">Department Head</option>
-                    <option value="Educator">Faculty</option>
-                    <option value="Admin">System Administrator</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Department{' '}
-                    {newRole === 'DepartmentHead' || newRole === 'Educator'
-                      ? '*'
-                      : '(Disabled)'}
-                  </label>
-                  {newRole === 'Registrar' ||
-                  newRole === 'VPAcademics' ||
-                  newRole === 'Admin' ||
-                  newRole === 'Dean' ? (
-                    <input
-                      type="text"
-                      disabled
-                      readOnly
-                      value="No Department (Institutional)"
-                      aria-label="Department disabled for this role"
-                      className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-500 font-semibold cursor-not-allowed select-none"
-                    />
-                  ) : (
-                    <select
-                      value={newDeptId}
-                      onChange={(e) => setNewDeptId(e.target.value)}
-                      required
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
-                    >
-                      <option value="">-- Select Department * --</option>
-                      {departments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          [{dept.code}] {dept.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-bold text-slate-700">
-                    Institutional ID Number (5 digits) *
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-mono">5 digits</span>
-                </div>
-                <input
-                  type="text"
-                  required
-                  inputMode="numeric"
-                  maxLength={5}
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 10018 or 70001"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-mono focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newFullName}
-                  onChange={(e) => setNewFullName(e.target.value)}
-                  placeholder="Enter full name"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="name@usjr.edu.ph"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Password *</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Temporary password (min 6 chars)"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end space-x-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading}
-                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] disabled:bg-emerald-800 text-white transition-all shadow-sm flex items-center space-x-1.5"
-                >
-                  {createLoading ? (
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  ) : (
-                    <span>Create User</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ROLE EDIT MODAL */}
-      {roleModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white max-w-sm w-full p-6 rounded-2xl border border-slate-200 space-y-4 shadow-xl text-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-[#005A36] flex items-center space-x-2">
-                <Shield className="w-4 h-4 text-[#CA8A04]" />
-                <span>Change User Role</span>
-              </h3>
-              <button
-                onClick={() => setRoleModalUser(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <p className="text-slate-600">
-                Updating role for <strong className="text-slate-900">{roleModalUser.fullName}</strong>:
-              </p>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Select New Role</label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => {
-                    const nextRole = e.target.value;
-                    setSelectedRole(nextRole);
-                    if (
-                      nextRole === 'Registrar' ||
-                      nextRole === 'VPAcademics' ||
-                      nextRole === 'Admin' ||
-                      nextRole === 'Dean'
-                    ) {
-                      setSelectedDeptId('');
-                    }
-                  }}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
-                >
-                  <option value="Registrar">School Registrar (View All Syllabi)</option>
-                  <option value="VPAcademics">VP-Academics (View All Syllabi)</option>
-                  <option value="Dean">Dean (Approve from Dept Head)</option>
-                  <option value="DepartmentHead">Department Head (Approve from Faculty & Edit Courses)</option>
-                  <option value="Educator">Faculty (View Courses & Edit Syllabus)</option>
-                  <option value="Admin">System Administrator</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Department{' '}
-                  {selectedRole === 'Registrar' ||
-                  selectedRole === 'VPAcademics' ||
-                  selectedRole === 'Admin' ||
-                  selectedRole === 'Dean'
-                    ? '(Disabled)'
-                    : '*'}
-                </label>
-                {selectedRole === 'Registrar' ||
-                selectedRole === 'VPAcademics' ||
-                selectedRole === 'Admin' ||
-                selectedRole === 'Dean' ? (
-                  <input
-                    type="text"
-                    disabled
-                    readOnly
-                    value="No Department (Institutional)"
-                    aria-label="Department disabled for this role"
-                    className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-slate-500 font-semibold cursor-not-allowed select-none"
-                  />
-                ) : (
-                  <select
-                    value={selectedDeptId}
-                    onChange={(e) => setSelectedDeptId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-[#005A36]"
-                  >
-                    <option value="">-- Select Designated Department --</option>
-                    {departments.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        [{dept.code}] {dept.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="pt-3 flex items-center justify-end space-x-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setRoleModalUser(null)}
-                  className="px-3 py-1.5 rounded-xl font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    (selectedRole === 'DepartmentHead' || selectedRole === 'Educator') &&
-                    !selectedDeptId
-                  }
-                  onClick={() => handleAction(roleModalUser.id, 'ChangeRole', selectedRole, selectedDeptId)}
-                  className="px-4 py-1.5 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] disabled:bg-slate-300 text-white shadow-sm cursor-pointer"
-                >
-                  Save Role
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

@@ -2,73 +2,155 @@
 @tailwind components;
 @tailwind utilities;
 
-
 :root {
-  --background: #f8faf9;
-  --foreground: #0f172a;
-  --usjr-green: #005a36;
-  --usjr-green-dark: #004529;
-  --usjr-green-light: #0d7a4d;
-  --usjr-gold: #c99700;
-  --usjr-gold-light: #eab308;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-body {
-  background-color: #f8faf9;
-  color: #1e293b;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  min-height: 100vh;
-}
-
-/* Simple Clean White Card with Subtle Border */
-.glass-card, .clean-card {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-}
-
-.glass-card-interactive, .clean-card-interactive {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease-in-out;
-}
-
-.glass-card-interactive:hover, .clean-card-interactive:hover {
-  border-color: #005a36 !important;
-  box-shadow: 0 4px 12px -2px rgba(0, 90, 54, 0.12);
-  transform: translateY(-1px);
-}
-
-/* Form controls & inputs (layered so Tailwind utility classes like bg-slate-100 or bg-transparent override cleanly) */
 @layer base {
-  input, select, textarea {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-800 font-sans antialiased;
+  }
+
+  input,
+  select,
+  textarea {
     color: #0f172a;
     background-color: #ffffff;
   }
 
-  input::placeholder, textarea::placeholder {
+  input::placeholder,
+  textarea::placeholder {
     color: #94a3b8;
+  }
+
+  ::selection {
+    @apply bg-brand-700 text-white;
   }
 }
 
-/* Custom Scrollbar in USJ-R Emerald */
+/* ------------------------------------------------------------------ */
+/* Design system — shared component classes                            */
+/* ------------------------------------------------------------------ */
+@layer components {
+  /* Surfaces */
+  .card {
+    @apply bg-white border border-slate-200 rounded-xl;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-medium whitespace-nowrap
+      transition-colors cursor-pointer select-none
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-700/30 focus-visible:ring-offset-1
+      disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-sm {
+    @apply h-8 px-2.5 text-xs;
+  }
+  .btn-icon {
+    @apply h-8 w-8 px-0;
+  }
+  .btn-primary {
+    @apply bg-brand-700 text-white hover:bg-brand-800;
+  }
+  .btn-secondary {
+    @apply bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 hover:text-slate-900;
+  }
+  .btn-ghost {
+    @apply text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+  .btn-danger {
+    @apply bg-rose-600 text-white hover:bg-rose-700;
+  }
+  .btn-danger-outline {
+    @apply bg-white text-rose-700 border border-rose-200 hover:bg-rose-50;
+  }
+  .btn-accent {
+    @apply bg-accent-500 text-slate-950 hover:bg-accent-400;
+  }
+
+  /* Form controls */
+  .label {
+    @apply block text-xs font-medium text-slate-700 mb-1.5;
+  }
+  .input {
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900
+      placeholder:text-slate-400 transition-colors
+      focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15
+      disabled:bg-slate-50 disabled:text-slate-500;
+  }
+  .hint {
+    @apply mt-1 text-xs text-slate-500;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ring-1 ring-inset whitespace-nowrap;
+  }
+  .badge-gray {
+    @apply bg-slate-100 text-slate-700 ring-slate-500/20;
+  }
+  .badge-green {
+    @apply bg-emerald-50 text-emerald-700 ring-emerald-600/20;
+  }
+  .badge-amber {
+    @apply bg-amber-50 text-amber-800 ring-amber-600/25;
+  }
+  .badge-red {
+    @apply bg-rose-50 text-rose-700 ring-rose-600/20;
+  }
+  .badge-blue {
+    @apply bg-sky-50 text-sky-700 ring-sky-600/20;
+  }
+  .badge-purple {
+    @apply bg-violet-50 text-violet-700 ring-violet-600/20;
+  }
+  .badge-brand {
+    @apply bg-brand-50 text-brand-700 ring-brand-700/20;
+  }
+
+  /* Course / ID code tags */
+  .code {
+    @apply font-mono text-[13px] font-semibold text-brand-700;
+  }
+
+  /* Data tables */
+  .data-table {
+    @apply w-full text-left text-sm;
+  }
+  .data-table thead th {
+    @apply px-4 py-2.5 text-xs font-medium text-slate-500 bg-slate-50 border-b border-slate-200 whitespace-nowrap;
+  }
+  .data-table tbody td {
+    @apply px-4 py-3 align-top border-b border-slate-100 text-slate-700;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-slate-50/70;
+  }
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #005a36;
+  background: #94a3b8;
+  background-clip: content-box;
 }

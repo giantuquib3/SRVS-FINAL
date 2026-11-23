@@ -12,7 +12,7 @@ export interface SessionUser {
   idNumber?: string;
   email: string;
   fullName: string;
-  role: string; // Admin, DepartmentHead, Educator, Student
+  role: string; // Admin, Registrar, VPAcademics, Dean, DepartmentHead, Educator
   departmentId?: string | null;
   departmentCode?: string | null;
   departmentName?: string | null;

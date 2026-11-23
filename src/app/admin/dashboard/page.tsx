@@ -1,20 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, BookOpen, Clock, Eye, FileText, KeyRound, Users } from 'lucide-react';
 import {
-  Users,
-  FileText,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Shield,
-  ArrowUpRight,
-  RefreshCw,
-  Eye,
-  BookOpen
-} from 'lucide-react';
+  Alert,
+  Badge,
+  Card,
+  CardHeader,
+  DeptTag,
+  EmptyState,
+  Field,
+  LoadingState,
+  Modal,
+  PageHeader,
+  StatCard,
+  formatDate,
+} from '@/components/ui';
+import { roleLabel } from '@/lib/status';
+
+const DEFAULT_RESET_PASSWORD = 'USJR@Reset2026';
 
 export default function AdminDashboard() {
   const [data, setData] = useState<any>(null);
@@ -23,8 +28,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | number | null>(null);
   const [resetModalUser, setResetModalUser] = useState<any | null>(null);
-  const [newResetPassword, setNewResetPassword] = useState('USJR@Reset2026');
-  const [toast, setToast] = useState<string>('');
+  const [newResetPassword, setNewResetPassword] = useState(DEFAULT_RESET_PASSWORD);
+  const [notice, setNotice] = useState('');
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -34,14 +39,9 @@ export default function AdminDashboard() {
         fetch('/api/users?status=PendingApproval'),
         fetch('/api/syllabi?status=Submitted'),
       ]);
-
-      const statsData = await statsRes.json();
-      const usersData = await usersRes.json();
-      const syllabiData = await syllabiRes.json();
-
-      setData(statsData);
-      setPendingUsers(usersData.users || []);
-      setPendingSyllabi(syllabiData.syllabi || []);
+      setData(await statsRes.json());
+      setPendingUsers((await usersRes.json()).users || []);
+      setPendingSyllabi((await syllabiRes.json()).syllabi || []);
     } catch (err) {
       console.error('Error loading dashboard:', err);
     } finally {
@@ -61,11 +61,7 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, action }),
       });
-      if (res.ok) {
-        await fetchDashboardData();
-      }
-    } catch (err) {
-      console.error('Action error:', err);
+      if (res.ok) await fetchDashboardData();
     } finally {
       setProcessingId(null);
     }
@@ -79,11 +75,7 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, remarks: `${action}d by System Administrator` }),
       });
-      if (res.ok) {
-        await fetchDashboardData();
-      }
-    } catch (err) {
-      console.error('Review error:', err);
+      if (res.ok) await fetchDashboardData();
     } finally {
       setProcessingId(null);
     }
@@ -97,14 +89,10 @@ export default function AdminDashboard() {
       const res = await fetch('/api/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: resetModalUser.id,
-          action: 'ResetPassword',
-          newPassword: newResetPassword,
-        }),
+        body: JSON.stringify({ userId: resetModalUser.id, action: 'ResetPassword', newPassword: newResetPassword }),
       });
       if (res.ok) {
-        setToast(`Password reset for ${resetModalUser.fullName} (${resetModalUser.email}). New password: ${newResetPassword}`);
+        setNotice(`Password for ${resetModalUser.fullName} was reset to: ${newResetPassword}`);
         setResetModalUser(null);
         await fetchDashboardData();
       }
@@ -113,376 +101,236 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading && !data) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="flex flex-col items-center space-y-3">
-          <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-[#005A36] animate-spin" />
-          <p className="text-slate-500 text-xs font-semibold">Loading system statistics...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading && !data) return <LoadingState className="min-h-[60vh]" />;
 
   const stats = data?.stats || {};
   const recentActivities = data?.recentActivities || [];
   const passwordResetRequests = data?.passwordResetRequests || [];
 
   return (
-    <div className="space-y-8">
-      {toast && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="w-4 h-4 text-[#005A36]" />
-            <span>{toast}</span>
-          </div>
-          <button onClick={() => setToast('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            ✕
-          </button>
-        </div>
+    <div className="space-y-6">
+      <PageHeader title="Admin dashboard" description="Accounts, approvals, and system activity at a glance." />
+
+      {notice && (
+        <Alert tone="success" onClose={() => setNotice('')}>
+          {notice}
+        </Alert>
       )}
 
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
-              System Administration
-            </span>
-            <span className="text-xs text-slate-500 font-medium">USJ-R Central Control</span>
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-[#005A36] mt-1">
-            System Administrator Dashboard
-          </h1>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={fetchDashboardData}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#005A36] ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh Data</span>
-          </button>
-          <Link
-            href="/courses"
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm transition-all"
-          >
-            Course Catalog
-          </Link>
-        </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Registered users" value={stats.totalUsers ?? 0} icon={Users} />
+        <StatCard
+          label="Pending registrations"
+          value={stats.pendingRegistrations ?? 0}
+          icon={Clock}
+          tone={stats.pendingRegistrations ? 'amber' : 'default'}
+        />
+        <StatCard
+          label="Syllabi"
+          value={stats.totalSyllabi ?? 0}
+          hint={`${stats.pendingSyllabi ?? 0} awaiting review`}
+          icon={BookOpen}
+        />
+        <StatCard
+          label="Password resets"
+          value={passwordResetRequests.length}
+          icon={KeyRound}
+          tone={passwordResetRequests.length ? 'amber' : 'default'}
+        />
       </div>
 
-      {/* Dynamic Database Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Registered Users</span>
-            <Users className="w-5 h-5 text-[#005A36]" />
-          </div>
-          <p className="text-3xl font-black text-slate-900">{stats.totalUsers ?? 0}</p>
-          <span className="text-[11px] text-slate-500">Across 4 institutional roles</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Pending Registrations</span>
-            <Clock className="w-5 h-5 text-[#CA8A04]" />
-          </div>
-          <p className="text-3xl font-black text-amber-700">{stats.pendingRegistrations ?? 0}</p>
-          <span className="text-[11px] text-amber-600 font-medium">Require approval</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Total Syllabi</span>
-            <BookOpen className="w-5 h-5 text-[#005A36]" />
-          </div>
-          <p className="text-3xl font-black text-[#005A36]">{stats.totalSyllabi ?? 0}</p>
-          <span className="text-[11px] text-slate-500">{stats.pendingSyllabi ?? 0} awaiting review</span>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[#854D0E] uppercase tracking-wider">Password Reset Requests</span>
-            <AlertTriangle className="w-5 h-5 text-[#CA8A04]" />
-          </div>
-          <p className="text-3xl font-black text-[#854D0E]">{passwordResetRequests.length}</p>
-          <span className="text-[11px] text-slate-500">Submitted via registered email</span>
-        </div>
-      </div>
-
-      {/* Password Reset Requests Panel (Notified from Forgot Password) */}
-      <div className="bg-white p-6 rounded-2xl border border-amber-200 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-[#CA8A04]" />
-              <span>Password Reset Notifications (From Registered Email)</span>
-            </h2>
-            <p className="text-xs text-slate-500">
-              Users who requested a password reset using their registered email on the sign-in page
-            </p>
-          </div>
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
-            {passwordResetRequests.length} Pending Reset
-          </span>
-        </div>
-
-        {passwordResetRequests.length === 0 ? (
-          <p className="text-xs text-slate-500 py-4 text-center">
-            No pending password reset requests at this time.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {passwordResetRequests.length > 0 && (
+        <Card>
+          <CardHeader title="Password reset requests" description="Requested from the sign-in page." />
+          <ul className="divide-y divide-slate-100">
             {passwordResetRequests.map((u: any) => (
-              <div
-                key={u.id}
-                className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 flex items-center justify-between gap-3"
-              >
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{u.fullName}</p>
-                  <p className="text-xs font-mono text-slate-600">{u.email}</p>
-                  <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-white border border-amber-200 font-bold text-amber-900">
-                    Role: {u.role === 'Educator' ? 'Faculty' : u.role} (ID: {u.id})
-                  </span>
+              <li key={u.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{u.fullName}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {u.email} · {roleLabel(u.role)} · ID {u.id}
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     setResetModalUser(u);
-                    setNewResetPassword('USJR@Reset2026');
+                    setNewResetPassword(DEFAULT_RESET_PASSWORD);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white shadow-sm cursor-pointer shrink-0"
+                  className="btn btn-secondary btn-sm"
                 >
-                  Reset Password
+                  Reset password
                 </button>
-              </div>
+              </li>
             ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal: Reset User Password */}
-      {resetModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-900">
-              Reset Password for {resetModalUser.fullName}
-            </h3>
-            <p className="text-xs text-slate-600">
-              Registered Email: <strong className="font-mono">{resetModalUser.email}</strong>
-            </p>
-            <form onSubmit={handleAdminPasswordReset} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">New Temporary Password *</label>
-                <input
-                  type="text"
-                  required
-                  minLength={6}
-                  value={newResetPassword}
-                  onChange={(e) => setNewResetPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono text-sm text-slate-900"
-                />
-              </div>
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setResetModalUser(null)}
-                  className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={processingId === resetModalUser.id}
-                  className="px-4 py-2 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] text-white cursor-pointer"
-                >
-                  Confirm Password Reset
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </ul>
+        </Card>
       )}
 
-      {/* Two Column Layout: User Approval Queue & Pending Syllabus Reviews */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* User Approval Queue */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-                <Users className="w-4 h-4 text-[#005A36]" />
-                <span>User Approval Queue</span>
-              </h2>
-              <p className="text-xs text-slate-500">Pending faculty registrations</p>
-            </div>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF08A] text-[#854D0E] border border-[#CA8A04]/30">
-              {pendingUsers.length} Pending
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {pendingUsers.length === 0 ? (
-              <p className="text-xs text-slate-500 py-8 text-center">No registrations currently pending approval.</p>
-            ) : (
-              pendingUsers.map((u) => (
-                <div key={u.id} className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{u.fullName}</p>
-                    <p className="text-xs text-slate-500">{u.email}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 font-bold">
-                        {u.role}
-                      </span>
-                      {(u.departmentCode || u.department?.code) && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#005A36] border border-emerald-200 text-[9px] font-extrabold font-mono shadow-sm">
-                          [{u.departmentCode || u.department?.code}]
-                        </span>
-                      )}
-                      <span className="text-[10px] text-slate-500 font-medium">
-                        {u.departmentName || u.department?.name || (u.departmentCode ? `${u.departmentCode} Department` : 'Unassigned')}
-                      </span>
-                    </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Pending registrations"
+            actions={<Badge tone={pendingUsers.length ? 'amber' : 'gray'}>{pendingUsers.length}</Badge>}
+          />
+          {pendingUsers.length === 0 ? (
+            <EmptyState icon={Users} title="No pending registrations" />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {pendingUsers.map((u) => (
+                <li key={u.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{u.fullName}</p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                      <span className="truncate">{u.email}</span>
+                      <span>·</span>
+                      <span>{roleLabel(u.role)}</span>
+                      <DeptTag code={u.departmentCode || u.department?.code} />
+                    </p>
                   </div>
-
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleUserAction(u.id, 'Approve')}
-                      disabled={processingId === u.id}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white transition-colors cursor-pointer flex items-center space-x-1 shadow-sm"
-                    >
-                      <CheckCircle className="w-3.5 h-3.5 text-[#FEF08A]" />
-                      <span>Approve</span>
-                    </button>
+                  <div className="flex shrink-0 gap-1.5">
                     <button
                       onClick={() => handleUserAction(u.id, 'Reject')}
                       disabled={processingId === u.id}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer flex items-center space-x-1 shadow-sm"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      <span>Reject</span>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Pending Syllabus Reviews */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-[#005A36]" />
-                <span>Pending Syllabus Reviews</span>
-              </h2>
-              <p className="text-xs text-slate-500">Submitted syllabi awaiting approval decision</p>
-            </div>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200">
-              {pendingSyllabi.length} Submitted
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {pendingSyllabi.length === 0 ? (
-              <p className="text-xs text-slate-500 py-8 text-center">No syllabi awaiting administrative review.</p>
-            ) : (
-              pendingSyllabi.map((s) => (
-                <div key={s.id} className="p-3.5 rounded-xl bg-slate-50/80 border border-slate-200/80 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-extrabold text-sm text-[#005A36]">{s.course.code}</span>
-                      <span className="text-xs text-slate-500">{s.semester}, AY {s.academicYear}</span>
-                    </div>
-                    <p className="text-xs text-slate-800 font-medium mt-0.5">{s.course.title}</p>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Submitted by: <span className="font-semibold text-slate-700">{s.instructor?.fullName}</span> | Version {s.currentVersionNumber}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Link
-                      href={`/syllabi/${s.id}`}
-                      className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors"
-                      title="View Syllabus"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Link>
-                    <button
-                      onClick={() => handleSyllabusReview(s.id, 'Approve')}
-                      disabled={processingId === s.id}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#005A36] hover:bg-[#004529] text-white transition-colors cursor-pointer shadow-sm"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleSyllabusReview(s.id, 'Reject')}
-                      disabled={processingId === s.id}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-sm"
+                      className="btn btn-danger-outline btn-sm"
                     >
                       Reject
                     </button>
+                    <button
+                      onClick={() => handleUserAction(u.id, 'Approve')}
+                      disabled={processingId === u.id}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Approve
+                    </button>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent System Audit Logs Feed */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-              <Shield className="w-4 h-4 text-[#005A36]" />
-              <span>Recent System Activities (Audit Trail)</span>
-            </h2>
-            <p className="text-xs text-slate-500">Live transaction stream logged in PostgreSQL</p>
-          </div>
-          <Link
-            href="/admin/audit-logs"
-            className="text-xs text-[#005A36] hover:underline font-bold flex items-center space-x-1"
-          >
-            <span>Full Audit Trail</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 bg-slate-50/50">
-                <th className="py-2.5 px-3">Action</th>
-                <th className="py-2.5 px-3">User</th>
-                <th className="py-2.5 px-3">Description</th>
-                <th className="py-2.5 px-3">Timestamp</th>
-                <th className="py-2.5 px-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentActivities.map((log: any) => (
-                <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-2.5 px-3 font-bold text-slate-900">{log.actionType}</td>
-                  <td className="py-2.5 px-3 text-slate-700 font-medium">{log.userDisplayName || 'System'}</td>
-                  <td className="py-2.5 px-3 text-slate-600 max-w-md truncate">{log.description}</td>
-                  <td className="py-2.5 px-3 text-slate-500">
-                    {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${log.resultStatus === 'Success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-                      {log.resultStatus}
-                    </span>
-                  </td>
-                </tr>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Syllabi awaiting review"
+            actions={<Badge tone={pendingSyllabi.length ? 'amber' : 'gray'}>{pendingSyllabi.length}</Badge>}
+          />
+          {pendingSyllabi.length === 0 ? (
+            <EmptyState icon={FileText} title="Nothing awaiting review" />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {pendingSyllabi.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-slate-900">
+                      <span className="code mr-1.5">{s.course.code}</span>
+                      {s.course.title}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                      {s.instructor?.fullName} · v{s.currentVersionNumber} · {s.semester}, AY {s.academicYear}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Link href={`/syllabi/${s.id}`} className="btn btn-ghost btn-icon" title="View syllabus">
+                      <Eye className="h-4 w-4" />
+                    </Link>
+                    <button
+                      onClick={() => handleSyllabusReview(s.id, 'Reject')}
+                      disabled={processingId === s.id}
+                      className="btn btn-danger-outline btn-sm"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleSyllabusReview(s.id, 'Approve')}
+                      disabled={processingId === s.id}
+                      className="btn btn-primary btn-sm"
+                    >
+                      Approve
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
+
+      <Card>
+        <CardHeader
+          title="Recent activity"
+          actions={
+            <Link href="/admin/audit-logs" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
+              View audit log <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          }
+        />
+        {recentActivities.length === 0 ? (
+          <EmptyState title="No recent activity" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>User</th>
+                  <th>Description</th>
+                  <th>When</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentActivities.map((log: any) => (
+                  <tr key={log.id}>
+                    <td className="font-medium text-slate-900">{log.actionType}</td>
+                    <td>{log.userDisplayName || 'System'}</td>
+                    <td className="max-w-md truncate text-slate-600">{log.description}</td>
+                    <td className="whitespace-nowrap text-slate-500">{formatDate(log.createdAt, true)}</td>
+                    <td>
+                      <Badge tone={log.resultStatus === 'Success' ? 'green' : 'red'}>{log.resultStatus}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        open={Boolean(resetModalUser)}
+        onClose={() => setResetModalUser(null)}
+        title="Reset password"
+        description={resetModalUser ? `${resetModalUser.fullName} · ${resetModalUser.email}` : undefined}
+        footer={
+          <>
+            <button type="button" onClick={() => setResetModalUser(null)} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="reset-form"
+              disabled={processingId === resetModalUser?.id}
+              className="btn btn-primary"
+            >
+              Reset password
+            </button>
+          </>
+        }
+      >
+        <form id="reset-form" onSubmit={handleAdminPasswordReset}>
+          <Field label="New temporary password" required hint="Share this with the user so they can sign in.">
+            <input
+              type="text"
+              required
+              minLength={6}
+              value={newResetPassword}
+              onChange={(e) => setNewResetPassword(e.target.value)}
+              className="input font-mono"
+            />
+          </Field>
+        </form>
+      </Modal>
     </div>
   );
 }

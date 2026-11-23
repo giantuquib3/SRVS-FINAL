@@ -121,7 +121,7 @@ export default function SyllabusVersionCompare({
     const comments = extractReviewComments(v);
     return (
       <div
-        className={`p-4 rounded-2xl border text-xs space-y-2 ${
+        className={`p-4 rounded-xl border text-xs space-y-2 ${
           accent === 'base'
             ? 'bg-slate-50 border-slate-200'
             : 'bg-emerald-50/50 border-emerald-200'
@@ -171,7 +171,7 @@ export default function SyllabusVersionCompare({
   return (
     <div className="space-y-5">
       {/* Selector & Summary Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
@@ -250,21 +250,18 @@ export default function SyllabusVersionCompare({
           <button
             type="button"
             onClick={() => setChangedOnly((v) => !v)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors cursor-pointer ${
-              changedOnly
-                ? 'bg-[#005A36] text-white border-[#005A36]'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-            }`}
+            aria-pressed={changedOnly}
+            className={`btn btn-sm ${changedOnly ? 'btn-primary' : 'btn-secondary'}`}
           >
             <Filter className="w-3.5 h-3.5" />
-            <span>{changedOnly ? 'Showing Changed Sections Only' : 'Filter: Changed Sections Only'}</span>
+            <span>{changedOnly ? 'Showing changes only' : 'Show changes only'}</span>
           </button>
         </div>
       </div>
 
       {/* Section-by-Section Side-by-Side Comparison Grid */}
       {totalChanges === 0 && changedOnly ? (
-        <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center space-y-2">
+        <div className="bg-white p-10 rounded-xl border border-slate-200 text-center space-y-2">
           <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
           <p className="text-sm font-bold text-slate-800">No Content Differences Detected</p>
           <p className="text-xs text-slate-500">
@@ -286,7 +283,7 @@ export default function SyllabusVersionCompare({
             return (
               <div
                 key={item.id}
-                className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${
+                className={`bg-white rounded-xl border overflow-hidden ${
                   item.status === 'unchanged' ? 'border-slate-200 opacity-85' : 'border-slate-300'
                 }`}
               >

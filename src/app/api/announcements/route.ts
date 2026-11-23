@@ -36,21 +36,20 @@ export async function POST(req: NextRequest) {
 
     const deptCode = String(targetDeptId).toUpperCase();
 
-    // Find all active Educators and Students in this department
+    // Notify all active faculty in this department
     const recipients = await prisma.user.findMany({
       where: {
         departmentId: deptCode,
-        role: { in: ['Educator', 'Student'] },
+        role: 'Educator',
         accountStatus: 'Active',
       },
-      select: { id: true, fullName: true, role: true },
+      select: { id: true },
     });
 
     const announcementTitle = `[Announcement] ${title.trim()}`;
 
     for (const recipient of recipients) {
-      const link = recipient.role === 'Student' ? '/student/dashboard' : '/educator/dashboard';
-      await createNotification(recipient.id, announcementTitle, message.trim(), link);
+      await createNotification(recipient.id, announcementTitle, message.trim(), '/educator/dashboard');
     }
 
     await logAuditEvent({

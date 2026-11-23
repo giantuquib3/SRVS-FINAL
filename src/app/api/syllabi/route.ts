@@ -71,19 +71,6 @@ export async function GET(req: NextRequest) {
           { versions: { some: { editorId: uid } } },
         ];
       }
-    } else if (user?.role === 'Student') {
-      // Students can view ONLY currently approved syllabi for their enrolled subjects
-      const studentId = parseInt(user.id, 10) || 0;
-      const enrollments = await prisma.studentSubject.findMany({
-        where: { studentId, status: 'ENROLLED' },
-        select: { subjectId: true },
-      });
-      const enrolledSubjectIds = enrollments.map((e: any) => e.subjectId);
-      if (enrolledSubjectIds.length === 0) {
-        return NextResponse.json({ syllabi: [], total: 0 });
-      }
-      where.subjectId = { in: enrolledSubjectIds };
-      where.status = SYLLABUS_STATUS.APPROVED;
     } else {
       where.status = SYLLABUS_STATUS.APPROVED;
     }
@@ -176,7 +163,6 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const isStudent = user?.role === 'Student';
     const isFacultyUser = user?.role === 'Educator' || user?.role === 'Faculty';
     const isDeptHeadUser = user?.role === 'DepartmentHead';
     const currentUserIdInt = user ? parseInt(user.id, 10) || 0 : 0;
@@ -198,17 +184,15 @@ export async function GET(req: NextRequest) {
         versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED && v.versionNumber === s.currentVersionNumber) ||
         versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.APPROVED) ||
         null;
-      const latestVersion = isStudent ? approvedVersion : versionsList[0] || null;
-      const pendingVersion = isStudent
-        ? null
-        : versionsList.find(
+      const latestVersion = versionsList[0] || null;
+      const pendingVersion =
+        versionsList.find(
           (v: any) =>
             v.approvalStatus === SYLLABUS_STATUS.SUBMITTED ||
             v.approvalStatus === SYLLABUS_STATUS.UNDER_REVIEW
         ) || null;
-      const latestRejectedVersion = isStudent
-        ? null
-        : versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.REJECTED) || null;
+      const latestRejectedVersion =
+        versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.REJECTED) || null;
 
       const stripHeavyContent = (v: any) =>
         v

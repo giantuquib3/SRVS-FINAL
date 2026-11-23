@@ -14,9 +14,6 @@ export async function GET(
   try {
     const user = await getSessionFromRequest(req);
     if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
-    if (user.role === 'Student') {
-      return NextResponse.json({ error: 'Students cannot view version history.' }, { status: 403 });
-    }
 
     const syllabusId = parseInt(params.id, 10);
     if (isNaN(syllabusId)) return NextResponse.json({ error: 'Invalid syllabus ID.' }, { status: 400 });

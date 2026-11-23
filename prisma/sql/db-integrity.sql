@@ -2,7 +2,7 @@
 -- SRVS database integrity rules
 --   1. Normalizes legacy status spellings to one canonical uppercase set.
 --   2. Adds CHECK constraints so only canonical values can be stored.
---   (Student <-> subject rules live in prisma/sql/student-subjects.sql.)
+--   (Student-role objects are removed by prisma/sql/remove-student-role.sql.)
 --
 -- Idempotent: safe to run more than once. No tables or columns are dropped.
 -- Run with:  node scripts/migrate-db-integrity.js   (backs up + pre-checks first)

@@ -33,10 +33,9 @@ export async function GET(req: NextRequest) {
       departmentsWithCounts = await Promise.all(
         list.map(async (dept: any) => {
           try {
-            const [coursesCount, educatorsCount, studentsCount, deptHeadsCount, syllabiCount] = await Promise.all([
+            const [coursesCount, educatorsCount, deptHeadsCount, syllabiCount] = await Promise.all([
               prisma.subject.count({ where: { departmentId: dept.code } }),
               prisma.user.count({ where: { role: 'Educator', departmentId: dept.code } }),
-              prisma.user.count({ where: { role: 'Student', departmentId: dept.code } }),
               prisma.user.count({ where: { role: 'DepartmentHead', departmentId: dept.code } }),
               prisma.syllabus.count({ where: { departmentId: dept.code } }),
             ]);
@@ -49,9 +48,8 @@ export async function GET(req: NextRequest) {
               _count: {
                 subjects: coursesCount,
                 courses: coursesCount,
-                users: educatorsCount + studentsCount + deptHeadsCount,
+                users: educatorsCount + deptHeadsCount,
                 educators: educatorsCount,
-                students: studentsCount,
                 syllabi: syllabiCount,
               },
             };
@@ -61,7 +59,7 @@ export async function GET(req: NextRequest) {
               code: dept.code,
               name: dept.name,
               description: dept.description,
-              _count: { subjects: 0, courses: 0, users: 0, educators: 0, students: 0, syllabi: 0 },
+              _count: { subjects: 0, courses: 0, users: 0, educators: 0, syllabi: 0 },
             };
           }
         })
@@ -72,7 +70,7 @@ export async function GET(req: NextRequest) {
         code: dept.code,
         name: dept.name,
         description: dept.description,
-        _count: { subjects: 0, courses: 0, users: 0, educators: 0, students: 0, syllabi: 0 },
+        _count: { subjects: 0, courses: 0, users: 0, educators: 0, syllabi: 0 },
       }));
     }
 
@@ -85,7 +83,7 @@ export async function GET(req: NextRequest) {
         code: d.code,
         name: d.name,
         description: d.description,
-        _count: { subjects: 0, courses: 0, users: 0, educators: 0, students: 0, syllabi: 0 },
+        _count: { subjects: 0, courses: 0, users: 0, educators: 0, syllabi: 0 },
       })),
     });
   }

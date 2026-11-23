@@ -3,17 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  BookOpen,
-  Lock,
-  CreditCard,
-  ArrowRight,
-  AlertCircle,
-  Mail,
-  KeyRound,
-  CheckCircle2,
-  X
-} from 'lucide-react';
+import AuthCard from '@/components/AuthCard';
+import { Alert, Field, Modal, Spinner } from '@/components/ui';
+import { homePathForRole } from '@/lib/status';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Forgot / Change Password Modal State (Email only -> notifies Admin)
+  // Forgot password: sends a reset request to the System Administrator
   const [forgotOpen, setForgotOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
@@ -40,46 +32,31 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: cleanUsername, password }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
-        setError(data.error || 'Authentication failed. Please check credentials.');
+        setError(data.error || 'Sign in failed. Please check your credentials.');
         setLoading(false);
         return;
       }
-
-      // Redirect by role
-      switch (data.user.role) {
-        case 'Admin':
-          router.push('/admin/dashboard');
-          break;
-        case 'Dean':
-        case 'DepartmentHead':
-          router.push('/dept/dashboard');
-          break;
-        case 'Educator':
-        case 'Faculty':
-          router.push('/educator/dashboard');
-          break;
-        case 'Registrar':
-        case 'VPAcademics':
-        default:
-          router.push('/student/dashboard');
-          break;
-      }
+      router.push(homePathForRole(data.user.role));
       router.refresh();
     } catch {
-      setError('Connection error. Could not connect to PostgreSQL backend.');
+      setError('Could not connect to the server. Please try again.');
       setLoading(false);
     }
+  };
+
+  const openForgot = () => {
+    setForgotOpen(true);
+    setResetError('');
+    setResetSuccess('');
+    if (username.includes('@')) setResetEmail(username.trim());
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -89,7 +66,7 @@ export default function LoginPage() {
 
     const cleanEmail = resetEmail.trim().toLowerCase();
     if (!cleanEmail) {
-      setResetError('Please enter your registered institutional email address.');
+      setResetError('Please enter your registered institutional email.');
       return;
     }
 
@@ -98,214 +75,106 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-        }),
+        body: JSON.stringify({ email: cleanEmail }),
       });
-
       const data = await res.json();
       if (!res.ok) {
         setResetError(data.error || 'Failed to send password reset request.');
-        setResetLoading(false);
         return;
       }
-
-      setResetSuccess(
-        data.message ||
-          'Password reset request sent! The System Administrator has been notified to reset your password.'
-      );
+      setResetSuccess(data.message || 'Request sent. The System Administrator will reset your password.');
       setResetEmail('');
     } catch {
-      setResetError('Connection error. Please try again.');
+      setResetError('Could not connect to the server. Please try again.');
     } finally {
       setResetLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[75vh] flex items-center justify-center py-6">
-      <div className="w-full max-w-md space-y-6">
-        {/* USJ-R Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-[#005A36] border-2 border-[#C99700] flex items-center justify-center mx-auto shadow-md">
-            <BookOpen className="w-7 h-7 text-[#FEF08A]" />
+    <AuthCard
+      title="Sign in to SRVS"
+      subtitle="Syllabus Repository & Versioning System"
+      footer={
+        <>
+          New faculty member?{' '}
+          <Link href="/register" className="font-medium text-brand-700 hover:underline">
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleLogin} className="space-y-4">
+        {error && <Alert tone="error">{error}</Alert>}
+
+        <Field label="ID number or email">
+          <input
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="10001 or name@usjr.edu.ph"
+            required
+            className="input"
+          />
+        </Field>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="password" className="text-xs font-medium text-slate-700">
+              Password
+            </label>
+            <button type="button" onClick={openForgot} className="text-xs font-medium text-brand-700 hover:underline">
+              Forgot password?
+            </button>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#005A36]">Sign in to USJ-R SRVS</h1>
-          <p className="text-xs text-slate-500 font-medium">
-            University of San Jose - Recoletos • Syllabus Repository & Versioning
-          </p>
+          <input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="input"
+          />
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-            <span>{error}</span>
-          </div>
-        )}
+        <button type="submit" disabled={loading} className="btn btn-primary w-full">
+          {loading ? <Spinner /> : 'Sign in'}
+        </button>
+      </form>
 
-        {/* Simple Clean White Login Form */}
-        <form onSubmit={handleLogin} className="bg-white p-7 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                ID Number or Institutional Email
-              </label>
-              <span className="text-[10px] text-slate-500 font-semibold">
-                (e.g. 10001 or @usjr.edu.ph)
-              </span>
-            </div>
-            <div className="relative">
-              <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter ID number or @usjr.edu.ph email"
-                required
-                className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36] transition-colors"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                Password
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setForgotOpen(true);
-                  setResetError('');
-                  setResetSuccess('');
-                  if (username.includes('@')) setResetEmail(username.trim());
-                }}
-                className="text-[11px] text-[#005A36] hover:text-[#004529] font-bold hover:underline cursor-pointer"
-              >
-                Forgot / Change Password?
-              </button>
-            </div>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36] transition-colors"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-xl font-bold bg-[#005A36] hover:bg-[#004529] disabled:bg-emerald-800 text-white flex items-center justify-center space-x-2 shadow-sm transition-all cursor-pointer"
-          >
-            {loading ? (
-              <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-            ) : (
-              <>
-                <span>Sign In</span>
-                <ArrowRight className="w-4 h-4 text-[#FEF08A]" />
-              </>
-            )}
-          </button>
-
-          <div className="text-center text-xs text-slate-600 pt-2 border-t border-slate-100">
-            <span>New faculty member? </span>
-            <Link href="/register" className="text-[#005A36] hover:text-[#004529] font-bold underline underline-offset-4">
-              Register Faculty Account
-            </Link>
-          </div>
+      <Modal
+        open={forgotOpen}
+        onClose={() => setForgotOpen(false)}
+        title="Reset your password"
+        description="We'll notify the System Administrator to reset your password."
+        footer={
+          <>
+            <button type="button" onClick={() => setForgotOpen(false)} className="btn btn-ghost">
+              Close
+            </button>
+            <button type="submit" form="forgot-form" disabled={resetLoading} className="btn btn-primary">
+              {resetLoading ? <Spinner /> : 'Send request'}
+            </button>
+          </>
+        }
+      >
+        <form id="forgot-form" onSubmit={handleResetPassword} className="space-y-4">
+          {resetError && <Alert tone="error">{resetError}</Alert>}
+          {resetSuccess && <Alert tone="success">{resetSuccess}</Alert>}
+          <Field label="Registered institutional email" required>
+            <input
+              type="email"
+              value={resetEmail}
+              onChange={(e) => setResetEmail(e.target.value)}
+              placeholder="name@usjr.edu.ph"
+              required
+              className="input"
+            />
+          </Field>
         </form>
-
-        {/* Forgot / Change Password Modal (Email Only -> Notifies Admin) */}
-        {forgotOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[#005A36]">
-                    <KeyRound className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Forgot / Change Password</h3>
-                    <p className="text-xs text-slate-500">Notify the System Administrator to reset your password</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setForgotOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed">
-                Enter your <strong>registered institutional email address</strong> below. This will send a notification to the <strong>System Administrator</strong> to reset your account password.
-              </div>
-
-              {resetError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start space-x-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                  <span>{resetError}</span>
-                </div>
-              )}
-
-              {resetSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start space-x-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#005A36]" />
-                  <span>{resetSuccess}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Registered Institutional Email *
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="email"
-                      value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="e.g. yourname@usjr.edu.ph"
-                      required
-                      className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#005A36] focus:ring-1 focus:ring-[#005A36]"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end space-x-2 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setForgotOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={resetLoading}
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-[#005A36] hover:bg-[#004529] disabled:bg-emerald-800 text-white shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
-                  >
-                    {resetLoading ? (
-                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    ) : (
-                      <span>Notify Admin for Password Reset</span>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </Modal>
+    </AuthCard>
   );
 }
