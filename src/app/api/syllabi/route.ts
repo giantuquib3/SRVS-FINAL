@@ -185,9 +185,9 @@ export async function GET(req: NextRequest) {
     const editPermMap =
       isFacultyUser && currentUserIdInt > 0 && syllabi.length > 0
         ? await getFacultyEditPermissionsMap(
-            currentUserIdInt,
-            syllabi.map((s: any) => s.id)
-          )
+          currentUserIdInt,
+          syllabi.map((s: any) => s.id)
+        )
         : new Map();
 
     const formatted = syllabi.map((s: any) => {
@@ -202,10 +202,10 @@ export async function GET(req: NextRequest) {
       const pendingVersion = isStudent
         ? null
         : versionsList.find(
-            (v: any) =>
-              v.approvalStatus === SYLLABUS_STATUS.SUBMITTED ||
-              v.approvalStatus === SYLLABUS_STATUS.UNDER_REVIEW
-          ) || null;
+          (v: any) =>
+            v.approvalStatus === SYLLABUS_STATUS.SUBMITTED ||
+            v.approvalStatus === SYLLABUS_STATUS.UNDER_REVIEW
+        ) || null;
       const latestRejectedVersion = isStudent
         ? null
         : versionsList.find((v: any) => v.approvalStatus === SYLLABUS_STATUS.REJECTED) || null;
@@ -213,29 +213,29 @@ export async function GET(req: NextRequest) {
       const stripHeavyContent = (v: any) =>
         v
           ? {
-              id: v.id,
-              versionNumber: v.versionNumber,
-              changeSummary: v.changeSummary,
-              changeType: v.changeType,
-              statusAtSave: v.statusAtSave,
-              approvalStatus: v.approvalStatus,
-              fileName: v.fileName,
-              fileUrl: v.fileUrl,
-              fileType: v.fileType,
-              fileSize: v.fileSize,
-              editorId: v.editorId,
-              editor: v.editor,
-              submittedById: v.submittedById,
-              submittedBy: v.submittedBy,
-              submittedAt: v.submittedAt,
-              reviewedById: v.reviewedById,
-              reviewedBy: v.reviewedBy,
-              reviewedAt: v.reviewedAt,
-              rejectionReason: v.rejectionReason,
-              reviewComments: extractReviewComments(v),
-              content: v.content?._proposalMeta ? { _proposalMeta: v.content._proposalMeta } : undefined,
-              createdAt: v.createdAt,
-            }
+            id: v.id,
+            versionNumber: v.versionNumber,
+            changeSummary: v.changeSummary,
+            changeType: v.changeType,
+            statusAtSave: v.statusAtSave,
+            approvalStatus: v.approvalStatus,
+            fileName: v.fileName,
+            fileUrl: v.fileUrl,
+            fileType: v.fileType,
+            fileSize: v.fileSize,
+            editorId: v.editorId,
+            editor: v.editor,
+            submittedById: v.submittedById,
+            submittedBy: v.submittedBy,
+            submittedAt: v.submittedAt,
+            reviewedById: v.reviewedById,
+            reviewedBy: v.reviewedBy,
+            reviewedAt: v.reviewedAt,
+            rejectionReason: v.rejectionReason,
+            reviewComments: extractReviewComments(v),
+            content: v.content?._proposalMeta ? { _proposalMeta: v.content._proposalMeta } : undefined,
+            createdAt: v.createdAt,
+          }
           : null;
 
       const subjData = {
@@ -258,8 +258,8 @@ export async function GET(req: NextRequest) {
       const editPermissionStatus = isDeptHeadUser
         ? 'DIRECT_ACCESS'
         : isFacultyUser
-        ? editReq?.status || 'NONE'
-        : 'READ_ONLY';
+          ? editReq?.status || 'NONE'
+          : 'READ_ONLY';
       const canEdit =
         (isDeptHeadUser && Boolean(userDeptUpper && userDeptUpper === deptCode.toUpperCase())) ||
         (isFacultyUser && editPermissionStatus === 'APPROVED');
@@ -289,13 +289,13 @@ export async function GET(req: NextRequest) {
         course: subjData,
         instructor: s.instructor
           ? {
-              id: s.instructor.id,
-              idNumber: s.instructor.id,
-              fullName: s.instructor.fullName,
-              email: s.instructor.email,
-              role: s.instructor.role,
-              academicRank: s.instructor.academicRank,
-            }
+            id: s.instructor.id,
+            idNumber: s.instructor.id,
+            fullName: s.instructor.fullName,
+            email: s.instructor.email,
+            role: s.instructor.role,
+            academicRank: s.instructor.academicRank,
+          }
           : null,
         department: { id: deptCode, code: deptCode, name: deptName },
         latestVersion: stripHeavyContent(latestVersion),
@@ -420,8 +420,8 @@ export async function POST(req: NextRequest) {
     const targetStatus = isDraft
       ? SYLLABUS_STATUS.DRAFT
       : isDeptHead
-      ? SYLLABUS_STATUS.UNDER_REVIEW
-      : SYLLABUS_STATUS.SUBMITTED;
+        ? SYLLABUS_STATUS.UNDER_REVIEW
+        : SYLLABUS_STATUS.SUBMITTED;
 
     const now = new Date();
     const currentUserIdInt = parseInt(user.id, 10) || 0;
@@ -536,8 +536,8 @@ export async function POST(req: NextRequest) {
         message: isDraft
           ? 'Electronic syllabus Version 1 saved as draft.'
           : isDeptHead
-          ? 'Electronic syllabus Version 1 submitted to the Dean for review and approval.'
-          : 'Electronic syllabus Version 1 submitted to the Department Head for review and approval.',
+            ? 'Electronic syllabus Version 1 submitted to the Dean for review and approval.'
+            : 'Electronic syllabus Version 1 submitted to the Department Head for review and approval.',
       },
       { status: 201 }
     );

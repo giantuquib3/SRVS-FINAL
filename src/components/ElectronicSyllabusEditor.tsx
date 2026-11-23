@@ -214,8 +214,8 @@ export default function ElectronicSyllabusEditor({
               mode === 'edit' && syllabus?.id
                 ? `/syllabi/${syllabus.id}`
                 : isDeptHead
-                ? '/dept/dashboard'
-                : '/educator/dashboard'
+                  ? '/dept/dashboard'
+                  : '/educator/dashboard'
             }
             className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors shadow-sm"
             title="Back"
@@ -261,8 +261,8 @@ export default function ElectronicSyllabusEditor({
               {submitting
                 ? 'Submitting...'
                 : isDeptHead
-                ? 'Submit for Dean Approval'
-                : 'Submit for Dept. Head Approval'}
+                  ? 'Submit for Dean Approval'
+                  : 'Submit for Dept. Head Approval'}
             </span>
           </button>
         </div>
@@ -332,11 +332,10 @@ export default function ElectronicSyllabusEditor({
           <button
             type="button"
             onClick={() => setViewMode('edit')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              viewMode === 'edit'
-                ? 'bg-[#005A36] text-white shadow-sm'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'edit'
+              ? 'bg-[#005A36] text-white shadow-sm'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
           >
             <Edit3 className="w-3.5 h-3.5" />
             <span>Edit Electronic Syllabus</span>
@@ -345,11 +344,10 @@ export default function ElectronicSyllabusEditor({
           <button
             type="button"
             onClick={() => setViewMode('preview')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              viewMode === 'preview'
-                ? 'bg-[#005A36] text-white shadow-sm'
-                : 'bg-amber-50 hover:bg-amber-100 text-[#854D0E] border border-amber-200'
-            }`}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'preview'
+              ? 'bg-[#005A36] text-white shadow-sm'
+              : 'bg-amber-50 hover:bg-amber-100 text-[#854D0E] border border-amber-200'
+              }`}
           >
             <Eye className="w-3.5 h-3.5" />
             <span>Preview Syllabus</span>
@@ -359,11 +357,10 @@ export default function ElectronicSyllabusEditor({
             <button
               type="button"
               onClick={() => setViewMode('diff')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === 'diff'
-                  ? 'bg-[#005A36] text-white shadow-sm'
-                  : 'bg-amber-50 hover:bg-amber-100 text-[#854D0E] border border-amber-200'
-              }`}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${viewMode === 'diff'
+                ? 'bg-[#005A36] text-white shadow-sm'
+                : 'bg-amber-50 hover:bg-amber-100 text-[#854D0E] border border-amber-200'
+                }`}
             >
               <GitCompare className="w-3.5 h-3.5" />
               <span>Preview Changes</span>
@@ -374,11 +371,10 @@ export default function ElectronicSyllabusEditor({
         {viewMode === 'edit' && (
           <div className="flex items-center gap-2 text-xs">
             <span
-              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                totalOwatWeight === 100
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-300'
-              }`}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${totalOwatWeight === 100
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-amber-50 text-amber-800 border-amber-300'
+                }`}
             >
               OWAT Weight: {totalOwatWeight}%
             </span>
