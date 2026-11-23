@@ -15,6 +15,7 @@ import {
   GitCompare,
   KeyRound,
   Lock,
+  Search,
 } from 'lucide-react';
 import { isPendingReview, syllabusStatusLabel, formatShortVersionLabel } from '@/lib/status';
 import RequestEditPermissionModal from '@/components/RequestEditPermissionModal';
@@ -25,6 +26,7 @@ export default function EducatorDashboard() {
   const [syllabi, setSyllabi] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState('');
@@ -113,6 +115,12 @@ export default function EducatorDashboard() {
   const stats = data?.stats || {};
 
   const filteredSyllabi = syllabi.filter((s) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      const code = (s.course?.code || '').toLowerCase();
+      const title = (s.course?.title || '').toLowerCase();
+      if (!code.includes(q) && !title.includes(q)) return false;
+    }
     if (statusFilter === 'ALL') return true;
     const latestStatus = s.latestVersion?.approvalStatus || s.status;
     if (statusFilter === 'GRANTED') return s.editPermissionStatus === 'APPROVED';
@@ -278,15 +286,25 @@ export default function EducatorDashboard() {
 
       {/* Department Electronic Syllabi & Permission Table */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div>
             <h2 className="font-bold text-base text-slate-900 flex items-center space-x-2">
               <BookOpen className="w-4 h-4 text-[#005A36]" />
               <span>Department Electronic Syllabi ({filteredSyllabi.length})</span>
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               View any department syllabus electronically or request Department Head permission to edit.
             </p>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by code or title..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#005A36]"
+            />
           </div>
         </div>
 
@@ -333,7 +351,7 @@ export default function EducatorDashboard() {
                         </div>
                         <div className="font-semibold text-slate-800">{s.course.title}</div>
                         <div className="text-[11px] text-slate-400">
-                          {s.semester}, AY {s.academicYear} • {s.totalVersions || 1} history record(s)
+                          {s.semester} • {s.totalVersions || 1} revision record(s)
                         </div>
                       </td>
 

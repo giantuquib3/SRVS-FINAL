@@ -25,28 +25,33 @@ function NewSyllabusInner() {
     ])
       .then(([sData, uData]) => {
         if (sData?.subjects || sData?.courses) setSubjects(sData.subjects || sData.courses);
-        if (uData?.user) setCurrentUser(uData.user);
+        if (uData?.user) {
+          setCurrentUser(uData.user);
+          if (uData.user.role === 'Educator' || uData.user.role === 'Faculty') {
+            router.replace('/educator/dashboard');
+          }
+        }
       })
       .catch(() => setError('Failed to load department subjects from database.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [router]);
 
-  if (loading) {
+  if (loading || currentUser?.role === 'Educator' || currentUser?.role === 'Faculty') {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="flex flex-col items-center space-y-3">
           <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-[#005A36] animate-spin" />
-          <p className="text-slate-500 text-xs font-semibold">Initializing USJ-R Electronic Syllabus Editor...</p>
+          <p className="text-slate-500 text-xs font-semibold">
+            {currentUser?.role === 'Educator' || currentUser?.role === 'Faculty'
+              ? 'Redirecting to Faculty Dashboard...'
+              : 'Loading Electronic Syllabus Editor...'}
+          </p>
         </div>
       </div>
     );
   }
 
-  const canAuthor =
-    currentUser &&
-    (currentUser.role === 'Educator' ||
-      currentUser.role === 'Faculty' ||
-      currentUser.role === 'DepartmentHead');
+  const canAuthor = currentUser && currentUser.role === 'DepartmentHead';
 
   if (currentUser && !canAuthor) {
     return (
@@ -55,9 +60,9 @@ function NewSyllabusInner() {
           <AlertCircle className="w-8 h-8" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-extrabold text-slate-900">Syllabus Authoring Restricted</h2>
+          <h2 className="text-2xl font-extrabold text-slate-900">Syllabus Creation Restricted</h2>
           <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
-            Only <strong>Faculty</strong> and <strong>Department Heads</strong> are authorized to create or edit electronic course syllabi within their assigned department.
+            Every subject already has its initial Version 1 electronic syllabus. Only <strong>Department Heads</strong> may create a new syllabus record if one is missing.
           </p>
         </div>
         <div className="pt-2">

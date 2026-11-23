@@ -315,9 +315,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionFromRequest(req);
-    if (!user || (user.role !== 'Educator' && user.role !== 'Faculty' && user.role !== 'DepartmentHead')) {
+    if (!user || user.role !== 'DepartmentHead') {
       return NextResponse.json({
-        error: 'Unauthorized: Only Faculty and Department Heads can create electronic syllabi.',
+        error:
+          user?.role === 'Educator' || user?.role === 'Faculty'
+            ? 'Faculty members cannot create new syllabi directly. Select an existing subject syllabus and request edit permission from your Department Head.'
+            : 'Unauthorized: Only Department Heads may create new syllabus records.',
       }, { status: 403 });
     }
 
@@ -407,12 +410,6 @@ export async function POST(req: NextRequest) {
       subject,
       subject.department?.name || getDepartmentName(subject.departmentId)
     );
-
-    if (!normalizedContent.courseDescription.trim()) {
-      return NextResponse.json({
-        error: 'Please provide a Course Overview / Description for the electronic syllabus.',
-      }, { status: 400 });
-    }
 
     // Dual approval workflow:
     // - Draft -> DRAFT

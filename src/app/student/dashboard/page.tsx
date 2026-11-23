@@ -92,10 +92,16 @@ export default function InstitutionalSyllabusViewerPage() {
       const syl = data.syllabus || item;
       const ver = data.currentVersion || latestVersion || {};
       const content = ver.content || {};
-      const outcomes: string[] = content.learningOutcomes || [];
-      const topics: any[] = content.topics || [];
-      const grading: any[] = content.gradingSystem || [];
-      const references: string[] = content.references || [];
+      const cilos: any[] = Array.isArray(content.cilos) ? content.cilos : [];
+      const weeklyPlan: any[] = Array.isArray(content.weeklyPlan) ? content.weeklyPlan : [];
+      const owatGrading: any[] = Array.isArray(content.owatGrading) ? content.owatGrading : [];
+      const coursePolicies: any[] = Array.isArray(content.coursePolicies) ? content.coursePolicies : [];
+      const piloPeoMapping: any[] = Array.isArray(content.piloPeoMapping) ? content.piloPeoMapping : [];
+      const integrationSchemes: any[] = Array.isArray(content.integrationSchemes) ? content.integrationSchemes : [];
+      const references: string[] = Array.isArray(content.references) ? content.references.filter((r: string) => r && r.trim()) : [];
+      const units = subject.units ?? 3;
+      const lecHours = subject.lecHours ?? 3;
+      const labHours = subject.labHours ?? 0;
 
       const htmlDoc = `<!DOCTYPE html>
 <html lang="en">
@@ -103,60 +109,144 @@ export default function InstitutionalSyllabusViewerPage() {
   <meta charset="UTF-8" />
   <title>${subject.code} - ${subject.title} Syllabus</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #0f172a; max-width: 840px; margin: 32px auto; padding: 0 24px; line-height: 1.5; }
-    .header { text-align: center; border-bottom: 2px solid #005A36; padding-bottom: 16px; margin-bottom: 24px; }
-    .dept { color: #005A36; font-weight: bold; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
-    h1 { margin: 8px 0; font-size: 24px; color: #0f172a; }
-    .meta { font-size: 13px; color: #475569; }
-    h2 { font-size: 15px; color: #005A36; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-top: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-    th { background: #f8fafc; font-weight: bold; }
-    ul { padding-left: 20px; font-size: 13px; }
+    body { font-family: Cambria, Georgia, "Times New Roman", serif; color: #000; max-width: 920px; margin: 28px auto; padding: 0 24px; line-height: 1.45; font-size: 13px; }
+    .title { text-align: center; margin-bottom: 16px; }
+    .title h1 { margin: 2px 0; font-size: 18px; text-transform: uppercase; }
+    .title p { margin: 2px 0; font-size: 14px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12.5px; }
+    th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th.bar { background: #D9D9D9; font-weight: bold; text-transform: uppercase; }
+    th.sub { background: #BFBFBF; font-weight: bold; }
+    table.owat, table.owat th, table.owat td { border-color: #B06C6C; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="dept">University of San Jose - Recoletos • ${syl.department?.name || item.departmentId}</div>
-    <h1>${subject.code}: ${subject.title}</h1>
-    <div class="meta">
-      Term: ${item.semester} • Academic Year: ${item.academicYear} • Faculty: ${item.instructor?.fullName || subject.professorName || 'Faculty'} • Version ${item.currentVersionNumber}
-    </div>
+  <div class="title">
+    <h1>SCHOOL OF ENGINEERING</h1>
+    <p>${syl.department?.name || item.departmentId}</p>
+    <div style="font-size:12px;">${content.curriculumYear || 'Curriculum 2022'} • Version ${item.currentVersionNumber || 1}</div>
   </div>
 
-  <h2>Course Description</h2>
-  <p style="font-size:13px;">${content.courseDescription || subject.description || 'Standard departmental course syllabus.'}</p>
+  <table>
+    <tbody>
+      <tr><td style="width:25%;background:#D9D9D9;font-weight:bold;">COURSE NUMBER</td><td><strong>${subject.code || ''}</strong></td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">COURSE TITLE</td><td><strong>${subject.title || ''}</strong></td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">COURSE UNITS</td><td>${units} Units (${lecHours} hrs Lecture, ${labHours} hrs Lab)</td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">PRE-REQUISITES</td><td>${subject.prerequisite || 'None'}</td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">CO-REQUISITES</td><td>${content.coRequisites || 'None'}</td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">TERM OFFERED</td><td>${content.termOffered || item.semester || ''}</td></tr>
+      <tr><td style="background:#D9D9D9;font-weight:bold;">PROGRAM/S</td><td>${content.programs || syl.department?.name || ''}</td></tr>
+    </tbody>
+  </table>
 
-  ${outcomes.length > 0 ? `<h2>Course Learning Outcomes</h2><ul>${outcomes.map((o) => `<li>${o}</li>`).join('')}</ul>` : ''}
+  <table>
+    <thead><tr><th class="bar" style="text-align:center;">COURSE OVERVIEW</th></tr></thead>
+    <tbody><tr><td>${content.courseDescription || subject.description || ''}</td></tr></tbody>
+  </table>
 
   ${
-    topics.length > 0
-      ? `<h2>Weekly Course Outline</h2>
-      <table>
-        <thead><tr><th>Week</th><th>Topic</th><th>Activities / Assessment</th></tr></thead>
-        <tbody>${topics
-          .map(
-            (t) =>
-              `<tr><td>Week ${t.week || ''}</td><td><strong>${t.title || ''}</strong><br/>${t.description || ''}</td><td>${t.activities || ''} ${t.assessments ? `(${t.assessments})` : ''}</td></tr>`
-          )
-          .join('')}</tbody>
-      </table>`
+    piloPeoMapping.length > 0
+      ? `<table>
+      <thead>
+        <tr><th class="bar" colspan="4">Mapping of Program Intended Learning Outcomes (PILO) and Program Educational Objectives (PEO)</th></tr>
+        <tr><th class="sub">Program Intended Learning Outcomes (PILO)</th><th class="sub" style="text-align:center;">PEO 1</th><th class="sub" style="text-align:center;">PEO 2</th><th class="sub" style="text-align:center;">PEO 3</th></tr>
+      </thead>
+      <tbody>${piloPeoMapping
+        .map(
+          (r) =>
+            `<tr><td>${r.letter}. ${r.outcome || ''}</td><td style="text-align:center;">${r.peo1 ? '✔' : ''}</td><td style="text-align:center;">${r.peo2 ? '✔' : ''}</td><td style="text-align:center;">${r.peo3 ? '✔' : ''}</td></tr>`
+        )
+        .join('')}</tbody>
+    </table>`
       : ''
   }
 
   ${
-    grading.length > 0
-      ? `<h2>Grading System</h2>
-      <table>
-        <thead><tr><th>Component</th><th>Weight</th><th>Description</th></tr></thead>
-        <tbody>${grading
-          .map((g) => `<tr><td>${g.component || ''}</td><td>${g.percentage || 0}%</td><td>${g.description || ''}</td></tr>`)
-          .join('')}</tbody>
-      </table>`
+    cilos.length > 0
+      ? `<table>
+      <thead><tr><th class="bar">COURSE INTENDED LEARNING OUTCOMES</th><th class="bar">MAPPED PILO</th><th class="bar" style="text-align:center;">PEO 1</th><th class="bar" style="text-align:center;">PEO 2</th><th class="bar" style="text-align:center;">PEO 3</th></tr></thead>
+      <tbody>${cilos
+        .map(
+          (c, i) =>
+            `<tr><td>${i === 0 ? '<em>Within and upon completion of this course, the students are expected to:</em><br/>' : ''}${c.description || ''}</td><td style="text-align:center;">${c.mappedPilo || ''}</td><td style="text-align:center;">${c.peo1 ? '✔' : ''}</td><td style="text-align:center;">${c.peo2 ? '✔' : ''}</td><td style="text-align:center;">${c.peo3 ? '✔' : ''}</td></tr>`
+        )
+        .join('')}</tbody>
+    </table>`
       : ''
   }
 
-  ${references.length > 0 ? `<h2>References</h2><ul>${references.map((r) => `<li>${r}</li>`).join('')}</ul>` : ''}
+  ${
+    weeklyPlan.some((w) => w.timeFrame || w.intendedLearningOutcome || w.learningContent)
+      ? `<table>
+      <thead><tr><th class="bar">Time Frame</th><th class="bar">Intended Learning Outcome</th><th class="bar">Assessment</th><th class="bar">Teaching - Learning Activities</th><th class="bar">Learning Content</th><th class="bar">Resources</th></tr></thead>
+      <tbody>${weeklyPlan
+        .map(
+          (w) =>
+            `<tr><td>${w.timeFrame || ''}</td><td>${w.intendedLearningOutcome || ''}</td><td>${w.assessment || ''}</td><td>${w.teachingLearningActivities || ''}</td><td>${w.learningContent || ''}</td><td>${w.resources || ''}</td></tr>`
+        )
+        .join('')}</tbody>
+    </table>`
+      : ''
+  }
+
+  ${
+    integrationSchemes.length > 0
+      ? `<table>
+      <thead><tr><th class="bar">INTEGRATION SCHEMES</th></tr></thead>
+      <tbody><tr><td><ul>${integrationSchemes
+        .map((it) => `<li><em><strong>${it.coreValue || ''}</strong> ${it.description || ''}</em></li>`)
+        .join('')}</ul></td></tr></tbody>
+    </table>`
+      : ''
+  }
+
+  ${
+    owatGrading.length > 0
+      ? `<table class="owat">
+      <thead>
+        <tr><th class="bar" colspan="4">OWAT (OUTCOME WEIGHT ASSESSMENT TABLE) GRADING SYSTEM</th></tr>
+        <tr><th>Outcomes</th><th>Total Weight</th><th>Points Scoring</th><th>Assessment Tool</th></tr>
+      </thead>
+      <tbody>${owatGrading
+        .map((g) => {
+          const items = Array.isArray(g.items) && g.items.length > 0 ? g.items : [{ points: '', tool: '' }];
+          return items
+            .map(
+              (it: any, idx: number) =>
+                `<tr>${
+                  idx === 0
+                    ? `<td rowspan="${items.length}">${g.outcome || ''}</td><td rowspan="${items.length}" style="text-align:center;vertical-align:middle;">${g.totalWeight || 0}%</td>`
+                    : ''
+                }<td style="text-align:center;">${it.points || ''}</td><td>${it.tool || ''}</td></tr>`
+            )
+            .join('');
+        })
+        .join('')}</tbody>
+    </table>`
+      : ''
+  }
+
+  ${
+    references.length > 0
+      ? `<table><thead><tr><th class="bar">REFERENCES</th></tr></thead><tbody><tr><td><ol>${references
+          .map((r) => `<li>${r}</li>`)
+          .join('')}</ol></td></tr></tbody></table>`
+      : ''
+  }
+
+  ${
+    coursePolicies.length > 0
+      ? `<table>
+      <thead><tr><th class="bar">COURSE POLICIES AND STANDARDS</th></tr></thead>
+      <tbody><tr><td><p><em>(Specific classroom guidelines of the course and the teacher, please describe policy as to:)</em></p>${coursePolicies
+        .map(
+          (p) =>
+            `<p><strong>${p.section || ''}</strong></p><ol>${(p.items || []).map((x: string) => `<li>${x}</li>`).join('')}</ol>`
+        )
+        .join('')}</td></tr></tbody>
+    </table>`
+      : ''
+  }
 </body>
 </html>`;
 

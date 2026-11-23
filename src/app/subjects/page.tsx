@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   BookOpen,
   Plus,
-  PlusCircle,
   Search,
   Filter,
   History,
@@ -261,21 +260,12 @@ export default function SubjectsPage() {
             {canEditCourses
               ? 'Manage and edit courses under your department, assign faculty instructors, and oversee syllabus status.'
               : canAuthorSyllabus
-                ? 'View courses under your department and create or edit course syllabi for Department Head approval.'
+                ? 'View courses and electronic syllabi under your department, and request Department Head permission to edit.'
                 : 'Browse academic courses and view official course syllabi.'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-          {canAuthorSyllabus && (
-            <Link
-              href="/syllabi/new"
-              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#C99700] hover:bg-[#B48600] text-slate-950 shadow-sm transition-all flex items-center space-x-2"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Create Electronic Syllabus</span>
-            </Link>
-          )}
           {canEditCourses && (
             <button
               onClick={openCreateModal}
@@ -498,9 +488,9 @@ export default function SubjectsPage() {
                             </button>
                           ))}
                       </>
-                    ) : canAuthorSyllabus ? (
+                    ) : currentUser?.role === 'DepartmentHead' ? (
                       <Link
-                        href="/syllabi/new"
+                        href={`/syllabi/new?subjectId=${subject.id}`}
                         className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-[#005A36] hover:bg-[#004529] text-white font-bold text-[11px]"
                       >
                         <Plus className="w-3 h-3 text-[#FEF08A]" />
