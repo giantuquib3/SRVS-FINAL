@@ -144,109 +144,101 @@ export default function InstitutionalSyllabusViewerPage() {
     <tbody><tr><td>${content.courseDescription || subject.description || ''}</td></tr></tbody>
   </table>
 
-  ${
-    piloPeoMapping.length > 0
-      ? `<table>
+  ${piloPeoMapping.length > 0
+          ? `<table>
       <thead>
         <tr><th class="bar" colspan="4">Mapping of Program Intended Learning Outcomes (PILO) and Program Educational Objectives (PEO)</th></tr>
         <tr><th class="sub">Program Intended Learning Outcomes (PILO)</th><th class="sub" style="text-align:center;">PEO 1</th><th class="sub" style="text-align:center;">PEO 2</th><th class="sub" style="text-align:center;">PEO 3</th></tr>
       </thead>
       <tbody>${piloPeoMapping
-        .map(
-          (r) =>
-            `<tr><td>${r.letter}. ${r.outcome || ''}</td><td style="text-align:center;">${r.peo1 ? '✔' : ''}</td><td style="text-align:center;">${r.peo2 ? '✔' : ''}</td><td style="text-align:center;">${r.peo3 ? '✔' : ''}</td></tr>`
-        )
-        .join('')}</tbody>
+            .map(
+              (r) =>
+                `<tr><td>${r.letter}. ${r.outcome || ''}</td><td style="text-align:center;">${r.peo1 ? '✔' : ''}</td><td style="text-align:center;">${r.peo2 ? '✔' : ''}</td><td style="text-align:center;">${r.peo3 ? '✔' : ''}</td></tr>`
+            )
+            .join('')}</tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 
-  ${
-    cilos.length > 0
-      ? `<table>
+  ${cilos.length > 0
+          ? `<table>
       <thead><tr><th class="bar">COURSE INTENDED LEARNING OUTCOMES</th><th class="bar">MAPPED PILO</th><th class="bar" style="text-align:center;">PEO 1</th><th class="bar" style="text-align:center;">PEO 2</th><th class="bar" style="text-align:center;">PEO 3</th></tr></thead>
       <tbody>${cilos
-        .map(
-          (c, i) =>
-            `<tr><td>${i === 0 ? '<em>Within and upon completion of this course, the students are expected to:</em><br/>' : ''}${c.description || ''}</td><td style="text-align:center;">${c.mappedPilo || ''}</td><td style="text-align:center;">${c.peo1 ? '✔' : ''}</td><td style="text-align:center;">${c.peo2 ? '✔' : ''}</td><td style="text-align:center;">${c.peo3 ? '✔' : ''}</td></tr>`
-        )
-        .join('')}</tbody>
+            .map(
+              (c, i) =>
+                `<tr><td>${i === 0 ? '<em>Within and upon completion of this course, the students are expected to:</em><br/>' : ''}${c.description || ''}</td><td style="text-align:center;">${c.mappedPilo || ''}</td><td style="text-align:center;">${c.peo1 ? '✔' : ''}</td><td style="text-align:center;">${c.peo2 ? '✔' : ''}</td><td style="text-align:center;">${c.peo3 ? '✔' : ''}</td></tr>`
+            )
+            .join('')}</tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 
-  ${
-    weeklyPlan.some((w) => w.timeFrame || w.intendedLearningOutcome || w.learningContent)
-      ? `<table>
+  ${weeklyPlan.some((w) => w.timeFrame || w.intendedLearningOutcome || w.learningContent)
+          ? `<table>
       <thead><tr><th class="bar">Time Frame</th><th class="bar">Intended Learning Outcome</th><th class="bar">Assessment</th><th class="bar">Teaching - Learning Activities</th><th class="bar">Learning Content</th><th class="bar">Resources</th></tr></thead>
       <tbody>${weeklyPlan
-        .map(
-          (w) =>
-            `<tr><td>${w.timeFrame || ''}</td><td>${w.intendedLearningOutcome || ''}</td><td>${w.assessment || ''}</td><td>${w.teachingLearningActivities || ''}</td><td>${w.learningContent || ''}</td><td>${w.resources || ''}</td></tr>`
-        )
-        .join('')}</tbody>
+            .map(
+              (w) =>
+                `<tr><td>${w.timeFrame || ''}</td><td>${w.intendedLearningOutcome || ''}</td><td>${w.assessment || ''}</td><td>${w.teachingLearningActivities || ''}</td><td>${w.learningContent || ''}</td><td>${w.resources || ''}</td></tr>`
+            )
+            .join('')}</tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 
-  ${
-    integrationSchemes.length > 0
-      ? `<table>
+  ${integrationSchemes.length > 0
+          ? `<table>
       <thead><tr><th class="bar">INTEGRATION SCHEMES</th></tr></thead>
       <tbody><tr><td><ul>${integrationSchemes
-        .map((it) => `<li><em><strong>${it.coreValue || ''}</strong> ${it.description || ''}</em></li>`)
-        .join('')}</ul></td></tr></tbody>
+            .map((it) => `<li><em><strong>${it.coreValue || ''}</strong> ${it.description || ''}</em></li>`)
+            .join('')}</ul></td></tr></tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 
-  ${
-    owatGrading.length > 0
-      ? `<table class="owat">
+  ${owatGrading.length > 0
+          ? `<table class="owat">
       <thead>
         <tr><th class="bar" colspan="4">OWAT (OUTCOME WEIGHT ASSESSMENT TABLE) GRADING SYSTEM</th></tr>
         <tr><th>Outcomes</th><th>Total Weight</th><th>Points Scoring</th><th>Assessment Tool</th></tr>
       </thead>
       <tbody>${owatGrading
-        .map((g) => {
-          const items = Array.isArray(g.items) && g.items.length > 0 ? g.items : [{ points: '', tool: '' }];
-          return items
-            .map(
-              (it: any, idx: number) =>
-                `<tr>${
-                  idx === 0
-                    ? `<td rowspan="${items.length}">${g.outcome || ''}</td><td rowspan="${items.length}" style="text-align:center;vertical-align:middle;">${g.totalWeight || 0}%</td>`
-                    : ''
-                }<td style="text-align:center;">${it.points || ''}</td><td>${it.tool || ''}</td></tr>`
-            )
-            .join('');
-        })
-        .join('')}</tbody>
+            .map((g) => {
+              const items = Array.isArray(g.items) && g.items.length > 0 ? g.items : [{ points: '', tool: '' }];
+              return items
+                .map(
+                  (it: any, idx: number) =>
+                    `<tr>${idx === 0
+                      ? `<td rowspan="${items.length}">${g.outcome || ''}</td><td rowspan="${items.length}" style="text-align:center;vertical-align:middle;">${g.totalWeight || 0}%</td>`
+                      : ''
+                    }<td style="text-align:center;">${it.points || ''}</td><td>${it.tool || ''}</td></tr>`
+                )
+                .join('');
+            })
+            .join('')}</tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 
-  ${
-    references.length > 0
-      ? `<table><thead><tr><th class="bar">REFERENCES</th></tr></thead><tbody><tr><td><ol>${references
-          .map((r) => `<li>${r}</li>`)
-          .join('')}</ol></td></tr></tbody></table>`
-      : ''
-  }
+  ${references.length > 0
+          ? `<table><thead><tr><th class="bar">REFERENCES</th></tr></thead><tbody><tr><td><ol>${references
+            .map((r) => `<li>${r}</li>`)
+            .join('')}</ol></td></tr></tbody></table>`
+          : ''
+        }
 
-  ${
-    coursePolicies.length > 0
-      ? `<table>
+  ${coursePolicies.length > 0
+          ? `<table>
       <thead><tr><th class="bar">COURSE POLICIES AND STANDARDS</th></tr></thead>
       <tbody><tr><td><p><em>(Specific classroom guidelines of the course and the teacher, please describe policy as to:)</em></p>${coursePolicies
-        .map(
-          (p) =>
-            `<p><strong>${p.section || ''}</strong></p><ol>${(p.items || []).map((x: string) => `<li>${x}</li>`).join('')}</ol>`
-        )
-        .join('')}</td></tr></tbody>
+            .map(
+              (p) =>
+                `<p><strong>${p.section || ''}</strong></p><ol>${(p.items || []).map((x: string) => `<li>${x}</li>`).join('')}</ol>`
+            )
+            .join('')}</td></tr></tbody>
     </table>`
-      : ''
-  }
+          : ''
+        }
 </body>
 </html>`;
 
@@ -310,16 +302,14 @@ export default function InstitutionalSyllabusViewerPage() {
         <button
           type="button"
           onClick={() => setDepartmentFilter('')}
-          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-            departmentFilter === ''
+          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${departmentFilter === ''
               ? 'bg-[#005A36] text-white border-[#005A36] shadow-sm'
               : 'bg-white text-slate-800 border-slate-200 hover:border-[#005A36]'
-          }`}
+            }`}
         >
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider block ${
-              departmentFilter === '' ? 'text-[#FEF08A]' : 'text-slate-400'
-            }`}
+            className={`text-[10px] font-bold uppercase tracking-wider block ${departmentFilter === '' ? 'text-[#FEF08A]' : 'text-slate-400'
+              }`}
           >
             All Departments
           </span>
@@ -337,24 +327,21 @@ export default function InstitutionalSyllabusViewerPage() {
               key={dept.id}
               type="button"
               onClick={() => setDepartmentFilter(isSelected ? '' : dept.id)}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                isSelected
+              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${isSelected
                   ? 'bg-[#005A36] text-white border-[#005A36] shadow-sm'
                   : 'bg-white text-slate-800 border-slate-200 hover:border-[#005A36]'
-              }`}
+                }`}
             >
               <span
-                className={`text-[10px] font-extrabold font-mono uppercase tracking-wider block ${
-                  isSelected ? 'text-[#FEF08A]' : 'text-[#005A36]'
-                }`}
+                className={`text-[10px] font-extrabold font-mono uppercase tracking-wider block ${isSelected ? 'text-[#FEF08A]' : 'text-[#005A36]'
+                  }`}
               >
                 [{dept.code}]
               </span>
               <p className="text-2xl font-black mt-0.5">{count}</p>
               <span
-                className={`text-[11px] truncate block ${
-                  isSelected ? 'text-emerald-100' : 'text-slate-500'
-                }`}
+                className={`text-[11px] truncate block ${isSelected ? 'text-emerald-100' : 'text-slate-500'
+                  }`}
                 title={dept.name}
               >
                 {dept.name}
