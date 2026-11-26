@@ -176,6 +176,15 @@ export function parseSyllabusStatusParam(param?: string | null): SyllabusStatus 
 
 export const SEMESTERS = ['1st Semester', '2nd Semester', 'Summer'] as const;
 
+export const ENROLLMENT_STATUS = {
+  PENDING: 'PENDING',
+  ENROLLED: 'ENROLLED',
+  DROPPED: 'DROPPED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export const ENROLLMENT_STATUSES: string[] = Object.values(ENROLLMENT_STATUS);
+
 /** Academic year format enforced by the database: "YYYY-YYYY". */
 export const ACADEMIC_YEAR_PATTERN = /^\d{4}-\d{4}$/;
 

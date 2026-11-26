@@ -262,7 +262,7 @@ export function Alert({
       <Icon className={cx('mt-0.5 h-4 w-4 shrink-0', s.iconColor)} />
       <div className="min-w-0 flex-1">
         {title && <p className="font-medium">{title}</p>}
-        {children && <div className={cx(title && 'mt-0.5', 'opacity-90')}>{children}</div>}
+        {children && <div className={cx(Boolean(title) && 'mt-0.5', 'opacity-90')}>{children}</div>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
       {onClose && (

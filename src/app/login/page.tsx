@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Forgot password: sends a reset request to the System Administrator
+  // Forgot password: emails a time-limited reset link directly to the user
   const [forgotOpen, setForgotOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
@@ -79,10 +79,10 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setResetError(data.error || 'Failed to send password reset request.');
+        setResetError(data.error || 'Failed to send password reset link.');
         return;
       }
-      setResetSuccess(data.message || 'Request sent. The System Administrator will reset your password.');
+      setResetSuccess(data.message || 'A password reset link has been sent to your email address.');
       setResetEmail('');
     } catch {
       setResetError('Could not connect to the server. Please try again.');
@@ -148,14 +148,14 @@ export default function LoginPage() {
         open={forgotOpen}
         onClose={() => setForgotOpen(false)}
         title="Reset your password"
-        description="We'll notify the System Administrator to reset your password."
+        description="Enter your registered email and we'll send you a link to set a new password."
         footer={
           <>
             <button type="button" onClick={() => setForgotOpen(false)} className="btn btn-ghost">
               Close
             </button>
             <button type="submit" form="forgot-form" disabled={resetLoading} className="btn btn-primary">
-              {resetLoading ? <Spinner /> : 'Send request'}
+              {resetLoading ? <Spinner /> : 'Send reset link'}
             </button>
           </>
         }

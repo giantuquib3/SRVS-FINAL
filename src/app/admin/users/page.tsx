@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Trash2, UserPlus, Users } from 'lucide-react';
+import { KeyRound, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -60,6 +60,11 @@ export default function UsersManagementPage() {
   const [roleModalUser, setRoleModalUser] = useState<any>(null);
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
+
+  // Manual password reset
+  const [resetModalUser, setResetModalUser] = useState<any>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('USJR@Reset2026');
+  const [resetError, setResetError] = useState('');
 
   const flash = (msg: string) => {
     setActionMessage(msg);
@@ -187,6 +192,46 @@ export default function UsersManagementPage() {
     setSelectedDeptId(NO_DEPT_ROLES.includes(u.role) ? '' : u.departmentId || u.departmentCode || '');
   };
 
+  const openResetModal = (u: any) => {
+    setResetModalUser(u);
+    setResetPasswordValue('USJR@Reset2026');
+    setResetError('');
+  };
+
+  const handleManualPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetModalUser) return;
+    setResetError('');
+    if (resetPasswordValue.trim().length < 6) {
+      setResetError('New password must be at least 6 characters.');
+      return;
+    }
+    setProcessingId(resetModalUser.id);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: resetModalUser.id,
+          action: 'ResetPassword',
+          newPassword: resetPasswordValue.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error || 'Failed to reset password.');
+        return;
+      }
+      flash(`Password for ${resetModalUser.fullName} was reset to: ${resetPasswordValue.trim()}`);
+      setResetModalUser(null);
+      await fetchUsers();
+    } catch {
+      setResetError('Could not connect to the server.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const tabs = [
     { id: '', label: 'All', count: counts.total },
     { id: 'DepartmentHead', label: 'Department Heads', count: counts.deptHeads },
@@ -312,6 +357,15 @@ export default function UsersManagementPage() {
                             <>
                               <button onClick={() => openRoleModal(u)} className="btn btn-ghost btn-sm">
                                 Change role
+                              </button>
+                              <button
+                                onClick={() => openResetModal(u)}
+                                disabled={busy}
+                                className="btn btn-ghost btn-icon text-slate-500 hover:text-brand-700"
+                                title="Reset password"
+                                aria-label={`Reset password for ${u.fullName}`}
+                              >
+                                <KeyRound className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => handleAction(u.id, u.accountStatus === 'Active' ? 'Deactivate' : 'Activate')}
@@ -469,6 +523,44 @@ export default function UsersManagementPage() {
             {deptSelect(selectedDeptId, setSelectedDeptId, selectedRole)}
           </Field>
         </div>
+      </Modal>
+
+      {/* Manual password reset */}
+      <Modal
+        open={Boolean(resetModalUser)}
+        onClose={() => setResetModalUser(null)}
+        title="Reset password"
+        description={resetModalUser ? `${resetModalUser.fullName} · ${resetModalUser.email}` : undefined}
+        size="sm"
+        footer={
+          <>
+            <button type="button" onClick={() => setResetModalUser(null)} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="manual-reset-form"
+              disabled={processingId === resetModalUser?.id}
+              className="btn btn-primary"
+            >
+              Reset password
+            </button>
+          </>
+        }
+      >
+        <form id="manual-reset-form" onSubmit={handleManualPasswordReset} className="space-y-4">
+          {resetError && <Alert tone="error">{resetError}</Alert>}
+          <Field label="New temporary password" required hint="Minimum 6 characters. Share this with the user.">
+            <input
+              type="text"
+              required
+              minLength={6}
+              value={resetPasswordValue}
+              onChange={(e) => setResetPasswordValue(e.target.value)}
+              className="input font-mono"
+            />
+          </Field>
+        </form>
       </Modal>
     </div>
   );

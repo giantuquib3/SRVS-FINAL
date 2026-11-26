@@ -2,24 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Clock, Eye, FileText, KeyRound, Users } from 'lucide-react';
+import { ArrowRight, BookOpen, Clock, Eye, FileText, GraduationCap, Users } from 'lucide-react';
 import {
-  Alert,
   Badge,
   Card,
   CardHeader,
   DeptTag,
   EmptyState,
-  Field,
   LoadingState,
-  Modal,
   PageHeader,
   StatCard,
   formatDate,
 } from '@/components/ui';
 import { roleLabel } from '@/lib/status';
-
-const DEFAULT_RESET_PASSWORD = 'USJR@Reset2026';
 
 export default function AdminDashboard() {
   const [data, setData] = useState<any>(null);
@@ -27,9 +22,6 @@ export default function AdminDashboard() {
   const [pendingSyllabi, setPendingSyllabi] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | number | null>(null);
-  const [resetModalUser, setResetModalUser] = useState<any | null>(null);
-  const [newResetPassword, setNewResetPassword] = useState(DEFAULT_RESET_PASSWORD);
-  const [notice, setNotice] = useState('');
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -81,41 +73,14 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAdminPasswordReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetModalUser) return;
-    setProcessingId(resetModalUser.id);
-    try {
-      const res = await fetch('/api/users', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: resetModalUser.id, action: 'ResetPassword', newPassword: newResetPassword }),
-      });
-      if (res.ok) {
-        setNotice(`Password for ${resetModalUser.fullName} was reset to: ${newResetPassword}`);
-        setResetModalUser(null);
-        await fetchDashboardData();
-      }
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   if (loading && !data) return <LoadingState className="min-h-[60vh]" />;
 
   const stats = data?.stats || {};
   const recentActivities = data?.recentActivities || [];
-  const passwordResetRequests = data?.passwordResetRequests || [];
 
   return (
     <div className="space-y-6">
       <PageHeader title="Admin dashboard" description="Accounts, approvals, and system activity at a glance." />
-
-      {notice && (
-        <Alert tone="success" onClose={() => setNotice('')}>
-          {notice}
-        </Alert>
-      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Registered users" value={stats.totalUsers ?? 0} icon={Users} />
@@ -125,47 +90,14 @@ export default function AdminDashboard() {
           icon={Clock}
           tone={stats.pendingRegistrations ? 'amber' : 'default'}
         />
+        <StatCard label="Courses" value={stats.totalSubjects ?? 0} icon={GraduationCap} />
         <StatCard
           label="Syllabi"
           value={stats.totalSyllabi ?? 0}
           hint={`${stats.pendingSyllabi ?? 0} awaiting review`}
           icon={BookOpen}
         />
-        <StatCard
-          label="Password resets"
-          value={passwordResetRequests.length}
-          icon={KeyRound}
-          tone={passwordResetRequests.length ? 'amber' : 'default'}
-        />
       </div>
-
-      {passwordResetRequests.length > 0 && (
-        <Card>
-          <CardHeader title="Password reset requests" description="Requested from the sign-in page." />
-          <ul className="divide-y divide-slate-100">
-            {passwordResetRequests.map((u: any) => (
-              <li key={u.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{u.fullName}</p>
-                  <p className="truncate text-xs text-slate-500">
-                    {u.email} · {roleLabel(u.role)} · ID {u.id}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetModalUser(u);
-                    setNewResetPassword(DEFAULT_RESET_PASSWORD);
-                  }}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Reset password
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
@@ -296,41 +228,6 @@ export default function AdminDashboard() {
           </div>
         )}
       </Card>
-
-      <Modal
-        open={Boolean(resetModalUser)}
-        onClose={() => setResetModalUser(null)}
-        title="Reset password"
-        description={resetModalUser ? `${resetModalUser.fullName} · ${resetModalUser.email}` : undefined}
-        footer={
-          <>
-            <button type="button" onClick={() => setResetModalUser(null)} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="reset-form"
-              disabled={processingId === resetModalUser?.id}
-              className="btn btn-primary"
-            >
-              Reset password
-            </button>
-          </>
-        }
-      >
-        <form id="reset-form" onSubmit={handleAdminPasswordReset}>
-          <Field label="New temporary password" required hint="Share this with the user so they can sign in.">
-            <input
-              type="text"
-              required
-              minLength={6}
-              value={newResetPassword}
-              onChange={(e) => setNewResetPassword(e.target.value)}
-              className="input font-mono"
-            />
-          </Field>
-        </form>
-      </Modal>
     </div>
   );
 }

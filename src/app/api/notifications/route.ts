@@ -16,28 +16,11 @@ export async function GET(req: NextRequest) {
     const notifications: any[] = [];
 
     if (user.role === 'Admin') {
-      const [resetUsers, pendingUsers] = await Promise.all([
-        prisma.user.findMany({
-          where: { mustChangePassword: true },
-          orderBy: { updatedAt: 'desc' },
-          select: { id: true, fullName: true, email: true, role: true, departmentId: true, updatedAt: true },
-        }),
-        prisma.user.findMany({
-          where: { accountStatus: 'PendingApproval' },
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, fullName: true, email: true, role: true, departmentId: true, createdAt: true },
-        }),
-      ]);
-
-      for (const u of resetUsers) {
-        notifications.push({
-          id: `reset-${u.id}`,
-          title: 'Password Reset Requested',
-          message: `[${roleLabel(u.role)}] ${u.fullName} (${u.email}) requested a password reset.`,
-          createdAt: u.updatedAt,
-          link: '/admin/dashboard',
-        });
-      }
+      const pendingUsers = await prisma.user.findMany({
+        where: { accountStatus: 'PendingApproval' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, fullName: true, email: true, role: true, departmentId: true, createdAt: true },
+      });
 
       for (const u of pendingUsers) {
         notifications.push({

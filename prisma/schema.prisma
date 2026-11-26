@@ -55,9 +55,10 @@ model User {
   editedVersions    SyllabusVersion[]     @relation("EditorVersions")
   submittedVersions SyllabusVersion[]     @relation("SubmittedVersions")
   reviewedVersions  SyllabusVersion[]     @relation("ReviewedVersions")
-  editRequests      SyllabusEditRequest[] @relation("FacultyEditRequests")
-  reviewedEditReqs  SyllabusEditRequest[] @relation("DeptHeadReviewedEditRequests")
-  auditLogs         AuditLog[]
+  editRequests        SyllabusEditRequest[] @relation("FacultyEditRequests")
+  reviewedEditReqs    SyllabusEditRequest[] @relation("DeptHeadReviewedEditRequests")
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
 
   @@index([role])
   @@index([departmentId])
@@ -182,6 +183,21 @@ model SyllabusEditRequest {
   @@index([facultyId])
   @@index([departmentId, status])
   @@map("syllabus_edit_requests")
+}
+
+// 5c. Password Reset Tokens (Email Reset Link Flow)
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // 6. System Audit Trail
